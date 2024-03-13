@@ -1,0 +1,97 @@
+{
+    "version": "13.2.0-rt_v11-rev1",
+    "description": "Minimalistic GNU for Windows is a runtime environment for GCC, GDB, make and related binutils.",
+    "homepage": "https://www.mingw-w64.org",
+    "license": "ZPL-2.1",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/niXman/mingw-builds-binaries/releases/download/13.2.0-rt_v11-rev1/x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1.7z",
+            "hash": "475ee72c5ce1bd54a3e3c334bdd3be5e6575334184fd9718013aa362c9819d2f",
+            "extract_dir": "mingw64"
+        },
+        "32bit": {
+            "url": "https://github.com/niXman/mingw-builds-binaries/releases/download/13.2.0-rt_v11-rev1/i686-13.2.0-release-posix-dwarf-ucrt-rt_v11-rev1.7z",
+            "hash": "b859f1779543a0055f0fe36877ebf5a85c47584a28d8d957da4e64666d029e69",
+            "extract_dir": "mingw32"
+        }
+    },
+    "post_install": "Copy-Item \"$dir\\bin\\mingw32-make.exe\" \"$dir\\bin\\make.exe\"",
+    "bin": [
+        [
+            "bin\\addr2line.exe",
+            "bin\\ar.exe",
+            "bin\\as.exe",
+            "bin\\c++.exe",
+            "bin\\c++filt.exe",
+            "bin\\cpp.exe",
+            "bin\\dlltool.exe",
+            "bin\\dllwrap.exe",
+            "bin\\dwp.exe",
+            "bin\\elfedit.exe",
+            "bin\\g++.exe",
+            "bin\\gcc-ar.exe",
+            "bin\\gcc-nm.exe",
+            "bin\\gcc-ranlib.exe",
+            "bin\\gcc.exe",
+            "bin\\gcov-dump.exe",
+            "bin\\gcov-tool.exe",
+            "bin\\gcov.exe",
+            "bin\\gdb-add-index.exe",
+            "bin\\gdb.exe",
+            "bin\\gdboring.exe",
+            "bin\\gdbserver.exe",
+            "bin\\gendef.exe",
+            "bin\\genidl.exe",
+            "bin\\genpeimg.exe",
+            "bin\\gfortran.exe",
+            "bin\\gprof.exe",
+            "bin\\ld.bfd.exe",
+            "bin\\ld.exe",
+            "bin\\ld.gold.exe",
+            "bin\\libatomic-1.dll",
+            "bin\\libgcc_s_seh-1.dll",
+            "bin\\libgfortran-5.dll",
+            "bin\\libgomp-1.dll",
+            "bin\\libquadmath-0.dll",
+            "bin\\libstdc++-6.dll",
+            "bin\\libwinpthread-1.dll",
+            "bin\\lto-dump.exe",
+            "bin\\mingw32-make.exe",
+            "bin\\nm.exe",
+            "bin\\objcopy.exe",
+            "bin\\objdump.exe",
+            "bin\\ranlib.exe",
+            "bin\\readelf.exe",
+            "bin\\size.exe",
+            "bin\\strings.exe",
+            "bin\\strip.exe",
+            "bin\\widl.exe",
+            "bin\\windmc.exe",
+            "bin\\windres.exe",
+            "bin\\x86_64-w64-mingw32-c++.exe",
+            "bin\\x86_64-w64-mingw32-g++.exe",
+            "bin\\x86_64-w64-mingw32-gcc-$version.exe",
+            "bin\\x86_64-w64-mingw32-gcc-ar.exe",
+            "bin\\x86_64-w64-mingw32-gcc-nm.exe",
+            "bin\\x86_64-w64-mingw32-gcc-ranlib.exe",
+            "bin\\x86_64-w64-mingw32-gcc.exe",
+            "bin\\x86_64-w64-mingw32-gfortran.exe"
+        ]
+    ],
+    "checkver": {
+        "url": "https://api.github.com/repos/niXman/mingw-builds-binaries/releases",
+        "jsonpath": "$..tag_name",
+        "regex": "([\\d.]+)-(?<build>[a-z0-9_\\-]+)",
+        "replace": "${1}-${build}"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/niXman/mingw-builds-binaries/releases/download/$version/x86_64-$match1-release-posix-seh-ucrt-$matchBuild.7z"
+            },
+            "32bit": {
+                "url": "https://github.com/niXman/mingw-builds-binaries/releases/download/$version/i686-$match1-release-posix-dwarf-ucrt-$matchBuild.7z"
+            }
+        }
+    }
+}
