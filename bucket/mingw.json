@@ -19,7 +19,7 @@
     "bin": [
         [
             "bin\\addr2line.exe",
-            "bin\\ar.exe",
+            // "bin\\ar.exe",
             "bin\\as.exe",
             "bin\\c++.exe",
             "bin\\c++filt.exe",
