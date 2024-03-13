@@ -22,10 +22,7 @@
         }
     },
     "bin": [
-        [
-            "gsudo.exe",
-            "sudo"
-        ]
+        "gsudo.exe"
     ],
     "psmodule": {
         "name": "gsudoModule"
