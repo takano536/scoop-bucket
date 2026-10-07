@@ -67,6 +67,29 @@ Scoop の観測箇所が変更された場合も、失敗して見逃しを防�
 将来の上流変更、別製品・別版の正常なファイルを取得する問題、PC 上のインストール・GUI 動作、
 Excavator の commit・push 権限は保証しません。複雑な hook や複数アーカイブは個別の検証が必要です。
 
+## ビルド済みアプリの配布
+
+このbucketでビルドするアプリは、同じリポジトリのReleasesで配布します。
+ZIPはGitにcommitせず、アプリ名でReleaseタグを分けます。
+
+| 項目 | 形式 |
+| --- | --- |
+| Releaseタグ | `<アプリ名>/v<上流バージョン>-r<改訂番号>` |
+| Scoop version | `<上流バージョン>-r<改訂番号>` |
+| ZIP | `<アプリ名>-<上流バージョン>-r<改訂番号>-windows-<arch>.zip` |
+
+初回は`r1`、同じ上流版の配布修正は`r2`以降です。同じ内容の再実行では番号を増やさず、
+公開済みファイルを上書きしません。新しい上流版では`r1`に戻します。
+アプリごとに公開・検証成功後のmanifestを最新版の正本とし、リポジトリ全体の
+Latest Releaseや他アプリの公開順には依存しません。
+
+過去のReleaseとZIPも保持します。各Releaseには上流commit・SHA256を記録した
+`provenance.json`と、その版のScoop manifestを添付します。
+過去版のZIPは[Releases](https://github.com/takano536/scoop-bucket/releases)から取得できます。
+過去版manifestの`checkver`は現在の正常版を参照するため、導入後の更新は最新版へ進みます。
+過去版への固定・ダウングレードは通常の最新版インストールとは別の操作です。
+詳細は[配布ルール](docs/distribution-policy.md)を参照してください。
+
 ## Hermes Agent Light
 
 [Hermes Light](.github/workflows/hermes-light.yml) は4時間ごとに公式

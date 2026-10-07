@@ -4,10 +4,17 @@ on:
   schedule:
     - cron: '23 */4 * * *'
   workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Distribution revision (1 initially; increment only for an approved rebuild)'
+        type: string
+        default: '1'
   pull_request:
     paths:
       - '.github/workflows/hermes-light.yml'
       - 'scripts/*hermes-light*'
+      - 'scripts/distribution.py'
+      - 'tests/test_distribution.py'
       - 'tests/test_hermes_light*.py'
 
 permissions:
@@ -32,10 +39,12 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s tests -p 'test_hermes_light*.py' -v
+      - run: python3 -m unittest discover -s tests -p 'test_distribution.py' -v
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIEW: ${{ github.event_name == 'pull_request' }}
+          BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
         run: python3 scripts/hermes-light.py plan
 
   build:

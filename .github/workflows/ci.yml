@@ -52,4 +52,5 @@ jobs:
       - name: Run tests
         run: |
           $env:SCOOP_HOME="$(Convert-Path '.\scoop_core')"
+          .\my_bucket\tests\distribution-versions.ps1 -ScoopHome $env:SCOOP_HOME
           .\my_bucket\bin\test.ps1

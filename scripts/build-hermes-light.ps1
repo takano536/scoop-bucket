@@ -8,7 +8,7 @@ $commit = (git -C $source rev-parse HEAD).Trim()
 if ($env:PREVIEW -eq 'true') {
     python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
 } else {
-    if ($env:SOURCE_REF -cne "v$($env:PACKAGE_VERSION)") { throw 'Release identity mismatch' }
+    if ($env:PACKAGE_VERSION -cnotmatch '^([0-9]+\.[0-9]+\.[0-9]+)-r[1-9][0-9]*$' -or $env:SOURCE_REF -cne "v$($Matches[1])") { throw 'Release identity mismatch' }
     python "$source/scripts/bundles/desktop.py" --tag $env:SOURCE_REF --variant light -- --dir
 }
 $pack = Join-Path $source 'apps/desktop/release/win-unpacked'
