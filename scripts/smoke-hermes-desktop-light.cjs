@@ -9,7 +9,7 @@ const upstreamRequire = createRequire(path.join(source, 'apps/desktop/package.js
 const { _electron: electron } = upstreamRequire('playwright');
 
 (async () => {
-  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-light-smoke-'));
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-desktop-light-smoke-'));
   const env = { ...process.env,
     HERMES_HOME: path.join(scratch, 'home'),
     HERMES_DESKTOP_USER_DATA_DIR: path.join(scratch, 'user-data'),
@@ -48,5 +48,5 @@ const { _electron: electron } = upstreamRequire('playwright');
     }
   }
   fs.writeFileSync(path.join(output, 'native-checks.json'), JSON.stringify(checks, null, 2) + '\n');
-  console.log('Native Light launch/relaunch, restricted PATH, external updater IPC and user-data retention passed');
+  console.log('Native Desktop Light launch/relaunch, restricted PATH, external updater IPC and user-data retention passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

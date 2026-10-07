@@ -6,7 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_run:
-    workflows: [Excavator, Hermes Light]
+    workflows: [Excavator, Hermes Desktop Light]
     types: [completed]
   schedule:
     - cron: '43 6 * * *'

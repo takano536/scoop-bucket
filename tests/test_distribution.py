@@ -9,8 +9,8 @@ import distribution
 
 class DistributionTests(unittest.TestCase):
     def test_scoped_tags_and_revision_order(self):
-        self.assertEqual(distribution.release_tag('hermes-agent-light', '0.22.0-r1'), 'hermes-agent-light/v0.22.0-r1')
-        self.assertNotEqual(distribution.release_tag('other-app', '0.22.0-r1'), distribution.release_tag('hermes-agent-light', '0.22.0-r1'))
+        self.assertEqual(distribution.release_tag('hermes-desktop-light', '0.22.0-r1'), 'hermes-desktop-light/v0.22.0-r1')
+        self.assertNotEqual(distribution.release_tag('other-app', '0.22.0-r1'), distribution.release_tag('hermes-desktop-light', '0.22.0-r1'))
         self.assertLess(distribution.version_key('0.22.0-r2'), distribution.version_key('0.22.0-r10'))
         self.assertLess(distribution.version_key('0.22.0-r10'), distribution.version_key('0.23.0-r1'))
         self.assertEqual(distribution.package_version('0.22.0', '2'), '0.22.0-r2')
