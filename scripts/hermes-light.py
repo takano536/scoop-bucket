@@ -54,7 +54,7 @@ def release_claim(record, version, commit):
 
 
 def gh(*args):
-    return subprocess.check_output(['gh', *args], text=True, encoding='utf-8')
+    return subprocess.check_output(['gh', *args], text=True, encoding='utf-8', stderr=subprocess.PIPE)
 
 
 def api(endpoint):
@@ -70,8 +70,33 @@ def output(**values):
                 stream.write(f'{key}={value}\n')
 
 
+def supports_light(commit):
+    """Preflight exact source without executing it; only missing files mean skip."""
+    import base64
+    sources = {}
+    for path in ('apps/desktop/product-identity.cjs', 'scripts/bundles/desktop.py'):
+        try:
+            record = api(f'repos/{UPSTREAM}/contents/{path}?ref={commit}')
+        except subprocess.CalledProcessError as exc:
+            if '(HTTP 404)' not in (exc.stderr or ''):
+                raise
+            print(f'Skipping {commit}: no {path}')
+            return False
+        sources[path] = base64.b64decode(record['content']).decode('utf-8')
+    builder = sources['scripts/bundles/desktop.py']
+    supported = ('hermes-light' in sources['apps/desktop/product-identity.cjs'] and
+                 '--variant' in builder and
+                 ('"light"' in builder or "'light'" in builder))
+    if not supported:
+        print(f'Skipping {commit}: source lacks the managed Light build contract')
+    return supported
+
+
 def plan():
     if os.environ.get('PREVIEW') == 'true':
+        if not supports_light(PREVIEW_SHA):
+            output(build='false')
+            return
         output(build='true', ref=PREVIEW_SHA, version='preview', claim='', claim_object='')
         return
     release = api(f'repos/{UPSTREAM}/releases/latest')
@@ -86,18 +111,16 @@ def plan():
         output(build='false')
         return
     tag = release['tag_name']
+    commit = api(f'repos/{UPSTREAM}/commits/{tag}')['sha']
+    if not supports_light(commit):
+        output(build='false')
+        return
     ref = api(f'repos/{UPSTREAM}/git/ref/tags/{tag}')['object']
     if ref['type'] != 'tag':
         raise ValueError('Stable build requires an annotated upstream release tag')
     record = api(f"repos/{UPSTREAM}/git/tags/{ref['sha']}")
-    commit = api(f'repos/{UPSTREAM}/commits/{tag}')['sha']
     metadata = json.loads(record['message'].split('\n-----BEGIN ', 1)[0])
     claim, claim_object = release_claim(metadata, version, commit)
-    # Capability admission is separate from the version: no grafting main onto tags.
-    identity = api(f'repos/{UPSTREAM}/contents/apps/desktop/product-identity.cjs?ref={commit}')
-    import base64
-    if 'hermes-light' not in base64.b64decode(identity['content']).decode():
-        raise ValueError('Stable source does not implement Light')
     output(build='true', ref=tag, version=version, claim=claim, claim_object=claim_object)
 
 

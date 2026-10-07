@@ -16,6 +16,19 @@
 
 画像はScoop標準のテキスト整形テストの対象外である `unformatted` 領域に置く。
 
+## 成果物の保存先とskip条件
+
+- 対象ソースのLight identityと管理されたbuilderを検査し、非対応・必要ファイルなしは
+  正常なskipとする。API障害・権限エラーは非対応と混同せず失敗させる。
+- PRはLight対応を確認した固定commitのpreviewビルド。安定版の検出とは独立している。
+- Windows runner上では `upstream/apps/desktop/release/win-unpacked` を直接ZIP化し、
+  `output/` にZIP・provenance・smoke証拠を置く。ここでの `release/` は上流の
+  ローカルビルド出力ディレクトリであり、GitHub Releasesへの公開ではない。
+- CIからの保存先はActions Artifactsの `hermes-light-windows-x64`（保持14日）。
+  リポジトリへバイナリをcommitせず、PRからReleasesへも公開しない。
+- 将来のScoop配布用GitHub Releases公開は、mainかつ明示有効化されたpublisherのみ。
+  現在は無効のままで、マージや公開の有効化は今回の作業に含めない。
+
 ## 未確認事項と配布開始条件
 
 最新の公開安定版 `v2026.9.24` にはLightのビルド機構がない。初回manifestは、
