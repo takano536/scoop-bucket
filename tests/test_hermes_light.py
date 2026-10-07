@@ -18,6 +18,20 @@ class ReleaseTests(unittest.TestCase):
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': True, 'prerelease': False}))
 
+    def test_historical_calver_is_explicitly_skipped(self):
+        from unittest.mock import Mock, patch
+        spec = importlib.util.spec_from_file_location('light', SCRIPT)
+        assert spec is not None and spec.loader is not None
+        light = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(light)
+        output = Mock()
+        with patch.object(light, 'api', return_value={
+                'tag_name': 'v2026.9.24', 'draft': False, 'prerelease': False}), \
+                patch.object(light, 'output', output), patch('builtins.print') as printed:
+            light.plan()
+        output.assert_called_once_with(build='false')
+        self.assertIn('historical CalVer', printed.call_args.args[0])
+
 
     def test_manifest_binds_version_repository_and_exact_bytes(self):
         spec = importlib.util.spec_from_file_location('light', SCRIPT)

@@ -103,7 +103,9 @@ Lightの構成・更新所有者・SHA256を検証してから、このbucketの
 管理者が明示的に配布を許可した後にだけ、リポジトリ変数
 `HERMES_LIGHT_RELEASE_ENABLED=true` で公開を有効化します。このPRでは変数を設定しません。
 有効化後、対応安定版のビルド・検証・公開が成功したときだけ初回manifestを生成します。
-現在の最新安定版 `v2026.9.24` はLight非対応のため、まだインストールできません。
+現在の最新安定版 `v2026.9.24` は歴史的CalVerかつLight非対応のため、まだインストールできません。
+上流のstable-release toolingが生成するSemVer annotated claimタグだけを受け入れ、
+Draft・Prerelease・canaryや対応ファイルのない版は明示的にskipします。
 PRでは固定した上流コミットの検証ビルドだけを実行し、配布・manifest更新は行いません。
 旧タグへのmainのコードの混入や、プレリリースの追従は行いません。
 

@@ -25,6 +25,13 @@ def stable_version(release):
     return tag[1:] if VERSION.fullmatch(tag) else None
 
 
+def validate_upstream_release(release, source_ref, version):
+    """Require the planned source tag to remain a published stable release."""
+    upstream_version = version.rsplit('-r', 1)[0]
+    if release.get('tag_name') != source_ref or stable_version(release) != upstream_version:
+        raise ValueError('Upstream source is no longer a published stable release')
+
+
 def manifest(version, repository, digest):
     version_key(version)
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repository) or not re.fullmatch(r'[a-f0-9]{64}', digest):
@@ -108,7 +115,11 @@ def plan():
     release = api(f'repos/{UPSTREAM}/releases/latest')
     version = stable_version(release)
     if version is None:
-        print(f"Waiting for a published stable SemVer release with Light support; latest: {release['tag_name']}")
+        tag = release.get('tag_name', '')
+        if re.fullmatch(r'v20\d{2}\.[0-9]+\.[0-9]+(?:\.[0-9]+)?', tag):
+            print(f'Skipping {tag}: historical CalVer tags are outside the upstream SemVer release contract')
+        else:
+            print(f"Waiting for a published stable SemVer release with Light support; latest: {tag}")
         output(build='false')
         return
     upstream_version = version
@@ -174,6 +185,8 @@ def publish():
     root = Path('output')
     record = json.loads((root / 'provenance.json').read_text(encoding='utf-8-sig'))
     artifact = verify_artifact(root, record, version, source_ref)
+    upstream_release = api(f'repos/{UPSTREAM}/releases/tags/{source_ref}')
+    validate_upstream_release(upstream_release, source_ref, version)
     upstream_commit = api(f'repos/{UPSTREAM}/commits/{source_ref}')['sha']
     if record['commit'] != upstream_commit:
         raise ValueError('Upstream tag moved or build has wrong source')

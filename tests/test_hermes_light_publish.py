@@ -80,6 +80,8 @@ class PublishTests(unittest.TestCase):
         return data.getvalue()
 
     def api(self, endpoint):
+        if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+            return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
         if endpoint == f'repos/{light.UPSTREAM}/commits/v0.22.0':
             return {'sha': 'a' * 40}
         if endpoint == 'repos/fixture/bucket/releases/tags/hermes-agent-light%2Fv0.22.0-r1':
@@ -185,7 +187,7 @@ class PublishTests(unittest.TestCase):
         real_api = self.api
 
         def api(endpoint):
-            if '/releases/tags/' in endpoint:
+            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-agent-light%2Fv0.22.0-r1':
                 return state
             return real_api(endpoint)
 
@@ -220,7 +222,7 @@ class PublishTests(unittest.TestCase):
         real_api = self.api
 
         def api(endpoint):
-            if '/releases/tags/' in endpoint:
+            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-agent-light%2Fv0.22.0-r1':
                 return {'draft': True, 'prerelease': False, 'assets': [{'name': self.name}]}
             return real_api(endpoint)
 
@@ -241,9 +243,25 @@ class PublishTests(unittest.TestCase):
         self.assertFalse((self.work / 'bucket/hermes-agent-light.json').exists())
 
     def test_moved_upstream_tag_is_rejected_before_release_mutation(self):
-        with patch.object(light, 'api', return_value={'sha': 'b' * 40}), \
-             patch.object(light, 'gh') as gh:
+        def api(endpoint):
+            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
+            return {'sha': 'b' * 40}
+
+        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
             with self.assertRaisesRegex(ValueError, 'Upstream tag moved'):
+                light.publish()
+            gh.assert_not_called()
+        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
+
+    def test_upstream_release_must_remain_published_stable(self):
+        def api(endpoint):
+            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}
+            return {'sha': 'a' * 40}
+
+        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
+            with self.assertRaisesRegex(ValueError, 'no longer a published stable release'):
                 light.publish()
             gh.assert_not_called()
         self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)

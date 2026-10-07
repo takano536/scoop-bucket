@@ -12,6 +12,19 @@
 - 各配布版の正本はそのReleaseのアセット。最新版の案内は`main`のアプリ別manifest。リポジトリ全体のLatest Releaseは使用しない。
 - ZIPはGitにcommitしない。Actions Artifactsは一時検証用で、Scoopの配布URLには使用しない。
 
+上流の安定タグは、上流の`STABLE_TAG_RE`と同じ`vX.Y.Z`形式のSemVerだけを受け入れる。
+Draft・Prerelease・canary・`v2026.9.24`のような歴史的CalVerタグは対象外である。
+上流のstable-release toolingは`rc.N-vX.Y.Z`のannotated claimを先に作成し、
+公開時の`vX.Y.Z` annotated tag本文へ`claimTag`と`claimTagObject`を含むJSON receiptを書き込む。
+AdmissionはRelease状態、タグから解決したcommit、Light対応ファイル、claimのversion/commit/
+claimTag/claimTagObjectを順に固定する。claimのないタグは`--tag`ビルド契約を満たさないため、
+CalVerを特例扱いしない。対応しない最新Releaseはplanで明示的にskipする。
+公開ジョブでも同じRelease状態とタグcommitを再検証し、計画後にタグやReleaseが動いた
+成果物は公開しない。
+
+Scoopの比較用キーはSemVerの3要素を数値比較し、最後に`rN`を比較する。
+そのため`0.22.0-r10 < 0.23.0-r1`であり、同じ上流版では`r1 < r2 < r10`となる。
+
 ## 複数アプリ
 
 `hermes-agent-light/v0.22.0-r1`と`other-app/v0.22.0-r1`は別Releaseとして共存する。
