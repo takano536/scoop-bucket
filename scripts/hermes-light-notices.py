@@ -401,6 +401,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         queue.append((desktop, name, False))
     visited: set[Path] = set()
     packages = []
+    license_failures: list[str] = []
     while queue:
         parent, name, optional = queue.pop(0)
         package_dir = resolve_package(parent, name)
@@ -414,14 +415,18 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         metadata = read_json(package_dir / "package.json")
         package_name = package_identity(package_dir, metadata)
         if not is_workspace_package(source, package_dir):
-            license_name, text = license_text(
-                package_dir,
-                metadata,
-                package_name,
-                overrides,
-                used_overrides,
-            )
-            packages.append((package_name, metadata["version"], license_name, text, package_dir))
+            try:
+                license_name, text = license_text(
+                    package_dir,
+                    metadata,
+                    package_name,
+                    overrides,
+                    used_overrides,
+                )
+            except RuntimeError as exc:
+                license_failures.append(f"{package_name}@{metadata['version']}: {exc}")
+            else:
+                packages.append((package_name, metadata["version"], license_name, text, package_dir))
         fields = (("dependencies", False), ("optionalDependencies", True))
         if is_workspace_package(source, package_dir):
             fields += (("devDependencies", False),)
@@ -430,7 +435,13 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
             if isinstance(values, dict):
                 dependency_optional = is_optional or package_name in optional_names or is_platform_package(package_name)
                 queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
-    validate_unused_overrides(overrides, used_overrides)
+    try:
+        validate_unused_overrides(overrides, used_overrides)
+    except RuntimeError as exc:
+        license_failures.append(str(exc))
+    if license_failures:
+        details = "\n".join(f"- {failure}" for failure in license_failures)
+        raise RuntimeError(f"License validation failed for shipped packages:\n{details}")
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
     return packages
 

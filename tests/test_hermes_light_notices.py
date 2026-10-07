@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-light-notices.py'
@@ -120,6 +121,51 @@ class NoticeTests(unittest.TestCase):
     def test_unused_license_override_fails(self):
         with self.assertRaisesRegex(RuntimeError, 'Unused license override entries'):
             notices.validate_unused_overrides(self.override(), set())
+
+    def test_collect_packages_reports_all_license_failures(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / 'source'
+            desktop = source / 'apps' / 'desktop'
+            node_modules = desktop / 'node_modules'
+            node_modules.mkdir(parents=True)
+            (desktop / 'package.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'desktop',
+                        'version': '1.0.0',
+                        'dependencies': {
+                            'fixture-one': '1.0.0',
+                            'fixture-two': '1.0.0',
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+            for name in ('fixture-one', 'fixture-two'):
+                package = node_modules / name
+                package.mkdir()
+                (package / 'package.json').write_text(
+                    json.dumps(
+                        {
+                            'name': name,
+                            'version': '1.0.0',
+                            'license': 'MIT',
+                        }
+                    ),
+                    encoding='utf-8',
+                )
+            with patch.object(notices, 'load_license_overrides', return_value={}), patch.object(
+                notices, 'asar_node_modules', return_value=set()
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError, 'License validation failed for shipped packages'
+                ) as raised:
+                    notices.collect_packages(source, root / 'pack')
+            message = str(raised.exception)
+            self.assertIn('fixture-one@1.0.0', message)
+            self.assertIn('fixture-two@1.0.0', message)
+            self.assertLess(message.index('fixture-one@1.0.0'), message.index('fixture-two@1.0.0'))
 
     def test_unknown_or_missing_license_fails_closed(self):
         for license_name in ('Custom-License', ''):

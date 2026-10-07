@@ -63,6 +63,8 @@ evidence URL/SHA256、copyright line、noteを検証し、標準SPDX本文と証
 汎用テンプレートへの暗黙のfallbackや未使用override entryは成功にしない。
 `@audiowave/react@0.6.2`のoverride（`scripts/hermes-light-license-overrides.json`）は、
 READMEのimmutable commit evidenceとSHA256をownerが再確認する公開前レビュー項目である。
+license検査は依存走査を最後まで続け、失敗した全packageを一つのerror listに集約してから
+non-zeroで終了するため、first failureだけで後続blockerを隠さない。
 `UNOFFICIAL-BUILD.txt`には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
 場所を記録する。`provenance.json`には3ファイルのSHA256と対象package数を記録し、
 publish側はZIP内の存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
