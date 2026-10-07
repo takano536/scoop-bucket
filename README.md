@@ -65,6 +65,26 @@ Scoop の観測箇所が変更された場合も、失敗して見逃しを防�
 将来の上流変更、別製品・別版の正常なファイルを取得する問題、PC 上のインストール・GUI 動作、
 Excavator の commit・push 権限は保証しません。複雑な hook や複数アーカイブは個別の検証が必要です。
 
+## Hermes Agent Light
+
+[Hermes Light](.github/workflows/hermes-light.yml) は4時間ごとに公式
+`NousResearch/hermes-agent` の安定リリースを確認し、Windows x64 のリモート専用クライアントを
+CIでビルドします。展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、
+Lightの構成・更新所有者・SHA256を検証してから、このbucketのReleasesへ公開します。
+公開URLの再検証後に `bucket/hermes-agent-light.json` とアプリ一覧を `main` へ直接更新します。
+既存の公開成果物は上書きせず、ビルドや検証の失敗時には既存manifestを維持します。
+
+初回manifestは、Lightに対応する安定版のビルド成功時に生成します。
+現在の最新安定版 `v2026.9.24` はLight非対応のため、まだインストールできません。
+PRでは固定した上流コミットの検証ビルドだけを実行し、配布・manifest更新は行いません。
+旧タグへのmainのコードの混入や、プレリリースの追従は行いません。
+
+配布は非公式・未署名のx64ビルドです。ローカルのPython・エージェントは含まず、
+既存のHermes gatewayへの接続が必要です。Scoopがアプリ更新を所有し、設定はアプリの
+ユーザーデータ領域に残します。接続・認証情報の実際のアップグレード移行は、初回配布後の
+Windows受け入れ確認が必要です。初回公開後は既存Excavatorも、このbucketで検証済みの
+Lightリリースだけを追従できます。
+
 ## 🛠️ メンテナンス
 
 manifest を追加・変更すると、マージ後にアプリ一覧へ反映されます。
