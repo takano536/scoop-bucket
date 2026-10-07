@@ -1,0 +1,41 @@
+name: Autoupdate validation
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Excavator]
+    types: [completed]
+  schedule:
+    - cron: '43 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout bucket
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: my_bucket
+          persist-credentials: false
+      - name: Checkout Scoop
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ScoopInstaller/Scoop
+          path: scoop_core
+          persist-credentials: false
+      - name: Run validator regression tests
+        run: ./my_bucket/tests/autoupdate-regression.ps1 -ScoopHome (Resolve-Path ./scoop_core)
+      - name: Validate live update sources and artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./my_bucket/bin/test-autoupdate.ps1 -ScoopHome (Resolve-Path ./scoop_core)
