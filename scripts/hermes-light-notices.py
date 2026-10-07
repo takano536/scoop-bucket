@@ -66,6 +66,8 @@ def is_workspace_package(source: Path, package_dir: Path) -> bool:
         relative = package_dir.relative_to(source)
     except ValueError:
         return False
+    if "node_modules" in relative.parts:
+        return False
     return bool(relative.parts and relative.parts[0] in {"apps", "ui-tui", "web", "tests-js"})
 
 
