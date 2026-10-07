@@ -23,6 +23,7 @@ try {
     }
     $cases = @(
         @{ Name = 'valid-current-version'; Fails = $false; Mutate = {} },
+        @{ Name = 'current-version-dependent-checkver'; Fails = $false; Mutate = { param($m) $m.checkver.url = "$base/latest/`$version" } },
         @{ Name = 'missing-checkver'; Fails = $true; Mutate = { param($m) $m.Remove('checkver') } },
         @{ Name = 'missing-autoupdate'; Fails = $true; Mutate = { param($m) $m.Remove('autoupdate') } },
         @{ Name = 'unmatched-regex'; Fails = $true; Mutate = { param($m) $m.checkver.regex = 'NEVER_MATCH_(\d+)' } },
