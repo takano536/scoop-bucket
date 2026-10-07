@@ -384,7 +384,8 @@ try {
     $node = (Get-Command node -ErrorAction Stop).Source
     $acceptanceJs = Join-Path $PSScriptRoot 'accept-hermes-light.cjs'
     $beforeJson = Join-Path $OutputDirectory 'before.json'
-    $previewArgument = if ($receipt.preview -eq $true) { @('--preview') } else { @() }
+    $isPreview = ($PackageVersion -eq 'preview') -or ([string]$receipt.preview -ieq 'true')
+    $previewArgument = if ($isPreview) { @('--preview') } else { @() }
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
     & $node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $beforeJson @previewArgument
