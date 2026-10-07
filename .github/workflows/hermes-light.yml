@@ -15,6 +15,7 @@ on:
       - 'scripts/*hermes-light*'
       - 'scripts/distribution.py'
       - 'tests/test_distribution.py'
+      - 'scripts/accept-hermes-light*'
       - 'tests/test_hermes_light*.py'
 
 permissions:
@@ -85,8 +86,56 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  publish:
+  acceptance:
     needs: [plan, build]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: bucket
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ needs.plan.outputs.ref }}
+          fetch-depth: 0
+          path: upstream
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: hermes-light-windows-x64
+          path: artifact
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - name: Install the exact-commit Hermes gateway (no provider extras)
+        shell: pwsh
+        working-directory: upstream
+        run: python -m pip install --disable-pip-version-check --no-input -e '.[web]'
+      - name: Run Scoop and remote-gateway acceptance
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
+          SOURCE_REF: ${{ needs.plan.outputs.ref }}
+        run: >-
+          ./bucket/scripts/accept-hermes-light.ps1
+          -ArtifactDirectory artifact
+          -UpstreamDirectory upstream
+          -PackageVersion "$env:PACKAGE_VERSION"
+          -SourceRef "$env:SOURCE_REF"
+          -OutputDirectory acceptance-output
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: hermes-light-windows-acceptance
+          path: acceptance-output/*
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    needs: [plan, build, acceptance]
     if: >-
       needs.plan.outputs.build == 'true' &&
       vars.HERMES_LIGHT_RELEASE_ENABLED == 'true' &&

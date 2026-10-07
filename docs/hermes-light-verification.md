@@ -29,6 +29,30 @@
 - 将来のScoop配布用GitHub Releases公開は、mainかつ明示有効化されたpublisherのみ。
   現在は無効のままで、マージや公開の有効化は今回の作業に含めない。
 
+## Windows受入ジョブ（このPRで追加）
+
+`.github/workflows/hermes-light.yml` の `acceptance` job は、`build` の
+Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
+`hermes-agent-light-acceptance` manifestで次を確認する。manifestは
+`%RUNNER_TEMP%` に置き、bucket/へ追加しない。
+
+- Scoop install/update/uninstall、Start Menuの`.lnk`経由起動、アプリ本体と
+  shortcutの削除、`HERMES_HOME`/Desktop user-dataの残存。
+- `dumpbin /DEPENDENTS` によるパッケージのexeとnative `.node` imports、
+  `vcruntime`/`msvcp`等の同梱有無。GitHub-hosted runnerはクリーンなWindows
+  ではないため、起動成功だけではVC++ runtimeのクリーン環境独立性を証明しない。
+- 上流checkoutと同じcommitの `hermes serve --skip-build` をlocalhostで起動し、
+  job内で生成した `HERMES_DASHBOARD_SESSION_TOKEN` をmaskして、Desktopの
+  実HTTP+WebSocket接続、authenticated `/api/sessions`、誤secret拒否を確認する。
+  provider/LLM credentialは渡さない。
+- `resources/agent-payload`なし、local backend probeが`bootstrap-needed`で
+  bootstrapを実行しないこと、remote接続設定、Scoop更新後の設定・認証・
+  authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
+  app tree不変を確認する。
+
+この受入ジョブの実行URLとArtifactsは、実行後にこの節へ追記する。
+未実行のrunを検証済みとは扱わない。
+
 ## 未確認事項と配布開始条件
 
 最新の公開安定版 `v2026.9.24` にはLightのビルド機構がない。初回manifestは、
