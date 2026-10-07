@@ -124,10 +124,11 @@ function Wait-Path {
 }
 
 function Stop-OwnProcesses {
-    if ($gatewayProcess -and !$gatewayProcess.HasExited) {
+    param([switch]$KeepServices)
+    if (!$KeepServices -and $gatewayProcess -and !$gatewayProcess.HasExited) {
         Stop-Process -Id $gatewayProcess.Id -Force -ErrorAction SilentlyContinue
     }
-    if ($httpProcess -and !$httpProcess.HasExited) {
+    if (!$KeepServices -and $httpProcess -and !$httpProcess.HasExited) {
         Stop-Process -Id $httpProcess.Id -Force -ErrorAction SilentlyContinue
     }
 
@@ -394,7 +395,7 @@ try {
     }
 
     # Ensure the Electron process is gone before Scoop replaces the current tree.
-    Stop-OwnProcesses
+    Stop-OwnProcesses -KeepServices
     Start-Sleep -Seconds 2
     $manifest.version = $runtimeAfterVersion
     Write-EvidenceJson -Path $manifestPath -Value $manifest
