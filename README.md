@@ -21,9 +21,9 @@ scoop install takano536/<アプリ名>
 
 <!-- BEGIN GENERATED APPS -->
 
-| アプリ | バージョン | 説明 | 公式サイト |
+| アプリ | バージョン | 説明 | リンク |
 | --- | --- | --- | --- |
-| [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [公式サイト](https://github.com/yuru7/udev-gothic) |
+| [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [github.com/yuru7/udev-gothic](https://github.com/yuru7/udev-gothic) |
 
 <!-- END GENERATED APPS -->
 

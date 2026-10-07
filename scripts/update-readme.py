@@ -19,7 +19,7 @@ def generate(root, readme):
         raise ValueError('README must contain exactly one pair of generated-app markers')
     before, rest = readme.split(BEGIN)
     _, after = rest.split(END)
-    rows = ['| アプリ | バージョン | 説明 | 公式サイト |', '| --- | --- | --- | --- |']
+    rows = ['| アプリ | バージョン | 説明 | リンク |', '| --- | --- | --- | --- |']
     for path in sorted((root / 'bucket').glob('*.json'), key=lambda p: (p.stem.casefold(), p.stem)):
         manifest = json.loads(path.read_text(encoding='utf-8-sig'))
         version = manifest.get('version')
@@ -28,7 +28,8 @@ def generate(root, readme):
         homepage = manifest.get('homepage', '')
         if homepage and (not isinstance(homepage, str) or urlsplit(homepage).scheme not in ('http', 'https') or not urlsplit(homepage).netloc):
             raise ValueError(f'{path.name}: homepage must be an HTTP(S) URL')
-        link = f'[公式サイト]({quote(homepage, safe=":/?#=&%+@~;,")})' if homepage else '—'
+        label = cell(homepage.split('://', 1)[-1].rstrip('/')).replace('[', '&#91;').replace(']', '&#93;')
+        link = f'[{label}]({quote(homepage, safe=":/?#=&%+@~;,")})' if homepage else '—'
         rows.append(f'| [{cell(path.stem)}](bucket/{quote(path.name)}) | {cell(version)} | {cell(manifest.get("description", ""))} | {link} |')
     return before + BEGIN + '\n\n' + '\n'.join(rows) + '\n\n' + END + after
 
