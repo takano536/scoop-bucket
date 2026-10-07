@@ -18,12 +18,12 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
     throw 'Wrong payload, provenance, or update owner'
 }
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
-$exes = @(Get-ChildItem $pack -Filter 'Hermes Light*.exe')
-if ($exes.Count -ne 1) { throw 'Ambiguous product executable' }
-if ($env:PREVIEW -ne 'true' -and $exes[0].Name -cne 'Hermes Light.exe') { throw 'Unstable product identity' }
+$exeName = 'Hermes Light.exe'
+if ($env:PREVIEW -eq 'true') { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
+$exe = Get-Item (Join-Path $pack $exeName)
 # Use the exact managed Node admitted by upstream preparation.
 $prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
-& $prepared.node "$root/bucket/scripts/smoke-hermes-light.cjs" $source $exes[0].FullName $out
+& $prepared.node "$root/bucket/scripts/smoke-hermes-light.cjs" $source $exe.FullName $out
 $version = $env:PACKAGE_VERSION
 if ($env:PREVIEW -eq 'true') { $version = "preview-$($commit.Substring(0, 7))" }
 $name = "hermes-agent-light-$version-windows-x64.zip"
@@ -39,7 +39,7 @@ $receipt = @{
     sha256 = (Get-FileHash "$out/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
     payload = $stamp.payload
     updateMechanism = $stamp.updateMechanism
-    executable = $exes[0].Name
+    executable = $exe.Name
     smoke = 'two native launches; renderer loaded; localStorage retained'
     signing = 'unsigned unofficial build'
     run = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
