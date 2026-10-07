@@ -92,5 +92,4 @@ gh workflow run autoupdate.yml --repo takano536/scoop-bucket --ref main
 gh workflow run readme.yml --repo takano536/scoop-bucket --ref main
 ```
 
-manifest の仕様は [App Manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests)、
-投稿時の指針は [Contributing Guide](https://github.com/ScoopInstaller/.github/blob/main/.github/CONTRIBUTING.md) を参照してください。
+manifest の仕様は [App Manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests) を参照してください。
