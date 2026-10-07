@@ -1,5 +1,7 @@
 # ビルド済みアプリの配布ルール
 
+[この変更の実行済み検証と未確認事項](distribution-validation.md)
+
 ## 名前と正本
 
 - アプリごとにReleaseタグを`<app>/v<upstream>-r<N>`とする。
