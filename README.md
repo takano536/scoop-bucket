@@ -36,8 +36,10 @@ scoop install takano536/<アプリ名>
 | [Autoupdate validation](.github/workflows/autoupdate.yml) | PR・push・毎日・手動・Excavator 終了後に、版の検出・更新生成・成果物を Windows で検証 |
 | [README](.github/workflows/readme.yml) | PR で生成処理を検証し、`main` の変更・Excavator 終了後・手動実行でアプリ一覧を自動更新 |
 
-Excavator の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
-更新検証と README 更新は `workflow_run` でも起動し、信頼済みの `main` を読み直します。
+Excavator と Hermes Light の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
+更新検証は両workflowの成功後に `workflow_run` でも起動し、信頼済みの `main` を読み直します。
+Light公開後はScoop標準CIも起動します。READMEはExcavator後のworkflowとLight publisher自身で
+更新し、検証してからcommitします。
 README の自動 commit は生成結果に差分がある場合だけ行います。PR や fork のコードを
 書き込み権限付きで実行することはありません。
 
@@ -64,6 +66,57 @@ Scoop の観測箇所が変更された場合も、失敗して見逃しを防�
 インストール・アンインストールの hook は実行せず、ダウンロードキャッシュは作成されます。
 将来の上流変更、別製品・別版の正常なファイルを取得する問題、PC 上のインストール・GUI 動作、
 Excavator の commit・push 権限は保証しません。複雑な hook や複数アーカイブは個別の検証が必要です。
+
+## ビルド済みアプリの配布
+
+このbucketでビルドするアプリは、同じリポジトリのReleasesで配布します。
+ZIPはGitにcommitせず、アプリ名でReleaseタグを分けます。
+
+| 項目 | 形式 |
+| --- | --- |
+| Releaseタグ | `<アプリ名>/v<上流バージョン>-r<改訂番号>` |
+| Scoop version | `<上流バージョン>-r<改訂番号>` |
+| ZIP | `<アプリ名>-<上流バージョン>-r<改訂番号>-windows-<arch>.zip` |
+
+初回は`r1`、同じ上流版の配布修正は`r2`以降です。同じ内容の再実行では番号を増やさず、
+公開済みファイルを上書きしません。新しい上流版では`r1`に戻します。
+アプリごとに公開・検証成功後のmanifestを最新版の正本とし、リポジトリ全体の
+Latest Releaseや他アプリの公開順には依存しません。
+
+過去のReleaseとZIPも保持します。各Releaseには上流commit・SHA256を記録した
+`provenance.json`と、その版のScoop manifestを添付します。
+過去版のZIPは[Releases](https://github.com/takano536/scoop-bucket/releases)から取得できます。
+過去版manifestの`checkver`は現在の正常版を参照するため、導入後の更新は最新版へ進みます。
+過去版への固定・ダウングレードは通常の最新版インストールとは別の操作です。
+詳細は[配布ルール](docs/distribution-policy.md)を参照してください。
+
+## Hermes Agent Light
+
+[Hermes Light](.github/workflows/hermes-light.yml) は4時間ごとに公式
+`NousResearch/hermes-agent` の安定リリースを確認し、Windows x64 のリモート専用クライアントを
+CIでビルドします。展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、
+Lightの構成・更新所有者・SHA256を検証してから、このbucketのReleasesへ公開します。
+公開URLの再検証後に `bucket/hermes-agent-light.json` とアプリ一覧を `main` へ直接更新します。
+既存の公開成果物は上書きせず、ビルドや検証の失敗時には既存manifestを維持します。
+
+公開は初期状態では無効です。Light対応安定版でのWindows受け入れ確認を終え、
+管理者が明示的に配布を許可した後にだけ、リポジトリ変数
+`HERMES_LIGHT_RELEASE_ENABLED=true` で公開を有効化します。このPRでは変数を設定しません。
+有効化後、対応安定版のビルド・検証・公開が成功したときだけ初回manifestを生成します。
+現在の最新安定版 `v2026.9.24` はLight非対応のため、まだインストールできません。
+PRでは固定した上流コミットの検証ビルドだけを実行し、配布・manifest更新は行いません。
+旧タグへのmainのコードの混入や、プレリリースの追従は行いません。
+
+配布は非公式・未署名のx64ビルドです。ローカルのPython・エージェントは含まず、
+既存のHermes gatewayへの接続が必要です。Scoopがアプリ更新を所有し、設定はアプリの
+ユーザーデータ領域に残します。gateway接続、必要なランタイム、接続・認証情報の
+実アップグレード移行は、公開を有効化する前にWindowsで受け入れ確認が必要です。
+初回公開後は既存Excavatorも、このbucketで検証済みの
+Lightリリースだけを追従できます。
+
+[実Windows CIの検証結果と画面](docs/hermes-light-verification.md)を記録しています。
+起動検証はgateway接続や認証移行の証明ではありません。検証版の初回画面にはローカル
+インストールの選択肢も表示されるため、LightのUI/実行制約は安定版での追加確認が必要です。
 
 ## 🛠️ メンテナンス
 

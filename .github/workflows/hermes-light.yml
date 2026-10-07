@@ -1,0 +1,115 @@
+name: Hermes Light
+
+on:
+  schedule:
+    - cron: '23 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Distribution revision (1 initially; increment only for an approved rebuild)'
+        type: string
+        default: '1'
+  pull_request:
+    paths:
+      - '.github/workflows/hermes-light.yml'
+      - 'scripts/*hermes-light*'
+      - 'scripts/distribution.py'
+      - 'tests/test_distribution.py'
+      - 'tests/test_hermes_light*.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-light-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      ref: ${{ steps.plan.outputs.ref }}
+      version: ${{ steps.plan.outputs.version }}
+      claim: ${{ steps.plan.outputs.claim }}
+      claim_object: ${{ steps.plan.outputs.claim_object }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -p 'test_hermes_light*.py' -v
+      - run: python3 -m unittest discover -s tests -p 'test_distribution.py' -v
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW: ${{ github.event_name == 'pull_request' }}
+          BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
+        run: python3 scripts/hermes-light.py plan
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: '1'
+      RELEASE_CLAIM_TAG: ${{ needs.plan.outputs.claim }}
+      RELEASE_CLAIM_OBJECT: ${{ needs.plan.outputs.claim_object }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: bucket
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ needs.plan.outputs.ref }}
+          fetch-depth: 0
+          path: upstream
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Build and smoke-test remote-only unpacked application
+        shell: pwsh
+        env:
+          SOURCE_REF: ${{ needs.plan.outputs.ref }}
+          PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
+          PREVIEW: ${{ github.event_name == 'pull_request' }}
+        run: ./bucket/scripts/build-hermes-light.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hermes-light-windows-x64
+          path: output/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [plan, build]
+    if: >-
+      needs.plan.outputs.build == 'true' &&
+      vars.HERMES_LIGHT_RELEASE_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Download this run's verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name hermes-light-windows-x64 --dir output
+      - name: Publish immutable release and update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ENABLED: ${{ vars.HERMES_LIGHT_RELEASE_ENABLED }}
+          PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
+          SOURCE_REF: ${{ needs.plan.outputs.ref }}
+        run: python3 scripts/hermes-light.py publish
