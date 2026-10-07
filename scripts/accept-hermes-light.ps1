@@ -385,10 +385,10 @@ try {
     $acceptanceJs = Join-Path $PSScriptRoot 'accept-hermes-light.cjs'
     $beforeJson = Join-Path $OutputDirectory 'before.json'
     $isPreview = ($PackageVersion -eq 'preview') -or ([string]$receipt.preview -ieq 'true')
-    $previewArgument = if ($isPreview) { @('--preview') } else { @() }
+    $previewSwitch = if ($isPreview) { '--preview' } else { $null }
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
-    & $node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $beforeJson @previewArgument
+    & $node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $beforeJson $previewSwitch
     if ($LASTEXITCODE -ne 0) {
         throw "Electron acceptance (before update) failed with exit code $LASTEXITCODE"
     }
@@ -405,7 +405,7 @@ try {
     $afterJson = Join-Path $OutputDirectory 'after.json'
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
-    & $node $acceptanceJs --phase after --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $afterJson @previewArgument
+    & $node $acceptanceJs --phase after --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $afterJson $previewSwitch
     if ($LASTEXITCODE -ne 0) {
         throw "Electron acceptance (after update) failed with exit code $LASTEXITCODE"
     }
