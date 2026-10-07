@@ -45,6 +45,10 @@ main由来のコードを過去の安定版の名前で配布しない。
 publisher自身もActionsのschedule/workflow_dispatchかつmainと明示有効化を要求する。
 ローカル開発checkoutやPRで誤って実行しても、API操作やhard resetの前に停止する。
 成果物取得に必要な `actions: read` を公開ジョブへ明示した。
+`GITHUB_TOKEN` によるpush後の検証は、Hermes Light成功後の `workflow_run` で
+Scoop標準CIとAutoupdate validationを起動する。元runが同一リポジトリのmainで
+成功した場合だけ、read-onlyで最新mainをcheckoutし、元runの成果物は実行しない。
+README生成・検証はpublisher内で完了させる。このmain連携の実運転はマージ前には未検証。
 
 公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。
 初回Draft作成から公開URL照合後のmanifest/README更新、公開済みアセットの再利用と

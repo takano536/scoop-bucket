@@ -36,8 +36,10 @@ scoop install takano536/<アプリ名>
 | [Autoupdate validation](.github/workflows/autoupdate.yml) | PR・push・毎日・手動・Excavator 終了後に、版の検出・更新生成・成果物を Windows で検証 |
 | [README](.github/workflows/readme.yml) | PR で生成処理を検証し、`main` の変更・Excavator 終了後・手動実行でアプリ一覧を自動更新 |
 
-Excavator の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
-更新検証と README 更新は `workflow_run` でも起動し、信頼済みの `main` を読み直します。
+Excavator と Hermes Light の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
+更新検証は両workflowの成功後に `workflow_run` でも起動し、信頼済みの `main` を読み直します。
+Light公開後はScoop標準CIも起動します。READMEはExcavator後のworkflowとLight publisher自身で
+更新し、検証してからcommitします。
 README の自動 commit は生成結果に差分がある場合だけ行います。PR や fork のコードを
 書き込み権限付きで実行することはありません。
 

@@ -7,6 +7,9 @@ on:
       - 'master'
   pull_request:
   workflow_dispatch:
+  workflow_run:
+    workflows: [Hermes Light]
+    types: [completed]
 
 permissions:
   contents: read
@@ -14,6 +17,11 @@ permissions:
 jobs:
   test:
     name: Test
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: windows-latest
     strategy:
       matrix:
@@ -28,6 +36,9 @@ jobs:
           # Need at least 2 commits to properly gather changed files for linting
           fetch-depth: 2
           path: 'my_bucket'
+          persist-credentials: false
+          # workflow_run validates current trusted main, not triggering artifacts.
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || '' }}
       - name: Checkout Scoop
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
