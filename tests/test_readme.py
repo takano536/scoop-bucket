@@ -61,9 +61,22 @@ class ReadmeTests(unittest.TestCase):
             self.assertTrue(result.endswith('\nFooter\n'))
             self.assertLess(result.index('[Alpha]'), result.index('[zebra]'))
             self.assertIn('A &#124; B second line', result)
-            self.assertIn('[公式サイト](https://example.com/Alpha)', result)
+            self.assertIn('| リンク |', result)
+            self.assertIn('[example.com/Alpha](https://example.com/Alpha)', result)
             self.assertNotIn('ignored', result)
             self.assertEqual(module.generate(root, result), result)
+            cases = (
+                ('https://example.com/', '[example.com](https://example.com/)'),
+                ('http://example.com/docs/', '[example.com/docs](http://example.com/docs/)'),
+                ('https://example.com/a[b]|c', '[example.com/a&#91;b&#93;&#124;c](https://example.com/a%5Bb%5D%7Cc)'),
+                ('', '| — |'),
+            )
+            for homepage, expected in cases:
+                with self.subTest(homepage=homepage):
+                    (root / 'bucket' / 'Alpha.json').write_text(json.dumps({
+                        'version': '1', 'homepage': homepage,
+                    }), encoding='utf-8')
+                    self.assertIn(expected, module.generate(root, before))
 
 
 if __name__ == '__main__':
