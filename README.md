@@ -1,85 +1,96 @@
-# Scoop Bucket Template
+# 📦 scoop-bucket
 
-<!-- Uncomment the following line after replacing placeholders -->
-<!-- [![Tests](https://github.com/<username>/<bucketname>/actions/workflows/ci.yml/badge.svg)](https://github.com/<username>/<bucketname>/actions/workflows/ci.yml) [![Excavator](https://github.com/<username>/<bucketname>/actions/workflows/excavator.yml/badge.svg)](https://github.com/<username>/<bucketname>/actions/workflows/excavator.yml) -->
+個人用の [Scoop](https://scoop.sh) bucket です。
+[ScoopInstaller/BucketTemplate](https://github.com/ScoopInstaller/BucketTemplate) を元にしています。
 
-Template bucket for [Scoop](https://scoop.sh), the Windows command-line installer.
+[![CI](https://github.com/takano536/scoop-bucket/actions/workflows/ci.yml/badge.svg)](https://github.com/takano536/scoop-bucket/actions/workflows/ci.yml)
+[![Autoupdate validation](https://github.com/takano536/scoop-bucket/actions/workflows/autoupdate.yml/badge.svg)](https://github.com/takano536/scoop-bucket/actions/workflows/autoupdate.yml)
+[![Excavator](https://github.com/takano536/scoop-bucket/actions/workflows/excavator.yml/badge.svg)](https://github.com/takano536/scoop-bucket/actions/workflows/excavator.yml)
+[![README](https://github.com/takano536/scoop-bucket/actions/workflows/readme.yml/badge.svg)](https://github.com/takano536/scoop-bucket/actions/workflows/readme.yml)
 
-## How do I use this template?
-
-1. Generate your own copy of this repository with the "Use this template"
-   button.
-2. Allow all GitHub Actions:
-   - Navigate to `Settings` - `Actions` - `General` - `Actions permissions`.
-   - Select `Allow all actions and reusable workflows`.
-   - Then `Save`.
-3. Workflow permissions:
-   - Navigate to `Settings` - `Actions` - `General` - `Workflow permissions`.
-   - Ensure `Read repository contents and packages permissions` is selected.
-   - Then `Save`.
-4. Document the bucket in `README.md`.
-5. Replace the placeholder repository string in `bin/auto-pr.ps1`.
-6. Create new manifests by copying `bucket/app-name.json.template` to
-   `bucket/<app-name>.json`.
-7. Commit and push changes.
-8. If you'd like your bucket to be indexed on `https://scoop.sh`, add the
-   topic `scoop-bucket` to your repository.
-
-## How do I install these manifests?
-
-After manifests have been committed and pushed, run the following:
-
-```pwsh
-scoop bucket add <bucketname> https://github.com/<username>/<bucketname>
-scoop install <bucketname>/<manifestname>
-```
-
-## 自動更新の検証
-
-`Autoupdate validation` は、通常のmanifest CIとは別に、Scoop自身の
-`checkver.ps1 -ForceUpdate -ThrowError` を使って更新経路を検証します。
-PR・default branchへのpush・手動実行・毎日の定期実行・Excavator終了後に実行します。
-Excavatorの`GITHUB_TOKEN`によるpushでは通常のpush CIが起動しないため、
-`workflow_run`でdefault branchの最新状態を読み直します。
-
-- `checkver` / `autoupdate` / アーキテクチャ別URLの不足を検出。
-- 一時コピーのバージョンを保持して、最新版の検出と強制再生成を実行。
-  Scoopの実際の`Invoke-AutoUpdate`呼び出し前後に観測処理を挿入した一時スクリプトで、
-  対象manifestの更新処理が1回呼ばれ、正常完了したことを必須条件にします。
-  差分ゼロでも合格できますが、取得失敗・正規表現不一致で呼ばれなければ失敗します。
-  `-Version`は使いません。Scoopの観測箇所が変わった場合も失敗して見逃しを防ぎます。
-- 版番号が埋め込まれた固定URL・展開先や、未展開の変数を検出。
-- 再生成したURLから実際にダウンロードし、ハッシュを照合。
-- `extract_dir`がある場合は7-Zipで展開して、そのディレクトリの存在を確認。
-- 既に最新版なら、再生成結果が現在のURL・ハッシュ・展開先と一致することを確認。
-
-ローカルHTTPサーバーを使った回帰テストで正常系と異常系を検証します。
-現在版に依存する取得URL、同じ版の再生成、旧版の更新、黙ったスキップなどを
-回帰テストで確認します。実際のmanifestが追加されると`bucket/*.json`も全件検証されます。
-空bucketは「実manifestの検証未実施」と警告・Summaryに明示します。
-
-### 手動実行
+## 🚀 インストール
 
 ```powershell
-gh workflow run autoupdate.yml --repo takano536/scoop-bucket --ref master
+scoop bucket add takano536 https://github.com/takano536/scoop-bucket
+scoop install takano536/UDEVGothic-NF
 ```
 
-Scoop・PowerShell 7・7-ZipがあるWindows環境なら、ローカルでも実行できます。
+導入済みアプリの更新は `scoop update <アプリ名>` で行います。
+
+## 📦 アプリケーション
+
+<!-- BEGIN GENERATED APPS -->
+
+| アプリ | バージョン | 説明 | 公式サイト |
+| --- | --- | --- | --- |
+| [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [公式サイト](https://github.com/yuru7/udev-gothic) |
+
+<!-- END GENERATED APPS -->
+
+## 🤖 自動化
+
+| Workflow | 役割 |
+| --- | --- |
+| [CI](.github/workflows/ci.yml) | PR・`main` への push 時に、Scoop 標準の manifest テストを Windows PowerShell / PowerShell 7 で実行 |
+| [Excavator](.github/workflows/excavator.yml) | 4時間ごと・手動実行で上流の更新を確認し、manifest を default branch に直接 commit・push |
+| [Autoupdate validation](.github/workflows/autoupdate.yml) | PR・push・毎日・手動・Excavator 終了後に、版の検出・更新生成・成果物を Windows で検証 |
+| [README](.github/workflows/readme.yml) | PR で生成処理を検証し、`main` の変更・Excavator 終了後・手動実行でアプリ一覧を自動更新 |
+
+Excavator の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
+更新検証と README 更新は `workflow_run` でも起動し、信頼済みの `main` を読み直します。
+README の自動 commit は生成結果に差分がある場合だけ行います。PR や fork のコードを
+書き込み権限付きで実行することはありません。
+
+## 🔧 標準テンプレートとの違い
+
+- テンプレート用 README と manifest の見本を、実際の bucket 用の案内に置き換え。
+- 通常の manifest テストに加え、黙ったスキップも失敗にする **自動更新経路の検証**を追加。
+- `bucket/*.json` から **アプリ一覧を自動生成**。テンプレート全体の自動同期は行いません。
+
+### 自動更新の検証範囲
+
+`bin/test-autoupdate.ps1` は原本のバージョンを保持した一時コピーで、Scoop の
+`checkver.ps1 -ForceUpdate -ThrowError` を実行します。実際の `Invoke-AutoUpdate`
+呼び出し前後を観測し、対象 manifest の更新処理が1回呼ばれ、正常完了することを
+必須条件にします。同じ版の再生成でも合格できますが、黙ったスキップは失敗します。
+Scoop の観測箇所が変更された場合も、失敗して見逃しを防ぎます。
+
+- `checkver` / `autoupdate` / アーキテクチャ別 URL の不足、未展開の変数などを検出。
+- 再生成 URL からダウンロードし、ハッシュと、指定があれば `extract_dir` を検証。
+- 既に最新版なら、再生成した URL・ハッシュ・展開先が登録済みの値と一致するか確認。
+- ローカル HTTP サーバーによる回帰テストで、同じ版の再生成・旧版の更新・黙ったスキップなどを検証。
+
+外部サイト障害も失敗として扱います。空 bucket は未検証と明示します。
+インストール・アンインストールの hook は実行せず、ダウンロードキャッシュは作成されます。
+将来の上流変更、別製品・別版の正常なファイルを取得する問題、PC 上のインストール・GUI 動作、
+Excavator の commit・push 権限は保証しません。複雑な hook や複数アーカイブは個別の検証が必要です。
+
+## 🛠️ メンテナンス
+
+manifest を追加・変更すると、マージ後にアプリ一覧へ反映されます。
+一覧の生成範囲はコメントで囲まれた部分だけです。表は直接編集せず、manifest を変更してください。
+
+ローカルで README を生成・検証するには Python 3 を使います（追加パッケージ不要）。
+
+```powershell
+python scripts/update-readme.py
+python scripts/update-readme.py --check
+python -m unittest discover -s tests -p test_readme.py -v
+```
+
+更新経路の検証は Scoop・PowerShell 7・7-Zip がある Windows 環境で実行できます。
 
 ```powershell
 .\bin\test-autoupdate.ps1 -ScoopHome (scoop prefix scoop)
 ```
 
-この検証はmanifest原本を変更せず、インストール・アンインストールのhookも
-実行しません。Scoopの更新処理によるダウンロードキャッシュは作成されます。
-外部サイト障害も検証失敗になります。将来の配布命名変更、取得元自体が古い版を
-返す問題、別製品・別版の正常なファイルを指す問題、インストール・GUI動作、
-Excavatorのcommit/push権限は保証しません。
-また、複雑な独自hookや複数アーカイブの組合せは個別テストが必要です。
+GitHub Actions の手動実行：
 
-## How do I contribute new manifests?
+```powershell
+gh workflow run excavator.yml --repo takano536/scoop-bucket --ref main
+gh workflow run autoupdate.yml --repo takano536/scoop-bucket --ref main
+gh workflow run readme.yml --repo takano536/scoop-bucket --ref main
+```
 
-To make a new manifest contribution, please read the [Contributing
-Guide](https://github.com/ScoopInstaller/.github/blob/main/.github/CONTRIBUTING.md)
-and [App Manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests)
-wiki page.
+manifest の仕様は [App Manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests)、
+投稿時の指針は [Contributing Guide](https://github.com/ScoopInstaller/.github/blob/main/.github/CONTRIBUTING.md) を参照してください。
