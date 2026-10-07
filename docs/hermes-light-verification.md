@@ -12,7 +12,9 @@
 - 設定先にはCIの一時ディレクトリを使用。実gatewayや認証情報を与えていない。
 - これはPR専用の検証成果物。安定版としての公開・manifest登録はしていない。
 
-![Windows CIでの初回起動画面](images/hermes-light-preview.png)
+![Windows CIでの初回起動画面](images/unformatted/hermes-light-preview.png)
+
+画像はScoop標準のテキスト整形テストの対象外である `unformatted` 領域に置く。
 
 ## 未確認事項と配布開始条件
 
