@@ -237,7 +237,7 @@ function Get-PEImportEvidence {
         $dump = (& $dumpbin /DEPENDENTS $file.FullName 2>&1 | Out-String)
         $imports = @(
             [regex]::Matches($dump, '(?im)^\s+([A-Za-z0-9_.-]+\.dll)\s*$') |
-                ForEach-Object { $_.Groups[1].Value } |
+                ForEach-Object { $_.Value.Trim() } |
                 Sort-Object -Unique
         )
         foreach ($import in $imports) {
@@ -367,12 +367,14 @@ try {
     $installedRoot = Get-AppRoot
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
-    $shortcut = New-Object -ComObject WScript.Shell
-    $shortcutTarget = $shortcut.CreateShortcut($shortcutPath)
-    if ([IO.Path]::GetFullPath($shortcutTarget.TargetPath) -ne [IO.Path]::GetFullPath((Join-Path $installedRoot $executableName))) {
+    $shortcutShell = New-Object -ComObject WScript.Shell
+    $shortcutTarget = $shortcutShell.CreateShortcut([string]$shortcutPath)
+    $shortcutTargetPath = [string]$shortcutTarget.TargetPath
+    $shortcutTargetArguments = [string]$shortcutTarget.Arguments
+    if ([IO.Path]::GetFullPath($shortcutTargetPath) -ne [IO.Path]::GetFullPath((Join-Path $installedRoot $executableName))) {
         throw "Scoop shortcut target does not point at the installed executable"
     }
-    if ($shortcutTarget.Arguments -notmatch [regex]::Escape($cdpArgument)) {
+    if ($shortcutTargetArguments -notmatch [regex]::Escape($cdpArgument)) {
         throw 'Scoop start-menu shortcut did not preserve the CDP launch argument'
     }
 
