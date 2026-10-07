@@ -35,10 +35,6 @@ jobs:
           persist-credentials: false
       - name: Run validator regression tests
         run: ./my_bucket/tests/autoupdate-regression.ps1 -ScoopHome (Resolve-Path ./scoop_core)
-      - name: Validate UDEV Gothic upstream integration fixture
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./my_bucket/bin/test-autoupdate.ps1 -ScoopHome (Resolve-Path ./scoop_core) -BucketDir ./my_bucket/tests/fixtures
       - name: Validate live update sources and artifacts
         env:
           GITHUB_TOKEN: ${{ github.token }}

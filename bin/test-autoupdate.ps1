@@ -22,6 +22,26 @@ $failures = @()
 try {
     . "$ScoopHome/lib/core.ps1"
     . "$ScoopHome/lib/manifest.ps1"
+    # Instrument a disposable copy of the real updater; never replace its behavior.
+    # Fail closed if upstream changes the observation point or library layout.
+    $source = Get-Content "$ScoopHome/bin/checkver.ps1" -Raw
+    $call = 'Invoke-AutoUpdate $app $file $json $ver $matchesHashtable'
+    if ([regex]::Matches($source, [regex]::Escape($call)).Count -ne 1) {
+        throw 'Unsupported Scoop checkver layout: cannot observe the real update call.'
+    }
+    if (!$source.Contains('$PSScriptRoot\..\lib\')) {
+        throw 'Unsupported Scoop checkver library layout.'
+    }
+    $instrumentedCall = @'
+$autoupdateObservation.Calls++
+            $autoupdateObservation.Version = $ver
+            $autoupdateObservation.Path = $file
+            Invoke-AutoUpdate $app $file $json $ver $matchesHashtable
+            $autoupdateObservation.Completed++
+'@
+    $observedCheckver = Join-Path $work 'checkver.ps1'
+    $source.Replace('$PSScriptRoot\..', $ScoopHome).Replace($call, $instrumentedCall) |
+        Set-Content $observedCheckver -Encoding utf8
     foreach ($file in $files) {
         try {
             Write-Host "Validating $($file.Name)"
@@ -42,15 +62,17 @@ try {
             $dir = Join-Path $work $file.BaseName
             New-Item $dir -ItemType Directory | Out-Null
             $copy = Join-Path $dir $file.Name
-            # A sentinel forces a real manifest write even when upstream is already current.
+            # Preserve version-dependent checkver URLs/scripts and all original fields.
             # Do NOT use -Version: it would bypass the checkver parsing being tested.
-            $candidate = Get-Content $file.FullName -Raw | ConvertFrom-Json
-            $candidate.version = '0.0.0-autoupdate-test'
-            $candidate | ConvertTo-Json -Depth 100 | Set-Content $copy -Encoding utf8
-            & "$ScoopHome/bin/checkver.ps1" -App $file.BaseName -Dir $dir -ForceUpdate -ThrowError
+            Copy-Item -LiteralPath $file.FullName -Destination $copy
+            $autoupdateObservation = @{ Calls = 0; Completed = 0; Version = $null; Path = $null }
+            & $observedCheckver -App $file.BaseName -Dir $dir -ForceUpdate -ThrowError
+            if ($autoupdateObservation.Calls -ne 1 -or $autoupdateObservation.Completed -ne 1) {
+                throw 'checkver did not complete exactly one real autoupdate (download, regex or version extraction failure).'
+            }
             $updated = Get-Content $copy -Raw | ConvertFrom-Json
-            if ($updated.version -eq $candidate.version) {
-                throw 'checkver did not produce an updated manifest (download, regex or version extraction failure).'
+            if (!$autoupdateObservation.Version -or $updated.version -cne $autoupdateObservation.Version -or $autoupdateObservation.Path -ne $copy) {
+                throw 'Generated manifest does not match the observed update target/version.'
             }
             foreach ($arch in $arches) {
                 $urls = @(arch_specific 'url' $updated $arch)
