@@ -28,6 +28,32 @@
 改訂番号は正の整数で、先頭ゼロを許可しない。既存manifest以上の版がなければskipし、定期実行が`r2`を`r1`へ戻すことはない。
 番号は承認済み修正のために管理者が指定するもので、CI再実行数から自動採番しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は引き続き既定で無効。
 
+## Hermes Desktop Lightの開発channel（policy A）
+
+- `bucket/hermes-desktop-light.json`は、Light対応stable Releaseがこのアプリ用に初めて
+  build・Windows検証・公開されるまで、単一の開発channelを追従する。開発版は必ず
+  **DEVELOPMENT BUILD — NOT STABLE** と表示する。開発publisherのゲートは
+  `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`で、stable gateとは別に既定で無効。
+- 開発版は upstream `main`をworkflow開始時に解決した完全なcommit SHAへpinし、
+  そのSHAにidentityとmanaged builderのLight contractがある場合だけbuildする。
+  exact commitのMIT LICENSE本文を検査し、SHA256を`provenance.json`とRelease bodyに記録する。
+- versionは`0.0.0-alpha.dev.<devSeq>-r<revision>`、tagは
+  `hermes-desktop-light/dev/v<version>-<40桁SHA>`、ZIPは
+  `hermes-desktop-light-dev-<version>-<40桁SHA>-windows-x64.zip`とする。
+  Scoopの`Compare-Version`でdevSeq・revisionは数値順になり、全dev versionは
+  `0.0.0-r1`および将来のstable versionより小さい。`devSeq`は公開済みの
+  `hermes-desktop-light/dev/` Releaseから最大値+1として算出する（mutableな外部counterは持たない）。
+- 同一upstream commit・同一build conditions fingerprint（bucketのbuild/verify workflowと
+  scripts、upstream ref/variant/target、runner/Python、builder args、compression、signing、
+  local payload、bundle環境ハッシュを含む）のschedule再実行は同じversion/tag/assetsを再利用し、
+  revisionを増やさない。条件が変わった同じcommitの配布修正は、明示的な`workflow_dispatch`
+  の`revision=2`以降だけ許可する（r2+をscheduleから生成しない）。異なるcommitはr1から開始する。
+  公開済みReleaseのassetを上書きせず、draft中の異なるbytesも拒否する。
+- Light stable Releaseが公開されるtransitionは一方向で、`metadata/hermes-desktop-light-channel.json`
+  にstable version/tag、upstream commit、artifact SHA256を記録する。以後、stable publisherだけが
+  `bucket/hermes-desktop-light.json`を更新し、開発publisherはそのmarkerまたはこのアプリのstable
+  Releaseを検出してhard-refuseする。channelを自動切替せず、devへbounceしない。
+
 ## 公開と過去版
 
 read-onlyのビルド・検証と、上流コードを実行しない公開ジョブを分離する。

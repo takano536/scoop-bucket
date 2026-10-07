@@ -74,6 +74,41 @@ class DistributionTests(unittest.TestCase):
         self.assertLess(distribution.version_key('0.22.0-r10'), distribution.version_key('0.23.0-r1'))
         self.assertEqual(distribution.package_version('0.22.0', '2'), '0.22.0-r2')
 
+    def test_development_identity_and_order_are_numeric(self):
+        commit = 'a' * 40
+        first = distribution.dev_package_version(9, 1)
+        next_sequence = distribution.dev_package_version(10, 1)
+        next_revision = distribution.dev_package_version(9, 2)
+        self.assertEqual(
+            distribution.dev_release_tag('hermes-desktop-light', first, commit),
+            f'hermes-desktop-light/dev/v{first}-{commit}',
+        )
+        self.assertEqual(
+            distribution.dev_artifact_name('hermes-desktop-light', first, commit),
+            f'hermes-desktop-light-dev-{first}-{commit}-windows-x64.zip',
+        )
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key(next_sequence))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key(next_revision))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key('0.0.0-r1'))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key('2026.9.24-r1'))
+        self.assertLess(distribution.distribution_version_key('0.0.0-r1'),
+                        distribution.distribution_version_key('2026.10.1-r1'))
+
+    def test_development_identities_fail_closed(self):
+        commit = 'a' * 40
+        for version in ('0.0.0-alpha.dev.0-r1', '0.0.0-alpha.dev.1-r0',
+                        '0.0.0-alpha.dev.01-r1', '0.0.0.dev.1-r1'):
+            with self.assertRaises(ValueError):
+                distribution.dev_version_key(version)
+        with self.assertRaises(ValueError):
+            distribution.dev_release_tag('Hermes', '0.0.0-alpha.dev.1-r1', commit)
+        with self.assertRaises(ValueError):
+            distribution.dev_artifact_name('hermes-desktop-light', '0.0.0-alpha.dev.1-r1', 'bad')
+
     def test_invalid_identities_fail_closed(self):
         for version in ('0.22.0', '0.22.0-r0', '0.22.0-r01', '0.22.0-rc.1', '../0.22.0-r1'):
             with self.assertRaises(ValueError):

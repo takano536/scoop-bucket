@@ -18,50 +18,65 @@
 
 ## 成果物の保存先とskip条件
 
-- 対象ソースのLight identityと管理されたbuilderを検査し、非対応・必要ファイルなしは
-  正常なskipとする。API障害・権限エラーは非対応と混同せず失敗させる。
-- PRはLight対応を確認した固定commitのpreviewビルド。安定版の検出とは独立している。
-- Windows runner上では `upstream/apps/desktop/release/win-unpacked` を直接ZIP化し、
-  `output/` にZIP・provenance・smoke証拠を置く。ここでの `release/` は上流の
-  ローカルビルド出力ディレクトリであり、GitHub Releasesへの公開ではない。
-- CIからの保存先はActions Artifactsの `hermes-desktop-light-windows-x64`（保持14日）。
+- schedule/workflow_dispatchは実行開始時の`main`を完全なcommit SHAへ解決し、そのSHAの
+  Light identityと管理されたbuilder contractを検査する。非対応・必要ファイルなしは正常なskip、
+  API障害・権限エラーは非対応と混同せず失敗とする。
+- PRは従来どおり固定commitのpreviewビルド。mainの開発channelは同じLight admissionに加え、
+  exact commitのMIT LICENSE本文とSHA256を確認し、`provenance.json`へ記録する。
+- Windows runner上では`upstream/apps/desktop/release/win-unpacked`を直接ZIP化し、
+  `output/`にZIP・provenance・smoke証拠を置く。ここでの`release/`は上流のローカル
+  ビルド出力であり、GitHub Releasesへの公開ではない。
+- CIからの保存先はActions Artifactsの`hermes-desktop-light-windows-x64`（保持14日）。
   リポジトリへバイナリをcommitせず、PRからReleasesへも公開しない。
-- 将来のScoop配布用GitHub Releases公開は、mainかつ明示有効化されたpublisherのみ。
-  現在は無効のままで、マージや公開の有効化は今回の作業に含めない。
+- 開発Releaseは`hermes-desktop-light/dev/` tag、prerelease、`latest=false`で保持し、
+  title/body、manifest description/notes、READMEに**DEVELOPMENT BUILD — NOT STABLE**を明記する。
+  `metadata/hermes-desktop-light-dev.json`は最後に公開・URL+SHA256検証されたpointerだけを示す。
+  Scoop manifestはこのpointerと同じappの検証済みReleaseだけを参照する。
 
-## 未確認事項と配布開始条件
+## 開発channelの一方向transition
 
-最新の公開安定版 `v2026.9.24` にはLightのビルド機構がない。初回manifestは、
-Light対応の安定版を実際にビルド・検証・公開できた後に生成する。
-main由来のコードを過去の安定版の名前で配布しない。
+最新の公開安定版`v2026.9.24`にはLightのビルド機構がないため、開発版はLight対応main commit
+の公開で先にインストール可能になる。Light対応stableをこのapp向けにbuild・Windows検証・公開
+できた時点で開発追従を終了し、`metadata/hermes-desktop-light-channel.json`へversion/tag、
+upstream commit、SHA256を記録する。そのstable Releaseまたはmarkerがある場合、dev publisherは
+hard-refuseする。manifestは自動切替せず、Scoop version順（全dev < stable）によりbounceしない。
+stable公開・manifest書き戻しは、stable gateの明示許可後だけ行う。
+
+この文書の上記preview記録は、Scoop Release公開・manifest登録を証明するものではない。
+main開発版の実Windows build/smoke結果は、最初の有効なCI run後にcommit hash、LICENSE hash、
+conditions fingerprint、ZIP SHA256とともに追記する。
 
 上の画面には「Install Hermes locally」も表示される。Lightとしての非同梱構成と
 起動は確認済みだが、リモート専用のUI/実行制約、gateway接続、接続/認証設定の
 実アップグレード移行は確認できていない。表示だけからローカル動作の可否を断定しない。
 
-- 対応安定版でのtag/claim admissionと実ビルド。
+- Light対応stableのtag/claim admissionと実ビルド。
 - Windows上のScoop実インストール・更新・ショートカット起動。
 - gateway接続、認証・接続設定の移行、Lightのローカル動作制約。
-- マージ後のReleases公開・manifest/READMEのmain書き戻し。
+- main開発版とstableの各Release公開後、manifest/READMEのmain書き戻し。
 - 既存draftに異なるビルドの部分成果物が残った場合、上書きせず停止する。
-  管理者がdraftを確認する必要がある。公開済みreleaseは書き戻し再試行時に再利用する。
+  管理者がdraftを確認する必要がある。公開済みReleaseは書き戻し再試行時に再利用する。
 
 これらを実行済みとみなさず、PRはDraftで保持する。
 
 ## 公開ゲートと自動化の追加検証
 
-公開ジョブはリポジトリ変数 `HERMES_DESKTOP_LIGHT_RELEASE_ENABLED` が `true` の場合だけ実行する。
-変数は未設定で、今回の作業では有効化しない。対応安定版が出ても、受け入れ確認と
-管理者の明示的な許可が終わるまでReleases公開とmain書き戻しを停止する。
-検出・read-onlyビルドは公開ゲートと分離している。
+開発公開ジョブはリポジトリ変数`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、
+stable公開ジョブは`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`の場合だけ実行する。
+両変数は未設定で、このPRでは有効化しない。mainのread-only plan/build/smokeはgateと分離する。
+scheduleは開発`r1`の通常追従だけを許可し、同じcommitの条件変更による`r2+`は明示的な
+workflow_dispatchだけを許可する。
 
-publisher自身もActionsのschedule/workflow_dispatchかつmainと明示有効化を要求する。
-ローカル開発checkoutやPRで誤って実行しても、API操作やhard resetの前に停止する。
-成果物取得に必要な `actions: read` を公開ジョブへ明示した。
-`GITHUB_TOKEN` によるpush後の検証は、Desktop Light成功後の `workflow_run` で
-Scoop標準CIとAutoupdate validationを起動する。元runが同一リポジトリのmainで
-成功した場合だけ、read-onlyで最新mainをcheckoutし、元runの成果物は実行しない。
-README生成・検証はpublisher内で完了させる。このmain連携の実運転はマージ前には未検証。
+publisher自身もActionsのschedule/workflow_dispatchかつmainと、channel固有の明示gateを要求する。
+ローカルcheckoutやPRで誤って実行しても、API操作やhard resetの前に停止する。成果物取得に必要な
+`actions: read`を公開jobへ明示した。draft作成後は`prerelease=true`/`latest=false`をread backし、
+公開URLのSHA256を検証してからpointer、manifest、READMEをcommitする。既存assetを上書きしない。
+Scoop checkver/autoupdateは、このappの公開済みpointer/releaseだけを参照する。
+
+`GITHUB_TOKEN`によるpush後の検証は、Desktop Light成功後の`workflow_run`でScoop標準CIと
+Autoupdate validationを起動する。元runが同一リポジトリのmainで成功した場合だけ、read-onlyで
+最新mainをcheckoutし、元runの成果物は実行しない。README生成・検証はpublisher内で完了させる。
+このmain連携と実GitHub Releaseの実運転はマージ前には未検証。
 
 公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。
 初回Draft作成から公開URL照合後のmanifest/README更新、公開済みアセットの再利用と

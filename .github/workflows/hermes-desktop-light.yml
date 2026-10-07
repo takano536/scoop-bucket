@@ -5,8 +5,14 @@ on:
     - cron: '23 */4 * * *'
   workflow_dispatch:
     inputs:
+      channel:
+        description: 'Build channel (development follows pinned upstream main; stable requires a Light stable release)'
+        type: choice
+        options: [development, stable]
+        default: development
+        required: true
       revision:
-        description: 'Distribution revision (1 initially; increment only for an approved rebuild)'
+        description: 'Distribution revision (r1 initially; r2+ only for an approved same-commit rebuild)'
         type: string
         default: '1'
   pull_request:
@@ -27,11 +33,17 @@ concurrency:
 jobs:
   plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       build: ${{ steps.plan.outputs.build }}
+      channel: ${{ steps.plan.outputs.channel }}
       ref: ${{ steps.plan.outputs.ref }}
       version: ${{ steps.plan.outputs.version }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      artifact: ${{ steps.plan.outputs.artifact }}
+      short_sha: ${{ steps.plan.outputs.short_sha }}
+      license_sha: ${{ steps.plan.outputs.license_sha }}
+      conditions_fingerprint: ${{ steps.plan.outputs.conditions_fingerprint }}
       claim: ${{ steps.plan.outputs.claim }}
       claim_object: ${{ steps.plan.outputs.claim_object }}
     steps:
@@ -44,7 +56,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIEW: ${{ github.event_name == 'pull_request' }}
+          CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'development' }}
           BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
+          REVISION_EXPLICIT: ${{ github.event_name == 'workflow_dispatch' }}
         run: python3 scripts/hermes-desktop-light.py plan
 
   build:
@@ -56,9 +70,12 @@ jobs:
       PYTHONUTF8: '1'
       RELEASE_CLAIM_TAG: ${{ needs.plan.outputs.claim }}
       RELEASE_CLAIM_OBJECT: ${{ needs.plan.outputs.claim_object }}
+      CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
+      LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           path: bucket
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +91,7 @@ jobs:
       - name: Build and smoke-test remote-only unpacked application
         shell: pwsh
         env:
+          CHANNEL: ${{ needs.plan.outputs.channel }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           PREVIEW: ${{ github.event_name == 'pull_request' }}
@@ -89,9 +107,10 @@ jobs:
     needs: [plan, build]
     if: >-
       needs.plan.outputs.build == 'true' &&
-      vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      ((needs.plan.outputs.channel == 'development' && vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED == 'true') ||
+       (needs.plan.outputs.channel == 'stable' && vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -109,7 +128,10 @@ jobs:
       - name: Publish immutable release and update manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
+          CHANNEL: ${{ needs.plan.outputs.channel }}
+          RELEASE_ENABLED: ${{ needs.plan.outputs.channel == 'development' && vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED || vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
+          RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+          CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
         run: python3 scripts/hermes-desktop-light.py publish

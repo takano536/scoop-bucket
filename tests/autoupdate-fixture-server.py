@@ -2,6 +2,7 @@
 import hashlib
 import http.server
 import io
+import json
 import pathlib
 import sys
 import zipfile
@@ -10,6 +11,22 @@ buffer = io.BytesIO()
 with zipfile.ZipFile(buffer, 'w') as archive:
     archive.writestr('app-2.0.0/fixture.txt', 'autoupdate regression fixture\n')
 payload = buffer.getvalue()
+
+dev_version = '0.0.0-alpha.dev.1-r1'
+dev_commit = 'a' * 40
+dev_short_sha = dev_commit[:7]
+dev_name = f'hermes-desktop-light-dev-{dev_version}-{dev_commit}-windows-x64.zip'
+dev_buffer = io.BytesIO()
+with zipfile.ZipFile(dev_buffer, 'w') as archive:
+    archive.writestr(f'hermes-light-{dev_short_sha}.exe', 'development fixture')
+dev_payload = dev_buffer.getvalue()
+dev_pointer = json.dumps({
+    'channel': 'development',
+    'development': True,
+    'version': dev_version,
+    'commit': dev_commit,
+    'shortSha': dev_short_sha,
+})
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -20,8 +37,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '/hash': hashlib.sha256(payload).hexdigest().encode(),
             '/bad-hash': b'0' * 64,
             '/app-2.0.0.zip': payload,
+            '/dev-pointer': dev_pointer.encode(),
+            '/dev-hash': hashlib.sha256(dev_payload).hexdigest().encode(),
+            f'/{dev_name}': dev_payload,
         }
         body = bodies.get(self.path)
+        if body is None and self.path.startswith('/dev-') and self.path.endswith('.zip'):
+            body = dev_payload
         self.send_response(200 if body is not None else 404)
         self.end_headers()
         self.wfile.write(body if body is not None else b'Not found')

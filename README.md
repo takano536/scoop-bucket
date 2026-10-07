@@ -92,31 +92,43 @@ Latest Releaseや他アプリの公開順には依存しません。
 
 ## Hermes Desktop Light
 
-[Hermes Desktop Light](.github/workflows/hermes-desktop-light.yml) は4時間ごとに公式
-`NousResearch/hermes-agent` の安定リリースを確認し、Windows x64 のリモート専用クライアントを
-CIでビルドします。展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、
-Desktop Lightの構成・更新所有者・SHA256を検証してから、このbucketのReleasesへ公開します。
-公開URLの再検証後に `bucket/hermes-desktop-light.json` とアプリ一覧を `main` へ直接更新します。
-既存の公開成果物は上書きせず、ビルドや検証の失敗時には既存manifestを維持します。
+`Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）は、4時間ごとに
+公式`NousResearch/hermes-agent`の`main`を完全なcommit SHAへ固定し、Light対応のmanaged
+builder contractがそのcommitにある場合だけ、Windows x64のリモート専用開発版をCIでビルドします。
+展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、Desktop Lightの
+構成・更新所有者・SHA256を検証してから、開発用Releaseへ公開します。
 
-公開は初期状態では無効です。Light対応安定版でのWindows受け入れ確認を終え、
-管理者が明示的に配布を許可した後にだけ、リポジトリ変数
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true` で公開を有効化します。このPRでは変数を設定しません。
-有効化後、対応安定版のビルド・検証・公開が成功したときだけ初回manifestを生成します。
-現在の最新安定版 `v2026.9.24` はLight非対応のため、まだインストールできません。
-PRでは固定した上流コミットの検証ビルドだけを実行し、配布・manifest更新は行いません。
-旧タグへのmainのコードの混入や、プレリリースの追従は行いません。
+**DEVELOPMENT BUILD — NOT STABLE** です。開発版のScoop versionは
+`0.0.0-alpha.dev.<devSeq>-r<revision>`、tagは
+`hermes-desktop-light/dev/v<version>-<upstreamの完全なcommit SHA>`、ZIPは
+`hermes-desktop-light-dev-<version>-<upstreamの完全なcommit SHA>-windows-x64.zip`です。
+`devSeq`はこのアプリの公開済み開発Releaseからだけ算出し、同じcommit・同じbuild
+conditions fingerprintの再実行では番号を増やさず、同じcommitの配布修正だけを
+明示的なworkflow_dispatchで`r2`以降にします。scheduleは`r1`以外を生成しません。
+過去のRelease・ZIP・manifest・`metadata/hermes-desktop-light-dev.json`は保持し、
+manifestのcheckver/autoupdateはこのpointerと検証済みReleaseだけを参照します。
 
-配布は非公式・未署名のx64ビルドです。ローカルのPython・エージェントは含まず、
-既存のHermes gatewayへの接続が必要です。Scoopがアプリ更新を所有し、設定はアプリの
-ユーザーデータ領域に残します。gateway接続、必要なランタイム、接続・認証情報の
-実アップグレード移行は、公開を有効化する前にWindowsで受け入れ確認が必要です。
-初回公開後は既存Excavatorも、このbucketで検証済みの
-Desktop Lightリリースだけを追従できます。
+publish gateは初期状態で無効です。開発版を公開するには管理者が
+`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`を設定する必要があります（このPRでは設定しません）。
+Light対応の安定版をこのアプリ用にビルド・Windows検証・公開できた時点で、開発追従は一方向に終了し、
+`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。その後は
+`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`の安定版だけを追従し、開発publisherは安定版Release
+または遷移記録が存在すると即時拒否します。安定版versionはすべての開発版よりScoopで大きくなるため、
+channelを自動切替したり、開発版へ戻ったりしません。stable gateもこのPRでは設定しません。
+
+`v2026.9.24`はLight非対応ですが、Light対応の`main`開発commitを公開すれば現在でも
+インストールできます。Release title/body、manifest description/notes、READMEには常に
+`development build`/`not stable`を明記します。ReleaseはGitHub prereleaseかつ`latest=false`です。
+各Releaseには上流commit、MIT LICENSEのSHA256、build conditions fingerprint、artifact SHA256、
+provenance.jsonとその版のScoop manifestを添付します。公開URLとSHA256を再検証してから
+`bucket/hermes-desktop-light.json`とアプリ一覧を`main`へ更新し、失敗時はmanifestを変更しません。
+
+配布は非公式・未署名のx64ビルドで、ローカルのPython・agentは含まず、既存のHermes gatewayへの
+接続が必要です。gateway接続、必要なランタイム、接続・認証情報の実アップグレード移行は、
+stable公開を有効化する前にWindowsで受け入れ確認が必要です。
 
 [実Windows CIの検証結果と画面](docs/hermes-desktop-light-verification.md)を記録しています。
-起動検証はgateway接続や認証移行の証明ではありません。検証版の初回画面にはローカル
-インストールの選択肢も表示されるため、LightのUI/実行制約は安定版での追加確認が必要です。
+起動検証はgateway接続や認証移行の証明ではありません。
 
 ## 🛠️ メンテナンス
 
