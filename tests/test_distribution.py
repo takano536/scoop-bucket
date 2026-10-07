@@ -16,7 +16,14 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(distribution.package_version('0.22.0', '2'), '0.22.0-r2')
 
     def test_invalid_identities_fail_closed(self):
-        for version in ('0.22.0', '0.22.0-r0', '0.22.0-r01', '0.22.0-rc.1', '../0.22.0-r1'):
+        for version in (
+            '0.22.0',
+            '0.22.0-r0',
+            '0.22.0-r01',
+            '0.22.0-rc.1',
+            '0.22.0.1-r1',
+            '../0.22.0-r1',
+        ):
             with self.assertRaises(ValueError):
                 distribution.version_key(version)
         for app in ('../escape', 'app/name', 'UPPER'):
