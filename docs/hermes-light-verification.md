@@ -54,10 +54,12 @@ desktop production dependency は bundle に入る構成であることを確認
 `@hermes/shared`）については自身のdependencies/optionalDependenciesに加えて
 devDependenciesも辿る。lockfileで`optional`とされた、または名前から対象OS/CPU向けと
 判定できるplatform packageの未インストールな子依存だけは、対象Windowsに存在しないため収集対象から除外する。
-license fileまたはpackage metadataから判定できない
-同梱候補packageが一つでもあればbuildを失敗させる。
-`UNOFFICIAL-BUILD.txt` には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
-場所を記録する。`provenance.json` には3ファイルのSHA256と対象package数を記録し、
+完全な`LICENSE`/`LICENSE-*`本文（SPDX本文を含む）とpackage固有の権利表示を
+同梱候補packageから特定できない場合は、buildを失敗させる。`NOTICE`はlicense本文として
+扱わず、MPLの抜粋、package固有copyright行のないMIT fallback、`LICENSE`本文のない
+Apache `NOTICE`だけのpackageも成功にしない。汎用テンプレートへの暗黙のfallbackは行わない。
+`UNOFFICIAL-BUILD.txt`には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
+場所を記録する。`provenance.json`には3ファイルのSHA256と対象package数を記録し、
 publish側はZIP内の存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
 
 PR #6 の成果物ではsourcemapが生成されていなかったため、bundleからpackage名を

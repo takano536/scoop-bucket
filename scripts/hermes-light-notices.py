@@ -14,36 +14,13 @@ UPSTREAM = "NousResearch/hermes-agent"
 THIRD_PARTY_FILE = "THIRD-PARTY-NOTICES.txt"
 UNOFFICIAL_FILE = "UNOFFICIAL-BUILD.txt"
 
-# NPM packages normally carry one of these files.  Keep the matcher narrow so
-# an arbitrary documentation file cannot be mistaken for a license notice.
-LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying|notice)(?:[._ -].*)?$", re.I)
+# NPM packages normally carry one of these files. Keep LICENSE and NOTICE
+# separate: a NOTICE file contains attribution text, not the license terms.
+LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying)(?:[._ -].*)?$", re.I)
+NOTICE_FILE = re.compile(r"^notice(?:[._ -].*)?$", re.I)
 
-# A package's own LICENSE file is preferred.  These terms are only the
-# fallback for packages which declare a standard SPDX identifier but omit the
-# text from their npm tarball.  The package's metadata is printed alongside
-SPDX_FALLBACKS = {
-    "WTFPL": """DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-Version 2, December 2004
-
-Copyright (C) 2004 Sam Hocevar
-
-Everyone is permitted to copy and distribute verbatim or modified
-copies of this license document, and changing it is allowed as long
-as the name is changed.
-
-            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-  TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
-
-  0. You just DO WHAT THE FUCK YOU WANT TO.""",
-    "0BSD": """Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.""",
-    "Apache-2.0": """                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the Work\n      or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You meet\n      the following conditions:\n\n      (a) You must give any other recipients of the Work or Derivative Works\n          a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works that\n          You distribute, all copyright, patent, trademark, and attribution\n          notices from the Source form of the Work, excluding those notices\n          that do not pertain to any part of the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or for\n      any such Derivative Works as a whole, provided Your use, reproduction,\n      and distribution of the Work otherwise complies with the conditions\n      stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.""",
-    "BSD-2-Clause": """Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.""",
-    "BSD-3-Clause": """Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.""",
-    "ISC": """Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.""",
-    "MIT": """Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.""",
-    "MPL-2.0": """Mozilla Public License Version 2.0\n\n1. Definitions\n\n1.1. \"Contributor\"\n\n     means each individual or legal entity that creates, contributes to\n     the creation of, or owns Covered Software.\n\n1.2. \"Contributor Version\"\n\n     means the combination of the Contributions of others (if any) used\n     by a particular Contributor and that particular Contributor's Contribution.\n\n1.3. \"Contribution\"\n\n     means Covered Software of a particular Contributor.\n\n1.4. \"Covered Software\"\n\n     means Source Code Form to which the initial Contributor has attached\n     the notice in Exhibit A, the Executable Form of such Source Code Form,\n     and Modifications of such Source Code Form, in each case including\n     portions thereof.\n\nThis fallback identifies the declared MPL-2.0 terms; the package's own\nlicense file, when present, is the authoritative complete notice.""",
-    "Zlib": """This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.\n\nPermission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:\n\n1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software.\n2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.\n3. This notice may not be removed or altered from any source distribution.""",
-}
+# A package's complete license text must come from the package files. A NOTICE
+# file is attribution-only and never substitutes for a LICENSE file.
 
 
 def sha256(path: Path) -> str:
@@ -117,7 +94,6 @@ def is_platform_package(name: str) -> bool:
     return bool(PLATFORM_PACKAGE_TOKEN.search(name))
 
 
-
 def declared_license(metadata: dict) -> str:
     value = metadata.get("license")
     if isinstance(value, str) and value.strip():
@@ -138,16 +114,22 @@ def declared_license(metadata: dict) -> str:
 
 
 def license_files(package_dir: Path) -> list[Path]:
-    result = []
-    for child in sorted(package_dir.iterdir(), key=lambda item: item.name.lower()):
-        if child.is_file() and LICENSE_FILE.fullmatch(child.name):
-            result.append(child)
-    return result
+    return [
+        child
+        for child in sorted(package_dir.iterdir(), key=lambda item: item.name.lower())
+        if child.is_file() and LICENSE_FILE.fullmatch(child.name)
+    ]
 
 
-def fallback_text(license_name: str) -> str | None:
-    # Extract SPDX identifiers from simple expressions such as MIT OR
-    # Apache-2.0.  Non-SPDX custom declarations must have a package file.
+def notice_files(package_dir: Path) -> list[Path]:
+    return [
+        child
+        for child in sorted(package_dir.iterdir(), key=lambda item: item.name.lower())
+        if child.is_file() and NOTICE_FILE.fullmatch(child.name)
+    ]
+
+
+def spdx_identifiers(license_name: str) -> list[str] | None:
     identifiers = re.findall(r"[A-Za-z0-9][A-Za-z0-9.+-]*", license_name)
     if not identifiers:
         return None
@@ -175,26 +157,65 @@ def fallback_text(license_name: str) -> str | None:
             normalized.append("Zlib")
         else:
             return None
-    return "\n\n".join(f"[{identifier}]\n{SPDX_FALLBACKS[identifier]}" for identifier in dict.fromkeys(normalized))
+    return list(dict.fromkeys(normalized))
+
+
+MPL_REQUIRED_MARKERS = (
+    "Mozilla Public License Version 2.0",
+    "1. Definitions",
+    "2. License Grants and Conditions",
+    "3. Responsibilities",
+    "4. Inability to Comply Due to Statute or Regulation",
+    "5. Termination",
+    "6. Disclaimer of Warranty",
+    "7. Limitation of Liability",
+    "8. Litigation",
+    "9. Miscellaneous",
+    "10. Versions of the License",
+    "Exhibit A - Source Code Form License Notice",
+    "Exhibit B - \"Incompatible With Secondary Licenses\" Notice",
+)
+
+
+def validate_license_text(declaration: str, text: str, name: str) -> None:
+    identifiers = spdx_identifiers(declaration) or []
+    if "MPL-2.0" in identifiers:
+        missing = [marker for marker in MPL_REQUIRED_MARKERS if marker not in text]
+        if missing:
+            raise RuntimeError(f"Incomplete MPL-2.0 license text for shipped package {name}")
+    if "MIT" in identifiers and not re.search(r"(?im)^\s*copyright(?:\s|\(|$)", text):
+        raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
 
 
 def license_text(package_dir: Path, metadata: dict, name: str) -> tuple[str, str]:
     declaration = declared_license(metadata)
+    if not declaration:
+        raise RuntimeError(f"Cannot determine a license text for shipped package {name} (no declaration)")
     files = license_files(package_dir)
-    pieces = []
+    notices = notice_files(package_dir)
+    license_pieces = []
+    notice_pieces = []
     for path in files:
         try:
             text = path.read_text(encoding="utf-8", errors="replace").strip()
         except OSError as exc:
             raise RuntimeError(f"Cannot read license notice for shipped package {name}: {path}") from exc
         if text:
-            pieces.append(f"[{path.name}]\n{text}")
-    if pieces:
-        return declaration or "See included license file", "\n\n".join(pieces)
-    fallback = fallback_text(declaration)
-    if fallback:
-        return declaration, fallback
-    raise RuntimeError(f"Cannot determine a license text for shipped package {name} ({declaration or 'no declaration'})")
+            license_pieces.append(f"[{path.name}]\n{text}")
+    for path in notices:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError as exc:
+            raise RuntimeError(f"Cannot read NOTICE for shipped package {name}: {path}") from exc
+        if text:
+            notice_pieces.append(f"[{path.name}]\n{text}")
+    if not license_pieces:
+        if notice_pieces:
+            raise RuntimeError(f"Found NOTICE without a LICENSE text for shipped package {name}")
+        raise RuntimeError(f"Cannot determine a license text for shipped package {name} ({declaration or 'no declaration'})")
+    text = "\n\n".join(license_pieces + notice_pieces)
+    validate_license_text(declaration, text, name)
+    return declaration or "See included license file", text
 
 
 def asar_node_modules(pack: Path) -> set[str]:
