@@ -33,7 +33,8 @@ try {
         @{ Name = 'fixed-version-extract-dir'; Fails = $true; Mutate = { param($m) $m.autoupdate.extract_dir = 'app-2.0.0' } },
         @{ Name = 'missing-url-template'; Fails = $true; Mutate = { param($m) $m.autoupdate.Remove('url') } },
         @{ Name = 'incorrect-hash'; Fails = $true; Mutate = { param($m) $m.hash = '0' * 64 } },
-        @{ Name = 'wrong-extract-dir'; Fails = $true; Mutate = { param($m) $m.autoupdate.extract_dir = 'nonexistent' } },
+        @{ Name = 'incorrect-upstream-hash'; Fails = $true; Mutate = { param($m) $m.version = '1.0.0'; $m.autoupdate.hash = @{ url = "$base/bad-hash"; regex = '^([a-f0-9]{64})$' } } },
+        @{ Name = 'wrong-extract-dir'; Fails = $true; Mutate = { param($m) $m.version = '1.0.0'; $m.autoupdate.extract_dir = 'nonexistent' } },
         @{ Name = 'stale-manifest'; Fails = $false; Mutate = { param($m) $m.version = '1.0.0'; $m.url = "$base/app-1.0.0.zip"; $m.extract_dir = 'app-1.0.0' } }
     )
     foreach ($case in $cases) {

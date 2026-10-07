@@ -17,6 +17,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         bodies = {
             '/latest': b'v2.0.0',
             '/hash': hashlib.sha256(payload).hexdigest().encode(),
+            '/bad-hash': b'0' * 64,
             '/app-2.0.0.zip': payload,
         }
         body = bodies.get(self.path)
