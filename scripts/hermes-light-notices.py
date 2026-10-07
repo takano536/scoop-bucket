@@ -188,11 +188,12 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
     desktop = source / "apps" / "desktop"
     desktop_meta = read_json(desktop / "package.json")
     direct = {}
-    for field in ("dependencies", "optionalDependencies"):
+    for field, is_optional in (("dependencies", False), ("optionalDependencies", True), ("devDependencies", False)):
         values = desktop_meta.get(field, {})
         if isinstance(values, dict):
-            direct.update(values)
-    queue = [(desktop, name, True) for name in sorted(direct)]
+            for name in values:
+                direct[name] = direct.get(name, True) and is_optional
+    queue = [(desktop, name, optional) for name, optional in sorted(direct.items())]
     for name in sorted(asar_node_modules(pack)):
         queue.append((desktop, name, False))
     visited: set[Path] = set()
@@ -203,7 +204,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         if package_dir is None:
             if optional:
                 continue
-            raise RuntimeError(f"Installed production dependency is missing: {name}")
+            raise RuntimeError(f"Installed dependency is missing: {name}")
         if package_dir in visited:
             continue
         visited.add(package_dir)
@@ -212,7 +213,10 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         if not is_workspace_package(source, package_dir):
             license_name, text = license_text(package_dir, metadata, package_name)
             packages.append((package_name, metadata["version"], license_name, text, package_dir))
-        for field, is_optional in (("dependencies", False), ("optionalDependencies", True)):
+        fields = (("dependencies", False), ("optionalDependencies", True))
+        if is_workspace_package(source, package_dir):
+            fields += (("devDependencies", False),)
+        for field, is_optional in fields:
             values = metadata.get(field, {})
             if isinstance(values, dict):
                 queue.extend((package_dir, child, is_optional) for child in sorted(values))
@@ -234,8 +238,8 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "THIRD-PARTY NOTICES",
         "=======================",
         "",
-        "These notices cover production dependencies included in this Hermes Agent Light distribution.",
-        "The list is generated from the installed dependency tree of the exact upstream checkout after the Windows build.",
+        "These notices cover a conservative superset of code that can ship in this Hermes Agent Light distribution.",
+        "The set starts with desktop dependencies, optionalDependencies, and devDependencies, then follows installed dependencies recursively; reachable workspace packages also include their devDependencies.",
         f"Upstream repository: {UPSTREAM}",
         f"Upstream source ref: {source_ref}",
         f"Upstream commit: {commit}",

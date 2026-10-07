@@ -48,12 +48,24 @@ PR #4 の Windows 成果物（[run 37642669034](https://github.com/takano536/sco
 desktop production dependency は bundle に入る構成であることを確認した。
 
 今回のWindows buildでは、対象commitの上流 `LICENSE` をそのまま `LICENSE` としてコピーし、
-インストール済みproduction dependency tree（native packageとbundle対象を含む）の
-license fileまたはpackage metadataから `THIRD-PARTY-NOTICES.txt` を生成する。licenseを
-判定できない同梱packageが一つでもあればbuildを失敗させる。`UNOFFICIAL-BUILD.txt` には
-上流ref/commit、bucket commit、workflow URL、各licenseファイルの場所を記録する。
-`provenance.json` には3ファイルのSHA256と対象package数を記録し、publish側はZIP内の
-存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
+上流 `apps/desktop/package.json` の `dependencies`（80）、`optionalDependencies`（1）、
+`devDependencies`（31）を起点に、インストール済みpackageの依存を再帰的に辿って
+`THIRD-PARTY-NOTICES.txt` を生成する。到達したworkspace package（Lightでは
+`@hermes/shared`）については自身のdependencies/optionalDependenciesに加えて
+devDependenciesも辿る。license fileまたはpackage metadataから判定できない
+同梱候補packageが一つでもあればbuildを失敗させる。
+`UNOFFICIAL-BUILD.txt` には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
+場所を記録する。`provenance.json` には3ファイルのSHA256と対象package数を記録し、
+publish側はZIP内の存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
+
+PR #6 の成果物ではsourcemapが生成されていなかったため、bundleからpackage名を
+完全列挙する方式ではなく、上記のdevDependenciesを含む保守的なsupersetを採用した。
+`dist/assets/vendor-react-*.js` にReact実装、`dist/assets/katex-*.js` と
+`mermaid-*.js` に第三者bundle、`dist/electron-main.mjs` に`node-pty`と
+esbuild由来のbundled license bannerがあることを、ASAR header offsetと
+`resources/app.asar.unpacked`のファイルだけで確認した。`desktop_prepare.py`の
+Light workspace選択は`apps/desktop`のみで、`web`/`ui-tui`はLightではbuildされない。
+将来Lightのworkspace選択を拡張する場合は、そのworkspaceを起点に同じ再帰収集を行う。
 
 manifestの`license`は、Hermes Agent本体の上流`package.json`/`LICENSE`がMITであるため
 `MIT`のままとする。依存packageごとに異なるlicenseの集合を一つの正確なSPDX式へ
