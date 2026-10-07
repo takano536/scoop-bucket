@@ -50,8 +50,27 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
   authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
   app tree不変を確認する。
 
-この受入ジョブの実行URLとArtifactsは、実行後にこの節へ追記する。
-未実行のrunを検証済みとは扱わない。
+初回の実Windows受入runは成功した。
+
+- run: [37667369573](https://github.com/takano536/scoop-bucket/actions/runs/37667369573)
+- acceptance job: [112952998741](https://github.com/takano536/scoop-bucket/actions/runs/37667369573/job/112952998741)
+- upstream: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
+- このrunのbucket commit: `5cc640a`
+- build ZIP: `hermes-agent-light-preview-a3ed4a1-windows-x64.zip`
+- ZIP SHA256: `033fbe38f785c8f9e16cd25bffe5c543ba35a7b76a228d4b991afec3034b776d`
+- acceptance artifact: `hermes-light-windows-acceptance`（保持14日）
+- Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
+  user-data残存を確認。上流同一commitのgatewayに対する認証済みHTTP+WebSocket、
+  `/api/sessions`の`200`、誤secretの`401`、Scoop update後の設定・tokenSet保持を確認。
+- PE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
+  `false`であり、クリーンなWindowsへのruntime独立性は未証明。
+- previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
+  applyを拒否しapp tree不変だった。local-install表示は残るが、probeは
+  `bootstrap-needed`で、ローカルagentの起動は行われなかった。
+
+受入artifactの`acceptance.json`、`before.json`、`after.json`、runtime evidenceと
+gateway/httpログをrun artifactから取得できる。将来の別runでは、そのrunのURLと
+SHA256を追記し、未実行のrunを検証済みとは扱わない。
 
 ## 未確認事項と配布開始条件
 
@@ -59,18 +78,21 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
 Light対応の安定版を実際にビルド・検証・公開できた後に生成する。
 main由来のコードを過去の安定版の名前で配布しない。
 
-上の画面には「Install Hermes locally」も表示される。Lightとしての非同梱構成と
-起動は確認済みだが、リモート専用のUI/実行制約、gateway接続、接続/認証設定の
-実アップグレード移行は確認できていない。表示だけからローカル動作の可否を断定しない。
+上の画面には「Install Hermes locally」も表示される。今回の受入runでは、Light ZIPに
+`resources/agent-payload`がなく、restricted PATH下のlocal backend probeが
+`bootstrap-needed`を返し、bootstrap/local agentを起動しないことを確認した。
+同じrunで、同一upstream commitのgatewayへの認証、誤secret拒否、Scoop update後の
+接続設定保持も確認済みである。ただしこのrunnerはクリーンなWindowsではなく、
+安定版の実アップグレードや配布を証明するものではない。
 
-- 対応安定版でのtag/claim admissionと実ビルド。
-- Windows上のScoop実インストール・更新・ショートカット起動。
-- gateway接続、認証・接続設定の移行、Lightのローカル動作制約。
-- マージ後のReleases公開・manifest/READMEのmain書き戻し。
-- 既存draftに異なるビルドの部分成果物が残った場合、上書きせず停止する。
-  管理者がdraftを確認する必要がある。公開済みreleaseは書き戻し再試行時に再利用する。
+- [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37667369573）。
+- [x] gateway接続、認証・接続設定の移行、Lightのローカル動作制約（同run）。
+- [ ] 対応安定版でのtag/claim admissionと実ビルド。
+- [ ] マージ後のReleases公開・manifest/READMEのmain書き戻し。
+- [ ] 安定版での実アップグレードとクリーンなWindowsでのruntime独立性。
+- [ ] 既存draftに異なるビルドの部分成果物が残った場合の管理者確認。
 
-これらを実行済みとみなさず、PRはDraftで保持する。
+上記の未確認項目は、Light対応安定版と明示的な公開許可がないため実行しない。
 
 ## 公開ゲートと自動化の追加検証
 
