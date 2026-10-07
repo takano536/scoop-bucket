@@ -35,7 +35,7 @@ $appName = 'hermes-agent-light-acceptance'
 $shortcutName = 'Hermes Light Acceptance'
 $zipPath = $null
 $installedRoot = $null
-$home = Join-Path $scratch 'hermes-home'
+$hermesHome = Join-Path $scratch 'hermes-home'
 $userData = Join-Path $scratch 'desktop-user-data'
 $gatewayHome = Join-Path $scratch 'gateway-home'
 
@@ -323,17 +323,16 @@ try {
     foreach ($name in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'HF_TOKEN', 'HUGGINGFACE_TOKEN')) {
         Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
     }
-    New-Item -ItemType Directory -Force -Path $gatewayHome, $home, $userData | Out-Null
+    New-Item -ItemType Directory -Force -Path $gatewayHome, $hermesHome, $userData | Out-Null
 
     $python = (Get-Command python -ErrorAction Stop).Source
     $gatewayPort = Get-Random -Minimum 22000 -Maximum 32000
     $artifactPort = Get-Random -Minimum 32000 -Maximum 42000
-    $gatewayEnvHome = $env:HERMES_HOME
+    $gatewayUri = "http://127.0.0.1:$gatewayPort"
     $env:HERMES_HOME = $gatewayHome
     $gatewayProcess = Start-Process -FilePath $python -ArgumentList @('-m', 'hermes_cli.main', 'serve', '--host', '127.0.0.1', "--port=$gatewayPort", '--skip-build') -WorkingDirectory $UpstreamDirectory -RedirectStandardOutput $gatewayLog -RedirectStandardError $gatewayErrorLog -PassThru -WindowStyle Hidden
-    $gatewayUri = "http://127.0.0.1:$gatewayPort"
     Wait-Http -Uri "$gatewayUri/api/status" -TimeoutSeconds 120 | Out-Null
-    $env:HERMES_HOME = $home
+    $env:HERMES_HOME = $hermesHome
     $env:HERMES_DESKTOP_USER_DATA_DIR = $userData
 
     $httpProcess = Start-Process -FilePath $python -ArgumentList @('-m', 'http.server', $artifactPort, '--bind', '127.0.0.1', '--directory', $ArtifactDirectory) -RedirectStandardOutput $httpLog -RedirectStandardError $httpErrorLog -PassThru -WindowStyle Hidden
