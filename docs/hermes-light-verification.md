@@ -34,3 +34,25 @@ main由来のコードを過去の安定版の名前で配布しない。
   管理者がdraftを確認する必要がある。公開済みreleaseは書き戻し再試行時に再利用する。
 
 これらを実行済みとみなさず、PRはDraftで保持する。
+
+## 公開ゲートと自動化の追加検証
+
+公開ジョブはリポジトリ変数 `HERMES_LIGHT_RELEASE_ENABLED` が `true` の場合だけ実行する。
+変数は未設定で、今回の作業では有効化しない。対応安定版が出ても、受け入れ確認と
+管理者の明示的な許可が終わるまでReleases公開とmain書き戻しを停止する。
+検出・read-onlyビルドは公開ゲートと分離している。
+
+publisher自身もActionsのschedule/workflow_dispatchかつmainと明示有効化を要求する。
+ローカル開発checkoutやPRで誤って実行しても、API操作やhard resetの前に停止する。
+成果物取得に必要な `actions: read` を公開ジョブへ明示した。
+
+公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。
+初回Draft作成から公開URL照合後のmanifest/README更新、公開済みアセットの再利用と
+冪等再実行、異なる部分Draftの拒否、タグ移動、ハッシュ不一致、downgrade、push失敗、
+README書き戻しのreadback不一致、公開ゲートを検証する。本番公開の証明ではない。
+
+Windows smokeには、ビルド用Python/Node/Gitを含まないPATHでの起動と、実preloadからの
+updater check/applyを追加した。結果は `native-checks.json` と `provenance.json` に残す。
+これは初期起動とexternal updaterの確認であり、リモートgateway接続、PATH以外の
+インストール済みランタイムからの独立性、安定版の実アップグレードを保証しない。
+実CI結果はPRに記録する。

@@ -41,6 +41,7 @@ $receipt = @{
     updateMechanism = $stamp.updateMechanism
     executable = $exe.Name
     smoke = 'two native launches; renderer loaded; localStorage retained'
+    nativeChecks = Get-Content "$out/native-checks.json" -Raw | ConvertFrom-Json
     signing = 'unsigned unofficial build'
     run = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
 }

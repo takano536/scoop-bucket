@@ -8,7 +8,7 @@ on:
     paths:
       - '.github/workflows/hermes-light.yml'
       - 'scripts/*hermes-light*'
-      - 'tests/test_hermes_light.py'
+      - 'tests/test_hermes_light*.py'
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: python3 -m unittest discover -s tests -p test_hermes_light.py -v
+      - run: python3 -m unittest discover -s tests -p 'test_hermes_light*.py' -v
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,11 +80,14 @@ jobs:
     needs: [plan, build]
     if: >-
       needs.plan.outputs.build == 'true' &&
-      github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      vars.HERMES_LIGHT_RELEASE_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,6 +100,7 @@ jobs:
       - name: Publish immutable release and update manifest
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_ENABLED: ${{ vars.HERMES_LIGHT_RELEASE_ENABLED }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
         run: python3 scripts/hermes-light.py publish

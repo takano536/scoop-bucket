@@ -15,6 +15,13 @@ const { _electron: electron } = upstreamRequire('playwright');
     HERMES_DESKTOP_USER_DATA_DIR: path.join(scratch, 'user-data'),
   };
   delete env.ELECTRON_RUN_AS_NODE;
+  // The app must launch without borrowing Python/Node/Git from the build runner.
+  // This checks initial native launch only, not remote gateway feature coverage.
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === 'path') delete env[key];
+  }
+  env.PATH = [path.dirname(executablePath), path.join(env.SystemRoot, 'System32'), env.SystemRoot].join(path.delimiter);
+  const checks = { runtimePath: 'application directory and Windows system directories only', launches: [] };
   for (let attempt = 0; attempt < 2; attempt++) {
     const app = await electron.launch({ executablePath, env, timeout: 60000 });
     try {
@@ -22,6 +29,14 @@ const { _electron: electron } = upstreamRequire('playwright');
       await page.waitForFunction(() => document.body.innerText.trim().length > 20, { timeout: 60000 });
       assert.equal(await app.evaluate(({ app }) => app.isPackaged), true);
       assert.equal(await app.evaluate(({ app }) => app.getPath('userData')), env.HERMES_DESKTOP_USER_DATA_DIR);
+      const status = await page.evaluate(() => window.hermesDesktop.updates.check({ force: true }));
+      assert.equal(status.mechanism, 'external');
+      assert.equal(status.supported, false);
+      const apply = await page.evaluate(() => window.hermesDesktop.updates.apply());
+      assert.equal(apply.mechanism, 'external');
+      // Commit previews reject apply; stable external builds return manual-only.
+      assert.ok(apply.ok === false || apply.manual === true);
+      checks.launches.push({ updaterCheck: status, updaterApply: apply });
       if (attempt === 0) {
         await page.evaluate(() => localStorage.setItem('scoop-smoke-marker', 'retained'));
         await page.screenshot({ path: path.join(output, 'smoke.png') });
@@ -32,5 +47,6 @@ const { _electron: electron } = upstreamRequire('playwright');
       await app.close();
     }
   }
-  console.log('Native packaged Light launch/relaunch and user-data retention passed');
+  fs.writeFileSync(path.join(output, 'native-checks.json'), JSON.stringify(checks, null, 2) + '\n');
+  console.log('Native Light launch/relaunch, restricted PATH, external updater IPC and user-data retention passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

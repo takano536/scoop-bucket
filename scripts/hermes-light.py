@@ -128,6 +128,11 @@ def verify_artifact(root, record, version, source_ref):
 
 
 def publish():
+    if (os.environ.get('RELEASE_ENABLED') != 'true' or
+            os.environ.get('GITHUB_ACTIONS') != 'true' or
+            os.environ.get('GITHUB_REF') != 'refs/heads/main' or
+            os.environ.get('GITHUB_EVENT_NAME') not in ('schedule', 'workflow_dispatch')):
+        raise ValueError('Publication is disabled or not a trusted main run')
     import tempfile
     import urllib.request
     version, source_ref = os.environ['PACKAGE_VERSION'], os.environ['SOURCE_REF']
@@ -205,6 +210,10 @@ def publish():
             actual = json.loads(base64.b64decode(remote['content']))
             if actual != data:
                 raise ValueError('Manifest writeback readback mismatch')
+            remote_readme = api(f'repos/{repository}/contents/README.md?ref=main')
+            actual_readme = base64.b64decode(remote_readme['content']).decode('utf-8').replace('\r\n', '\n')
+            if actual_readme != Path('README.md').read_text(encoding='utf-8'):
+                raise ValueError('README writeback readback mismatch')
             return
     raise RuntimeError('Manifest push failed; published artifact is retained for retry')
 
