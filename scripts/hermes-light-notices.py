@@ -103,6 +103,16 @@ def optional_package_names(source: Path) -> set[str]:
             if name:
                 names.add(name)
     return names
+PLATFORM_PACKAGE_TOKEN = re.compile(
+    r"(?:^|[-/])(aix|android|arm64|darwin|freebsd|ia32|linux|netbsd|openbsd|openharmony|ppc64|riscv64|s390x|sunos|wasm32|win32|x64)(?:[-/]|$)",
+    re.I,
+)
+
+
+def is_platform_package(name: str) -> bool:
+    return bool(PLATFORM_PACKAGE_TOKEN.search(name))
+
+
 
 
 
@@ -262,7 +272,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         for field, is_optional in fields:
             values = metadata.get(field, {})
             if isinstance(values, dict):
-                dependency_optional = is_optional or package_name in optional_names
+                dependency_optional = is_optional or package_name in optional_names or is_platform_package(package_name)
                 queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
     return packages

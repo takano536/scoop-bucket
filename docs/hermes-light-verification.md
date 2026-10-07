@@ -52,8 +52,8 @@ desktop production dependency は bundle に入る構成であることを確認
 `devDependencies`（31）を起点に、インストール済みpackageの依存を再帰的に辿って
 `THIRD-PARTY-NOTICES.txt` を生成する。到達したworkspace package（Lightでは
 `@hermes/shared`）については自身のdependencies/optionalDependenciesに加えて
-devDependenciesも辿る。lockfileで`optional`とされたプラットフォーム別packageの
-未インストールな子依存だけは、対象OSに存在しないため収集対象から除外する。
+devDependenciesも辿る。lockfileで`optional`とされた、または名前から対象OS/CPU向けと
+判定できるplatform packageの未インストールな子依存だけは、対象Windowsに存在しないため収集対象から除外する。
 license fileまたはpackage metadataから判定できない
 同梱候補packageが一つでもあればbuildを失敗させる。
 `UNOFFICIAL-BUILD.txt` には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
