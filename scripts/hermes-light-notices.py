@@ -81,6 +81,34 @@ def is_workspace_package(source: Path, package_dir: Path) -> bool:
     if "node_modules" in relative.parts:
         return False
     return bool(relative.parts and relative.parts[0] in {"apps", "ui-tui", "web", "tests-js"})
+def optional_package_names(source: Path) -> set[str]:
+    """Return package names marked optional by the exact npm lockfile."""
+    names: set[str] = set()
+    for lockfile in (source / "package-lock.json", source / "apps" / "desktop" / "package-lock.json"):
+        if not lockfile.is_file():
+            continue
+        metadata = read_json(lockfile)
+        packages = metadata.get("packages", {})
+        if not isinstance(packages, dict):
+            continue
+        for key, package in packages.items():
+            if not isinstance(package, dict) or not package.get("optional"):
+                continue
+            parts = str(key).split("/node_modules/")
+            name = parts[-1]
+            if name.startswith("@"):
+                name = "/".join(name.split("/")[:2])
+            else:
+                name = name.split("/", 1)[0]
+            if name:
+                names.add(name)
+    return names
+
+
+def package_dependency_is_optional(package_name: str, optional_names: set[str]) -> bool:
+    return package_name in optional_names
+
+
 
 
 def declared_license(metadata: dict) -> str:
@@ -203,6 +231,7 @@ def package_identity(package_dir: Path, metadata: dict) -> str:
 def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str, Path]]:
     desktop = source / "apps" / "desktop"
     desktop_meta = read_json(desktop / "package.json")
+    optional_names = optional_package_names(source)
     direct = {}
     for field, is_optional in (("dependencies", False), ("optionalDependencies", True), ("devDependencies", False)):
         values = desktop_meta.get(field, {})
@@ -235,7 +264,8 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         for field, is_optional in fields:
             values = metadata.get(field, {})
             if isinstance(values, dict):
-                queue.extend((package_dir, child, is_optional) for child in sorted(values))
+                dependency_optional = is_optional or package_dependency_is_optional(package_name, optional_names)
+                queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
     return packages
 
