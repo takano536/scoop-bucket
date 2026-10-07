@@ -43,7 +43,12 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
   ではないため、起動成功だけではVC++ runtimeのクリーン環境独立性を証明しない。
 - 上流checkoutと同じcommitの `hermes serve --skip-build` をlocalhostで起動し、
   job内で生成した `HERMES_DASHBOARD_SESSION_TOKEN` をmaskして、Desktopの
-  実HTTP+WebSocket接続、authenticated `/api/sessions`、誤secret拒否を確認する。
+  実HTTP+WebSocket接続を確認する。接続設定はUIクリックではなく、CDPから
+  アプリのpreload bridge IPC（`applyConnectionConfig`、
+  `getConnectionConfig`、`getGatewayWsUrl`）を呼ぶ。Scoop update後は、保存済み
+  secretからbridgeがmintしたWS URLだけをrendererへ渡し、renderer自身が
+  `session.list` JSON-RPCを送り、返却された`result.sessions`を検証する。
+  別にNodeから`/api/sessions`を呼ぶ結果はdirect gateway probeと明示する。
   provider/LLM credentialは渡さない。
 - `resources/agent-payload`なし、local backend probeが`bootstrap-needed`で
   bootstrapを実行しないこと、remote接続設定、Scoop更新後の設定・認証・
@@ -60,8 +65,9 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
 - ZIP SHA256: `033fbe38f785c8f9e16cd25bffe5c543ba35a7b76a228d4b991afec3034b776d`
 - acceptance artifact: `hermes-light-windows-acceptance`（保持14日）
 - Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
-  user-data残存を確認。上流同一commitのgatewayに対する認証済みHTTP+WebSocket、
-  `/api/sessions`の`200`、誤secretの`401`、Scoop update後の設定・tokenSet保持を確認。
+  user-data残存を確認。preload bridge IPCを通じたアプリ側の認証済み`session.list`
+  WebSocket RPC、同一gatewayへのdirect Node `/api/sessions` probeの`200`、誤secretの
+  `401`、Scoop update後の設定・tokenSet保持を確認。
 - 異なるLight対応upstream commitの同一runビルドはまだないため、before/afterは
   同じZIPを異なるtest-only versionとして使った。これはScoop更新時の設定保持を
   検証するが、異なるバイナリ間のmigrationは証明しない。
@@ -70,6 +76,18 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
 - previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
   applyを拒否しapp tree不変だった。local-install表示は残るが、probeは
   `bootstrap-needed`で、ローカルagentの起動は行われなかった。
+- pinned upstream protocol basis: `apps/desktop/electron/preload.ts:49-52,276-279`
+  exposes the URL/config bridge IPC; `apps/desktop/electron/gateway-ws-probe.ts:4-13`
+  documents the renderer `/api/ws` handshake; `apps/shared/src/json-rpc-channel.ts:12-18,248-325`
+  defines JSON-RPC frames/requests; and
+  `apps/shared/src/gateway-contract.openrpc.json:3394-3410,31168-31182`
+  defines `session.list` and its `{sessions}` result.
+- updater source is also pinned: `apps/desktop/electron/updater/external.ts:20-35`
+  returns `reason=commit-build` only for `source=commit-build`, otherwise
+  `reason=bundled-not-appinstaller`; its non-commit branch returns
+  `{ok:true, manual:true, bundled:true, mechanism:'external'}`. This is
+  source-grounded, but stable behavior remains unexecuted because no stable
+  Light artifact exists.
 
 受入artifactの`acceptance.json`、`before.json`、`after.json`、runtime evidenceと
 gateway/httpログをrun artifactから取得できる。将来の別runでは、そのrunのURLと

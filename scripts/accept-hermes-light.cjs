@@ -160,6 +160,72 @@ async function fetchJsonWithRetry(url, token) {
   return last || { error: 'no response' }
 }
 
+async function persistedGatewayRpc(client, method, params = {}) {
+  // This bridge call mints a fresh URL from the app's persisted connection
+  // secret; no token is supplied by the acceptance driver. The wire shape is
+  // the upstream JSON-RPC contract at apps/shared/src/json-rpc-channel.ts,
+  // and session.list is defined by apps/shared/src/gateway-contract.openrpc.json.
+  const urlResult = await bridge(client, 'getGatewayWsUrl')
+  assert(urlResult.ok, `persisted gateway URL mint failed: ${redact(urlResult.error)}`)
+  const wsUrl = typeof urlResult.value === 'string' ? urlResult.value : urlResult.value?.wsUrl
+  assert(typeof wsUrl === 'string' && /^wss?:\/\//.test(wsUrl), 'persisted gateway URL mint returned no WebSocket URL')
+
+  const request = {
+    jsonrpc: '2.0',
+    id: `hermes-light-acceptance-${Date.now()}`,
+    method,
+    params
+  }
+  const response = await evaluate(client, `(async () => {
+    const request = ${JSON.stringify(request)}
+    return await new Promise(resolve => {
+      let socket
+      try {
+        socket = new WebSocket(${JSON.stringify(wsUrl)})
+      } catch (error) {
+        resolve({ ok: false, error: String(error?.message || error) })
+        return
+      }
+
+      let settled = false
+      const timer = setTimeout(() => finish({ ok: false, error: 'timed out waiting for persisted WebSocket RPC' }), 15000)
+      const finish = value => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        try { socket.close() } catch {}
+        resolve(value)
+      }
+
+      socket.addEventListener('open', () => {
+        try {
+          socket.send(JSON.stringify(request))
+        } catch (error) {
+          finish({ ok: false, error: String(error?.message || error) })
+        }
+      }, { once: true })
+      socket.addEventListener('message', event => {
+        let frame
+        try {
+          frame = JSON.parse(String(event.data))
+        } catch {
+          return
+        }
+        if (!frame || frame.id !== request.id) return
+        if (frame.error) finish({ ok: false, error: frame.error })
+        else finish({ ok: true, result: frame.result })
+      })
+      socket.addEventListener('error', () => finish({ ok: false, error: 'persisted WebSocket error' }), { once: true })
+      socket.addEventListener('close', event => {
+        if (!settled) finish({ ok: false, error: 'persisted WebSocket closed before RPC response (code ' + event.code + ')' })
+      }, { once: true })
+    })
+  })()`)
+  assert(response && response.ok === true,
+    `app persisted WebSocket ${method} RPC failed: ${redact(JSON.stringify(response))}`)
+  return response.result
+}
+
 async function run() {
   assert(Number.isInteger(cdpPort) && cdpPort > 0, 'invalid CDP port')
   assert(fs.existsSync(appRoot), `installed app root is missing: ${appRoot}`)
@@ -238,9 +304,14 @@ async function run() {
       }
       const marker = await evaluate(client, `localStorage.getItem('hermes-light-acceptance-marker')`)
       assert(marker === 'retained', 'renderer user data did not survive Scoop update')
-      const ws = await bridge(client, 'getGatewayWsUrl')
-      assert(ws.ok && ws.value?.ok !== false, `persisted connection could not mint its gateway WebSocket URL: ${redact(ws.error)}`)
-      result.connection.persistedWsUrlAvailable = true
+      const persistedRpc = await persistedGatewayRpc(client, 'session.list', { limit: 1 })
+      assert(persistedRpc && Array.isArray(persistedRpc.sessions),
+        `persisted app gateway RPC returned an invalid session.list result: ${redact(JSON.stringify(persistedRpc))}`)
+      result.connection.persistedWsRpc = {
+        method: 'session.list',
+        authenticated: true,
+        sessionCount: persistedRpc.sessions.length
+      }
     }
 
     const session = await fetchJsonWithRetry(`${gatewayUrl}/api/sessions?limit=1`, secret)
@@ -251,6 +322,7 @@ async function run() {
       `wrong secret was not rejected by /api/sessions (status ${wrongSession.status})`)
     result.gateway.authenticated = true
     result.sessionRoundTrip = {
+      source: 'direct-node-gateway-probe',
       endpoint: '/api/sessions?limit=1',
       authenticatedStatus: session.status,
       wrongSecretStatus: wrongSession.status,
