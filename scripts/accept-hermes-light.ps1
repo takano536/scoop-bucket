@@ -360,7 +360,7 @@ try {
         license = 'UNOFFICIAL-TEST-BUILD'
         url = $artifactUri
         hash = $zipHash
-        shortcuts = @(@($executableName, $shortcutName, $cdpArgument))
+        shortcuts = @(, @($executableName, $shortcutName, $cdpArgument))
     }
     Write-EvidenceJson -Path $manifestPath -Value $manifest
     Invoke-Scoop -Arguments @('install', $manifestPath)
