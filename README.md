@@ -12,7 +12,7 @@
 
 ```powershell
 scoop bucket add takano536 https://github.com/takano536/scoop-bucket
-scoop install takano536/UDEVGothic-NF
+scoop install takano536/<アプリ名>
 ```
 
 導入済みアプリの更新は `scoop update <アプリ名>` で行います。
