@@ -1,0 +1,91 @@
+name: README
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bucket/**'
+      - 'README.md'
+      - 'scripts/update-readme.py'
+      - 'tests/test_readme.py'
+      - '.github/workflows/readme.yml'
+  pull_request:
+    paths:
+      - 'bucket/**'
+      - 'README.md'
+      - 'scripts/update-readme.py'
+      - 'tests/test_readme.py'
+      - '.github/workflows/readme.yml'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Excavator]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate README generation
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test generator
+        run: python3 -m unittest discover -s tests -p test_readme.py -v
+      - name: Generate and validate app list
+        run: |
+          python3 scripts/update-readme.py
+          python3 scripts/update-readme.py --check
+
+  update:
+    name: Update app list
+    needs: validate
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: readme-update-main
+      cancel-in-progress: false
+    steps:
+      # Always use trusted main, never the triggering run's code or artifacts.
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Generate and commit app list
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Regenerate from current main before every push attempt. A concurrent
+          # manifest change must not leave the generated table on an older version.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 scripts/update-readme.py
+            python3 scripts/update-readme.py --check
+            if git diff --quiet -- README.md; then
+              echo 'README is current; no commit needed'
+              exit 0
+            fi
+            git add README.md
+            git commit -m 'docs: update app list'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          echo 'Could not push README update after 3 attempts' >&2
+          exit 1
