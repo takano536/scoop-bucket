@@ -55,14 +55,14 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
   authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
   app tree不変を確認する。
 
-改訂後の実Windows受入runは成功した。
+改訂後の実Windows受入run（rerun）は成功した。
 
-- run: [37670616565](https://github.com/takano536/scoop-bucket/actions/runs/37670616565)
-- acceptance job: [112968478718](https://github.com/takano536/scoop-bucket/actions/runs/37670616565/job/112968478718)
+- run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)
+- acceptance job: [112983466324](https://github.com/takano536/scoop-bucket/actions/runs/37673954715/job/112983466324)
 - upstream: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- このrunのbucket commit: `fe77bec`
+- このrunのbucket commit: `371b9a0`
 - build ZIP: `hermes-agent-light-preview-a3ed4a1-windows-x64.zip`
-- ZIP SHA256: `1f5e10655947b635a9b62e271db6418c7cc0883f86884e633c57c6789039741e`
+- ZIP SHA256: `72f30c28b60e43c31f344681a425818f8400a7515378e04ee7f09044783f7648`
 - acceptance artifact: `hermes-light-windows-acceptance`（保持14日）
 - Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
   user-data残存を確認。preload bridge IPCを通じたアプリ側の認証済み`session.list`
@@ -106,7 +106,7 @@ main由来のコードを過去の安定版の名前で配布しない。
 接続設定保持も確認済みである。ただしこのrunnerはクリーンなWindowsではなく、
 安定版の実アップグレードや配布を証明するものではない。
 
-- [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37670616565）。
+- [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37673954715）。
 - [x] gateway接続、認証・接続設定の移行、Lightのローカル動作制約（同run）。
 - [ ] 対応安定版でのtag/claim admissionと実ビルド。
 - [ ] マージ後のReleases公開・manifest/READMEのmain書き戻し。
