@@ -31,6 +31,13 @@ try {
             $arches = if ($original.architecture) { @($original.architecture.PSObject.Properties.Name) } else { @('64bit') }
             foreach ($arch in $arches) {
                 if (!(arch_specific 'url' $original.autoupdate $arch)) { throw "Missing autoupdate.url for $arch" }
+                foreach ($property in @('url', 'extract_dir')) {
+                    foreach ($template in @(arch_specific $property $original.autoupdate $arch)) {
+                        if ([string]$template -like "*$($original.version)*" -and [string]$template -notmatch '\$(?:\w*Version|version|match\w*)') {
+                            throw "Fixed version in autoupdate.$property for ${arch}: $template"
+                        }
+                    }
+                }
             }
             $dir = Join-Path $work $file.BaseName
             New-Item $dir -ItemType Directory | Out-Null
@@ -53,9 +60,9 @@ try {
                 # Same-version regeneration must reproduce the published manifest.
                 if ($updated.version -eq $original.version) {
                     foreach ($property in @('url', 'hash', 'extract_dir')) {
-                        $before = @(arch_specific $property $original $arch) | ConvertTo-Json -Compress
-                        $after = @(arch_specific $property $updated $arch) | ConvertTo-Json -Compress
-                        if ($before -cne $after) { throw "Current $property disagrees with autoupdate for $arch" }
+                        $before = ConvertTo-Json -InputObject ([string[]]@(arch_specific $property $original $arch)) -Compress
+                        $after = ConvertTo-Json -InputObject ([string[]]@(arch_specific $property $updated $arch)) -Compress
+                        if ($before -cne $after) { throw "Current $property disagrees with autoupdate for ${arch}: $before vs $after" }
                     }
                 }
                 for ($i = 0; $i -lt $urls.Count; $i++) {

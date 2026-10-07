@@ -29,6 +29,8 @@ try {
         @{ Name = 'unreachable-checkver'; Fails = $true; Mutate = { param($m) $m.checkver.url = "$base/missing" } },
         @{ Name = 'wrong-download-url'; Fails = $true; Mutate = { param($m) $m.autoupdate.url = "$base/missing-`$version.zip" } },
         @{ Name = 'unresolved-placeholder'; Fails = $true; Mutate = { param($m) $m.autoupdate.extract_dir = 'app-$versoin' } },
+        @{ Name = 'fixed-version-url'; Fails = $true; Mutate = { param($m) $m.autoupdate.url = "$base/app-2.0.0.zip" } },
+        @{ Name = 'fixed-version-extract-dir'; Fails = $true; Mutate = { param($m) $m.autoupdate.extract_dir = 'app-2.0.0' } },
         @{ Name = 'missing-url-template'; Fails = $true; Mutate = { param($m) $m.autoupdate.Remove('url') } },
         @{ Name = 'incorrect-hash'; Fails = $true; Mutate = { param($m) $m.hash = '0' * 64 } },
         @{ Name = 'wrong-extract-dir'; Fails = $true; Mutate = { param($m) $m.autoupdate.extract_dir = 'nonexistent' } },
