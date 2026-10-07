@@ -81,6 +81,8 @@ def is_workspace_package(source: Path, package_dir: Path) -> bool:
     if "node_modules" in relative.parts:
         return False
     return bool(relative.parts and relative.parts[0] in {"apps", "ui-tui", "web", "tests-js"})
+
+
 def optional_package_names(source: Path) -> set[str]:
     """Return package names marked optional by the exact npm lockfile."""
     names: set[str] = set()
@@ -103,6 +105,8 @@ def optional_package_names(source: Path) -> set[str]:
             if name:
                 names.add(name)
     return names
+
+
 PLATFORM_PACKAGE_TOKEN = re.compile(
     r"(?:^|[-/])(aix|android|arm64|darwin|freebsd|ia32|linux|netbsd|openbsd|openharmony|ppc64|riscv64|s390x|sunos|wasm32|win32|x64)(?:[-/]|$)",
     re.I,
@@ -111,11 +115,6 @@ PLATFORM_PACKAGE_TOKEN = re.compile(
 
 def is_platform_package(name: str) -> bool:
     return bool(PLATFORM_PACKAGE_TOKEN.search(name))
-
-
-
-
-
 
 
 
