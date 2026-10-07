@@ -13,10 +13,18 @@ spec.loader.exec_module(notices)
 
 
 class NoticeTests(unittest.TestCase):
-    def package(self, root, license_name, files=None, author=None):
-        package = root / 'node_modules' / 'fixture-package'
+    def package(
+        self,
+        root,
+        license_name,
+        files=None,
+        author=None,
+        name='fixture-package',
+        version='1.0.0',
+    ):
+        package = root / 'node_modules' / name
         package.mkdir(parents=True)
-        metadata = {'name': 'fixture-package', 'version': '1.0.0', 'license': license_name}
+        metadata = {'name': name, 'version': version, 'license': license_name}
         if author is not None:
             metadata['author'] = author
         (package / 'package.json').write_text(
@@ -25,6 +33,20 @@ class NoticeTests(unittest.TestCase):
         for filename, text in (files or {}).items():
             (package / filename).write_text(text, encoding='utf-8')
         return package, metadata
+
+    def override(self, **changes):
+        entry = {
+            'spdx': 'MIT',
+            'copyright': 'Copyright (c) teomyth',
+            'evidence': {
+                'url': 'https://raw.githubusercontent.com/example/project/'
+                '0123456789abcdef0123456789abcdef01234567/README.md',
+                'sha256': 'a' * 64,
+            },
+            'note': 'Reviewed package author attribution.',
+        }
+        entry.update(changes)
+        return {'fixture-package@1.0.0': entry}
 
     def test_mpl_excerpt_fails_closed(self):
         excerpt = (
@@ -53,6 +75,51 @@ class NoticeTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, 'NOTICE without a LICENSE'):
                 notices.license_text(package, metadata, 'fixture-package')
+
+    def test_license_override_applies_on_exact_match(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT')
+            used = set()
+            license_name, text = notices.license_text(
+                package,
+                metadata,
+                'fixture-package',
+                self.override(),
+                used,
+            )
+            self.assertEqual(license_name, 'MIT')
+            self.assertEqual(used, {'fixture-package@1.0.0'})
+            self.assertIn('License text reconstructed from the declared SPDX license', text)
+            self.assertIn('Copyright (c) teomyth', text)
+            self.assertIn('Evidence source:', text)
+            self.assertIn('Permission is hereby granted', text)
+
+    def test_license_override_does_not_replace_empty_license_file(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', {'LICENSE': ''})
+            with self.assertRaisesRegex(RuntimeError, 'Cannot determine a license text'):
+                notices.license_text(package, metadata, 'fixture-package', self.override())
+
+    def test_license_override_version_mismatch_fails(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', version='1.0.1')
+            with self.assertRaisesRegex(RuntimeError, 'Cannot determine a license text'):
+                notices.license_text(package, metadata, 'fixture-package', self.override())
+
+    def test_license_override_spdx_mismatch_fails(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT')
+            with self.assertRaisesRegex(RuntimeError, 'SPDX mismatch'):
+                notices.license_text(
+                    package,
+                    metadata,
+                    'fixture-package',
+                    self.override(spdx='Apache-2.0'),
+                )
+
+    def test_unused_license_override_fails(self):
+        with self.assertRaisesRegex(RuntimeError, 'Unused license override entries'):
+            notices.validate_unused_overrides(self.override(), set())
 
     def test_unknown_or_missing_license_fails_closed(self):
         for license_name in ('Custom-License', ''):

@@ -18,9 +18,30 @@ UNOFFICIAL_FILE = "UNOFFICIAL-BUILD.txt"
 # separate: a NOTICE file contains attribution text, not the license terms.
 LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying)(?:[._ -].*)?$", re.I)
 NOTICE_FILE = re.compile(r"^notice(?:[._ -].*)?$", re.I)
+OVERRIDES_FILE = Path(__file__).with_name("hermes-light-license-overrides.json")
 
-# A package's complete license text must come from the package files. A NOTICE
-# file is attribution-only and never substitutes for a LICENSE file.
+MIT_LICENSE_TEXT = """MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE."""
+
+# A package's complete license text normally comes from package files. An
+# explicitly reviewed, immutable-source override is the only no-file exception.
 
 
 def sha256(path: Path) -> str:
@@ -129,6 +150,90 @@ def notice_files(package_dir: Path) -> list[Path]:
     ]
 
 
+def load_license_overrides() -> dict[str, dict]:
+    try:
+        data = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Cannot read license overrides: {OVERRIDES_FILE}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"License overrides must be an object: {OVERRIDES_FILE}")
+    for key, entry in data.items():
+        if not isinstance(key, str) or not key.rpartition("@")[0] or not key.rpartition("@")[2]:
+            raise RuntimeError(f"Invalid license override key: {key!r}")
+        if not isinstance(entry, dict):
+            raise RuntimeError(f"License override must be an object: {key}")
+        spdx = entry.get("spdx")
+        copyright_line = entry.get("copyright")
+        evidence = entry.get("evidence")
+        note = entry.get("note")
+        if not isinstance(spdx, str) or not spdx:
+            raise RuntimeError(f"License override has no SPDX id: {key}")
+        if not isinstance(copyright_line, str) or not re.fullmatch(
+            r"Copyright \(c\) \S.*", copyright_line
+        ):
+            raise RuntimeError(f"License override has invalid copyright line: {key}")
+        if not isinstance(evidence, dict):
+            raise RuntimeError(f"License override has no evidence object: {key}")
+        url = evidence.get("url")
+        digest = evidence.get("sha256")
+        if not isinstance(url, str) or not re.fullmatch(
+            r"https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/.+",
+            url,
+        ):
+            raise RuntimeError(f"License override evidence URL is not immutable: {key}")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise RuntimeError(f"License override evidence SHA256 is invalid: {key}")
+        if not isinstance(note, str) or not note.strip():
+            raise RuntimeError(f"License override has no note: {key}")
+    return data
+
+
+def validate_unused_overrides(overrides: dict[str, dict], used: set[str]) -> None:
+    unused = sorted(set(overrides) - used)
+    if unused:
+        raise RuntimeError(f"Unused license override entries: {', '.join(unused)}")
+
+
+def override_license_text(
+    declaration: str,
+    name: str,
+    version: str,
+    overrides: dict[str, dict],
+    used: set[str] | None,
+) -> str | None:
+    key = f"{name}@{version}"
+    entry = overrides.get(key)
+    if entry is None:
+        return None
+    if entry["spdx"] != declaration:
+        raise RuntimeError(
+            f"License override SPDX mismatch for shipped package {key}: "
+            f"{entry['spdx']} != {declaration}"
+        )
+    if entry["spdx"] != "MIT":
+        raise RuntimeError(f"Unsupported license override SPDX id for shipped package {key}: {entry['spdx']}")
+    if used is not None:
+        used.add(key)
+    evidence = entry["evidence"]
+    copyright_line = entry["copyright"]
+    terms = MIT_LICENSE_TEXT.replace(
+        "MIT License\n\n",
+        f"MIT License\n\n{copyright_line}\n\n",
+        1,
+    )
+    return "\n".join(
+        [
+            "License text reconstructed from the declared SPDX license and the cited copyright source.",
+            f"Declared SPDX license: {declaration}",
+            f"Copyright evidence: {copyright_line}",
+            f"Evidence source: {evidence['url']}",
+            f"Evidence SHA256: {evidence['sha256']}",
+            "",
+            terms,
+        ]
+    )
+
+
 def spdx_identifiers(license_name: str) -> list[str] | None:
     identifiers = re.findall(r"[A-Za-z0-9][A-Za-z0-9.+-]*", license_name)
     if not identifiers:
@@ -187,10 +292,21 @@ def validate_license_text(declaration: str, text: str, name: str) -> None:
         raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
 
 
-def license_text(package_dir: Path, metadata: dict, name: str) -> tuple[str, str]:
+def license_text(
+    package_dir: Path,
+    metadata: dict,
+    name: str,
+    overrides: dict[str, dict] | None = None,
+    used_overrides: set[str] | None = None,
+) -> tuple[str, str]:
     declaration = declared_license(metadata)
     if not declaration:
         raise RuntimeError(f"Cannot determine a license text for shipped package {name} (no declaration)")
+    if overrides is None:
+        overrides = load_license_overrides()
+    version = metadata.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"Shipped package has incomplete package.json: {package_dir}")
     files = license_files(package_dir)
     notices = notice_files(package_dir)
     license_pieces = []
@@ -210,6 +326,18 @@ def license_text(package_dir: Path, metadata: dict, name: str) -> tuple[str, str
         if text:
             notice_pieces.append(f"[{path.name}]\n{text}")
     if not license_pieces:
+        if not files:
+            reconstructed = override_license_text(
+                declaration,
+                name,
+                version,
+                overrides,
+                used_overrides,
+            )
+            if reconstructed is not None:
+                text = "\n\n".join([reconstructed, *notice_pieces])
+                validate_license_text(declaration, text, name)
+                return declaration, text
         if notice_pieces:
             raise RuntimeError(f"Found NOTICE without a LICENSE text for shipped package {name}")
         raise RuntimeError(f"Cannot determine a license text for shipped package {name} ({declaration or 'no declaration'})")
@@ -259,6 +387,8 @@ def package_identity(package_dir: Path, metadata: dict) -> str:
 def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str, Path]]:
     desktop = source / "apps" / "desktop"
     desktop_meta = read_json(desktop / "package.json")
+    overrides = load_license_overrides()
+    used_overrides: set[str] = set()
     optional_names = optional_package_names(source)
     direct = {}
     for field, is_optional in (("dependencies", False), ("optionalDependencies", True), ("devDependencies", False)):
@@ -284,7 +414,13 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         metadata = read_json(package_dir / "package.json")
         package_name = package_identity(package_dir, metadata)
         if not is_workspace_package(source, package_dir):
-            license_name, text = license_text(package_dir, metadata, package_name)
+            license_name, text = license_text(
+                package_dir,
+                metadata,
+                package_name,
+                overrides,
+                used_overrides,
+            )
             packages.append((package_name, metadata["version"], license_name, text, package_dir))
         fields = (("dependencies", False), ("optionalDependencies", True))
         if is_workspace_package(source, package_dir):
@@ -294,6 +430,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
             if isinstance(values, dict):
                 dependency_optional = is_optional or package_name in optional_names or is_platform_package(package_name)
                 queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
+    validate_unused_overrides(overrides, used_overrides)
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
     return packages
 

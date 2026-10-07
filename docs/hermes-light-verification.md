@@ -57,7 +57,12 @@ devDependenciesも辿る。lockfileで`optional`とされた、または名前�
 完全な`LICENSE`/`LICENSE-*`本文（SPDX本文を含む）とpackage固有の権利表示を
 同梱候補packageから特定できない場合は、buildを失敗させる。`NOTICE`はlicense本文として
 扱わず、MPLの抜粋、package固有copyright行のないMIT fallback、`LICENSE`本文のない
-Apache `NOTICE`だけのpackageも成功にしない。汎用テンプレートへの暗黙のfallbackは行わない。
+Apache `NOTICE`だけのpackageも成功にしない。例外は`hermes-light-license-overrides.json`に
+exact name/versionでレビュー済み登録されたpackageだけで、package.jsonのSPDX一致、immutable
+evidence URL/SHA256、copyright line、noteを検証し、標準SPDX本文と証拠sourceから再構成する。
+汎用テンプレートへの暗黙のfallbackや未使用override entryは成功にしない。
+`@audiowave/react@0.6.2`のoverride（`scripts/hermes-light-license-overrides.json`）は、
+READMEのimmutable commit evidenceとSHA256をownerが再確認する公開前レビュー項目である。
 `UNOFFICIAL-BUILD.txt`には上流ref/commit、bucket commit、workflow URL、各licenseファイルの
 場所を記録する。`provenance.json`には3ファイルのSHA256と対象package数を記録し、
 publish側はZIP内の存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
