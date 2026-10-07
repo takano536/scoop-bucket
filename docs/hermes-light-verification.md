@@ -62,6 +62,9 @@ Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
 - Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
   user-data残存を確認。上流同一commitのgatewayに対する認証済みHTTP+WebSocket、
   `/api/sessions`の`200`、誤secretの`401`、Scoop update後の設定・tokenSet保持を確認。
+- 異なるLight対応upstream commitの同一runビルドはまだないため、before/afterは
+  同じZIPを異なるtest-only versionとして使った。これはScoop更新時の設定保持を
+  検証するが、異なるバイナリ間のmigrationは証明しない。
 - PE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
   `false`であり、クリーンなWindowsへのruntime独立性は未証明。
 - previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
