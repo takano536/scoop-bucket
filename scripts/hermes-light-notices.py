@@ -105,8 +105,6 @@ def optional_package_names(source: Path) -> set[str]:
     return names
 
 
-def package_dependency_is_optional(package_name: str, optional_names: set[str]) -> bool:
-    return package_name in optional_names
 
 
 
@@ -264,7 +262,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         for field, is_optional in fields:
             values = metadata.get(field, {})
             if isinstance(values, dict):
-                dependency_optional = is_optional or package_dependency_is_optional(package_name, optional_names)
+                dependency_optional = is_optional or package_name in optional_names
                 queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
     return packages
