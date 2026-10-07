@@ -31,21 +31,40 @@
 - バイナリ・ZIPをGitへcommitしない。配布成果物はGitHub Releasesで扱う。
 - CIのログ・cache・一時ファイルをcommitしない。
 
-## ビルドと配布
+## Manifestと配布物の種類
 
-- ビルド成果物の配布ルールは [docs/distribution-policy.md](docs/distribution-policy.md) に従う。
-- Release tag は `<app>/v<upstream-version>-r<revision>`。
-- Scoop manifest version は `<upstream-version>-r<revision>`。
-- ZIP名は `<app>-<upstream-version>-r<revision>-windows-<arch>.zip`。
-- 改訂番号の扱い、同一上流版の修正版、再実行時の扱いは [配布ルール](docs/distribution-policy.md) を確認する。
+このbucketには、上流の配布物を参照する通常のScoop manifestと、このbucket自身が
+ビルドしてGitHub Releasesから配布するアプリのmanifestがある。両者のルールを
+混同しない。
+
+### 通常のScoop manifest
+
+- `bucket/UDEVGothic-NF.json` のように、上流が公開したバイナリをURLとhashで参照する
+  manifestは、上流のversion、checkver、autoupdate、ライセンス表示に従う。
+- このbucketの自前配布物向けの改訂番号（`rN`）、Release tag、ZIP命名規則、
+  公開ゲート、provenance・ライセンス・著作権・第三者通知の確認ゲートは、
+  そのmanifestには適用しない。
+
+### このbucketがビルドして配布するアプリ
+
+- このbucketのworkflowが上流ソースからビルドし、GitHub Releasesに公開するアプリは、
+  [配布ルール](docs/distribution-policy.md)とアプリ固有の契約に従う。
+- Release tagは`<app>/v<upstream-version>-r<revision>`、Scoop manifest versionは
+  `<upstream-version>-r<revision>`、ZIP名は
+  `<app>-<upstream-version>-r<revision>-windows-<arch>.zip`とする。
+- 改訂番号、同じ上流版の修正版、再実行、ライセンス・通知確認の扱いは、共通ルールと
+  アプリ固有文書の両方を確認する。Hermes Light固有の条件は
+  [Hermes Light検証](docs/hermes-light-verification.md)に記載する。
 
 ## CIの安全規則
 
-- PRの検証ジョブはread-onlyとし、公開や `main` への書き戻しを行わない。
-- Hermes LightのRelease公開と、そのmanifest・README書き戻しは、trusted `main`、明示的な公開ゲート、必要な権限がそろった場合だけ行う。
-- Hermes Lightは公開URLから実アセットを取得してSHA256を再検証してからmanifest・READMEを書き戻す。
-- Hermes Lightの公開済みアセットを上書きしない。修正版は別Releaseにする。
-- 自動化の再実行は冪等にし、重複や黙ったskipを成功扱いにしない。
+- すべてのPR検証ジョブはread-onlyとし、公開や`main`への書き戻しを行わない。
+- bucket-built distributionの公開とmanifest・READMEの書き戻しは、trustedな`main`、
+  アプリ固有の明示的な公開ゲート、必要な権限がそろった場合だけ行う。
+- bucket-built distributionは、公開URLから実アセットを取得してSHA256を再検証してから
+  manifest・READMEを書き戻す。公開済みアセットを上書きせず、修正版は別Releaseにする。
+- 自動化の再実行は冪等にし、重複や黙ったskipを成功扱いにしない。ゲートや未確認事項は
+  各アプリの文書に記録する。
 
 ## 共有ホストのリソース規則
 
