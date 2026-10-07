@@ -34,6 +34,46 @@ scoop bucket add <bucketname> https://github.com/<username>/<bucketname>
 scoop install <bucketname>/<manifestname>
 ```
 
+## 自動更新の検証
+
+`Autoupdate validation` は、通常のmanifest CIとは別に、Scoop自身の
+`checkver.ps1 -ForceUpdate -ThrowError` を使って更新経路を検証します。
+PR・default branchへのpush・手動実行・毎日の定期実行・Excavator終了後に実行します。
+Excavatorの`GITHUB_TOKEN`によるpushでは通常のpush CIが起動しないため、
+`workflow_run`でdefault branchの最新状態を読み直します。
+
+- `checkver` / `autoupdate` / アーキテクチャ別URLの不足を検出。
+- 一時コピーのバージョンを検証用に変更し、実際に最新版の取得と再生成を実行。
+  `-Version`は使わず、取得失敗・正規表現不一致による「正常終了」も検出。
+- 版番号が埋め込まれた固定URL・展開先や、未展開の変数を検出。
+- 再生成したURLから実際にダウンロードし、ハッシュを照合。
+- `extract_dir`がある場合は7-Zipで展開して、そのディレクトリの存在を確認。
+- 既に最新版なら、再生成結果が現在のURL・ハッシュ・展開先と一致することを確認。
+
+ローカルHTTPサーバーを使った回帰テストで正常系と異常系を検証します。
+`tests/fixtures/UDEVGothic-NF.json`は旧bucketの更新設定に基づく、公式配信との
+接続確認用fixtureです。`bucket/`への移植ではなく、フォントのインストール処理も
+含みません。実際のmanifestが追加されると`bucket/*.json`も全件検証されます。
+空bucketは「実manifestの検証未実施」と警告・Summaryに明示します。
+
+### 手動実行
+
+```powershell
+gh workflow run autoupdate.yml --repo takano536/scoop-bucket --ref master
+```
+
+Scoop・PowerShell 7・7-ZipがあるWindows環境なら、ローカルでも実行できます。
+
+```powershell
+.\bin\test-autoupdate.ps1 -ScoopHome (scoop prefix scoop)
+```
+
+この検証はmanifest原本を変更せず、インストール・アンインストールのhookも
+実行しません。Scoopの更新処理によるダウンロードキャッシュは作成されます。
+外部サイト障害も検証失敗になります。将来の配布命名変更、取得元自体が古い版を
+返す問題、フォントの登録・GUI動作、Excavatorのcommit/push権限は保証しません。
+また、複雑な独自hookや複数アーカイブの組合せは個別テストが必要です。
+
 ## How do I contribute new manifests?
 
 To make a new manifest contribution, please read the [Contributing

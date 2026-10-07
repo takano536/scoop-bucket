@@ -19,7 +19,7 @@ try {
         url = "$base/app-2.0.0.zip"; hash = (Invoke-RestMethod "$base/hash").Trim()
         extract_dir = 'app-2.0.0'
         checkver = @{ url = "$base/latest"; regex = 'v([\d.]+)' }
-        autoupdate = @{ url = "$base/app-`$version.zip"; extract_dir = 'app-`$version' }
+        autoupdate = @{ url = "$base/app-`$version.zip"; extract_dir = 'app-$version' }
     }
     $cases = @(
         @{ Name = 'valid-current-version'; Fails = $false; Mutate = {} },
