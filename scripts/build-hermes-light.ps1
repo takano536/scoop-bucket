@@ -18,6 +18,18 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
     throw 'Wrong payload, provenance, or update owner'
 }
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
+$bucket = Join-Path $root 'bucket'
+$repository = $env:GITHUB_REPOSITORY
+$runUrl = "https://github.com/$repository/actions/runs/$env:GITHUB_RUN_ID"
+$bucketCommit = (git -C $bucket rev-parse HEAD).Trim()
+$noticeMetadata = & python "$bucket/scripts/hermes-light-notices.py" `
+    --source $source `
+    --pack $pack `
+    --source-ref $env:SOURCE_REF `
+    --commit $commit `
+    --bucket-repository $repository `
+    --bucket-commit $bucketCommit `
+    --run-url $runUrl | ConvertFrom-Json
 $exeName = 'Hermes Light.exe'
 if ($env:PREVIEW -eq 'true') { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
 $exe = Get-Item (Join-Path $pack $exeName)
@@ -42,6 +54,7 @@ $receipt = @{
     executable = $exe.Name
     smoke = 'two native launches; renderer loaded; localStorage retained'
     nativeChecks = Get-Content "$out/native-checks.json" -Raw | ConvertFrom-Json
+    notices = $noticeMetadata
     signing = 'unsigned unofficial build'
     run = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
 }

@@ -39,6 +39,39 @@ main由来のコードを過去の安定版の名前で配布しない。
 起動は確認済みだが、リモート専用のUI/実行制約、gateway接続、接続/認証設定の
 実アップグレード移行は確認できていない。表示だけからローカル動作の可否を断定しない。
 
+## ライセンス通知と名称・ロゴの公開条件
+
+PR #4 の Windows 成果物（[run 37642669034](https://github.com/takano536/scoop-bucket/actions/runs/37642669034)）を調査した。ZIP は 1,191 エントリで、`LICENSE.electron.txt` と
+`LICENSES.chromium.html` は既に含まれていた。一方、上流の `LICENSE`、第三者通知、
+非公式配布表示は含まれていなかった。`resources/app.asar` のヘッダーを読み取り、
+`dist/node_modules/get-windows` と `dist/node_modules/node-pty` が同梱され、その他の
+desktop production dependency は bundle に入る構成であることを確認した。
+
+今回のWindows buildでは、対象commitの上流 `LICENSE` をそのまま `LICENSE` としてコピーし、
+インストール済みproduction dependency tree（native packageとbundle対象を含む）の
+license fileまたはpackage metadataから `THIRD-PARTY-NOTICES.txt` を生成する。licenseを
+判定できない同梱packageが一つでもあればbuildを失敗させる。`UNOFFICIAL-BUILD.txt` には
+上流ref/commit、bucket commit、workflow URL、各licenseファイルの場所を記録する。
+`provenance.json` には3ファイルのSHA256と対象package数を記録し、publish側はZIP内の
+存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
+
+manifestの`license`は、Hermes Agent本体の上流`package.json`/`LICENSE`がMITであるため
+`MIT`のままとする。依存packageごとに異なるlicenseの集合を一つの正確なSPDX式へ
+置き換えることはできないため、manifestへ`Freeware`等を記載せず、同梱の
+`THIRD-PARTY-NOTICES.txt`で各依存のlicense本文を示す。
+
+名称・ロゴの条件を、対象commitの[README](https://github.com/NousResearch/hermes-agent/blob/a3ed4a173070e981332e4d879ff6cc8b9efd57ab/README.md)、
+desktopの[identity](https://github.com/NousResearch/hermes-agent/blob/a3ed4a173070e981332e4d879ff6cc8b9efd57ab/apps/desktop/product-identity.cjs)、
+[electron-builder設定](https://github.com/NousResearch/hermes-agent/blob/a3ed4a173070e981332e4d879ff6cc8b9efd57ab/apps/desktop/electron-builder.config.cjs)、
+[Contributing](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing)、
+および[公式サイト](https://hermes-agent.nousresearch.com/)で検索した。これらは
+Nous ResearchがHermes Agentを作成・提供すること、Hermes/Hermes Lightの名称・画像・
+アイコンを使うことは示すが、第三者による再配布での商標・ロゴ利用許諾やブランド
+ガイドラインは示していない。MIT licenseも商標の許諾を与えない。このため、非公式・
+unsigned表示を追加しても、名称・ロゴの利用条件は**未確認**であり、公開前に上流の
+書面による許諾または明確なブランド規則を確認するまで配布開始の阻害条件とする。
+
+
 - 対応安定版でのtag/claim admissionと実ビルド。
 - Windows上のScoop実インストール・更新・ショートカット起動。
 - gateway接続、認証・接続設定の移行、Lightのローカル動作制約。
