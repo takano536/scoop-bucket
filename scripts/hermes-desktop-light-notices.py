@@ -377,6 +377,13 @@ MIT_REQUIRED_MARKERS = (
     "Permission is hereby granted",
     "THE SOFTWARE IS PROVIDED",
 )
+MIT_GRANT_MARKERS = (
+    "Permission is hereby granted",
+    # Some package-supplied MIT notices use the standard short form: they
+    # identify the MIT license by name and retain its complete disclaimer.
+    "Licensed under the MIT license",
+    "Licensed under MIT license",
+)
 
 
 def has_placeholder_copyright(text: str) -> bool:
@@ -406,8 +413,7 @@ def validate_license_text(
         if missing:
             raise RuntimeError(f"Incomplete MPL-2.0 license text for shipped package {name}")
     if "MIT" in identifiers:
-        missing = [marker for marker in MIT_REQUIRED_MARKERS if marker not in text]
-        if missing:
+        if not any(marker in text for marker in MIT_GRANT_MARKERS) or MIT_REQUIRED_MARKERS[1] not in text:
             raise RuntimeError(f"Incomplete MIT license text for shipped package {name}")
         if has_placeholder_copyright(text):
             raise RuntimeError(f"MIT license text has placeholder copyright for shipped package {name}")

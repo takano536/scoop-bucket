@@ -346,6 +346,27 @@ class NoticeTests(unittest.TestCase):
             self.assertEqual(license_name, 'MIT')
             self.assertIn('Original code Copyright Julian Gruber', text)
 
+    def test_package_supplied_short_mit_notice_with_disclaimer_passes(self):
+        short_mit = '''Dijkstra path-finding functions.
+
+Copyright (C) 2008 Wyatt Baldwin
+
+Licensed under the MIT license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+'''
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', {'LICENSE.md': short_mit})
+            license_name, text = notices.license_text(package, metadata, 'fixture-package')
+            self.assertEqual(license_name, 'MIT')
+            self.assertIn('Licensed under the MIT license', text)
+
     def test_full_mit_license_variant_with_copyright_passes(self):
         full_mit = '''MIT License
 
