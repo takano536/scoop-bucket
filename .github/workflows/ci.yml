@@ -8,7 +8,7 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_run:
-    workflows: [Hermes Light]
+    workflows: [Hermes Desktop Light]
     types: [completed]
 
 permissions:
@@ -44,6 +44,10 @@ jobs:
         with:
           repository: ScoopInstaller/Scoop
           path: 'scoop_core'
+      - name: Run distribution-name guard
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m unittest discover -s .\my_bucket\tests -p test_distribution.py -v
       - name: Install and cache test dependencies
         uses: potatoqualitee/psmodulecache@9e4b63833c22c1768d648e115a9c849afdda22a5 # v6.3
         with:
