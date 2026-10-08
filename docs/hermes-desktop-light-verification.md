@@ -305,10 +305,10 @@ Formは固定したnpm tarballとupstream commitから取得できる」とい�
 license本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
 fail-closedのままとする。
 
-### 最新Windows出力のfont/image/native確認（run 37799269169）
+### 最新Windows出力のfont/image/native確認（run 37801029051）
 
 license gate到達前に出力されたbuild log（upstream `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、
-head `c8a63a6a3818b72b9774d50aa22e482e8a5c1b99`）のasset一覧とsigning対象を一度確認した。
+head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象を一度確認した。
 最終ZIPはgateで生成されていないため、ここでいう「出荷」は`win-unpacked`へpackされる
 対象としての確認であり、通知生成の5件failureに加えてJetBrains font blockerを報告する。
 
