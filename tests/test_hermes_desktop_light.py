@@ -15,7 +15,6 @@ class ReleaseTests(unittest.TestCase):
         for value in ('a' * 39, 'a' * 41, 'A' * 40, 'g' * 40):
             with self.assertRaisesRegex(ValueError, 'Invalid upstream commit identity'):
                 light._commit(value)
-
     def test_only_published_stable_semver_is_admitted(self):
         self.assertTrue(SCRIPT.exists(), 'Desktop Light release helper is missing')
         spec = importlib.util.spec_from_file_location('light', SCRIPT)
@@ -90,7 +89,6 @@ class ReleaseTests(unittest.TestCase):
         })
         self.assertIn('$matchShortsha', result['autoupdate']['shortcuts'][0][0])
         self.assertEqual(result['shortcuts'][0][0], 'hermes-light-aaaaaaa.exe')
-
 
     def test_release_claim_requires_exact_commit_and_annotated_object(self):
         spec = importlib.util.spec_from_file_location('light', SCRIPT)
@@ -168,7 +166,6 @@ class ReleaseTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, 'conditions fingerprint'):
                 light.verify_artifact(root, record, version, commit, 'development', 'c' * 64)
-
 class PlanTests(unittest.TestCase):
     def setUp(self):
         import base64
@@ -279,7 +276,6 @@ class PlanTests(unittest.TestCase):
                  'draft': False, 'prerelease': False}]
         self.run_dev_plan(rows=rows)
         self.result.assert_called_once_with(build='false', channel='development', transition='stable')
-
     def response(self, endpoint):
         import json
         if endpoint.endswith('/releases/latest'):

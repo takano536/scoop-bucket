@@ -714,6 +714,7 @@ def _publish_stable():
     digest = record['sha256']
     data = manifest(version, repository, digest)
     url = data['architecture']['64bit']['url']
+    # Verify the exact public URL Scoop will consume, not only the API upload.
     with urllib.request.urlopen(url, timeout=120) as response:
         hasher = hashlib.sha256()
         while chunk := response.read(1024 * 1024):

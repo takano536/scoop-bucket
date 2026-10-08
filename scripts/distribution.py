@@ -1,4 +1,9 @@
-"""Shared identity rules for application-scoped community distributions."""
+"""Version helpers for bucket-built apps using the current three-component format.
+
+The helper intentionally accepts only numeric ``major.minor.patch-rN`` versions.
+Applications with CalVer, four-component, or another version contract need their
+own parser and regression tests.
+"""
 import re
 
 UPSTREAM_VERSION = r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'
