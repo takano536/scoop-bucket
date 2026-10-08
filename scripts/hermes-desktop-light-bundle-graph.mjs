@@ -140,13 +140,18 @@ function outputFiles(root) {
 
 const shipped = asarFiles(path.join(pack, 'resources', 'app.asar'))
 const shippedJs = new Map()
-const addShippedScripts = (files) => {
+const normalizedScripts = (files) => {
+  const result = new Map()
   for (const [name, bytes] of files) {
     if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
     const dist = name.indexOf('dist/')
     const relative = dist >= 0 ? name.slice(dist + 'dist/'.length) : name
-    if (/\.(?:js|mjs)$/.test(relative)) shippedJs.set(relative, bytes)
+    if (/\.(?:js|mjs)$/.test(relative)) result.set(relative, bytes)
   }
+  return result
+}
+const addShippedScripts = (files) => {
+  for (const [name, bytes] of normalizedScripts(files)) shippedJs.set(name, bytes)
 }
 addShippedScripts(shipped)
 const unpackedDist = path.join(pack, 'resources', 'app.asar.unpacked', 'dist')
@@ -161,11 +166,7 @@ for (const entry of await readdir(app, { withFileTypes: true })) {
   if (!entry.isDirectory() || !/^\.dist-build-/.test(entry.name)) continue
   const product = path.join(app, entry.name, 'product')
   try {
-    const files = new Map()
-    for (const [name, bytes] of await outputFiles(product)) {
-      if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
-      if (/\.(?:js|mjs)$/.test(name)) files.set(name, bytes)
-    }
+    const files = normalizedScripts(await outputFiles(product))
     upstreamProducts.push({ product, files })
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
