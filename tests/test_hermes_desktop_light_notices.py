@@ -181,9 +181,38 @@ class NoticeTests(unittest.TestCase):
             self.assertIn('License text reproduced from the cited immutable license source.', text)
             self.assertIn('Copyright (c) 2019-present Fabio Spampinato, Andrew Maney', text)
 
-    def test_unused_license_override_fails(self):
-        with self.assertRaisesRegex(RuntimeError, 'Unused license override entries'):
-            notices.validate_unused_overrides(self.override(), set())
+    def test_unused_license_override_is_recorded(self):
+        self.assertEqual(
+            notices.validate_unused_overrides(self.override(), set()),
+            ['fixture-package@1.0.0'],
+        )
+
+    def test_unused_license_override_is_written_to_notice_metadata(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / 'source'
+            (source / 'apps' / 'desktop').mkdir(parents=True)
+            (source / 'apps' / 'desktop' / 'package.json').write_text(
+                json.dumps({'name': 'desktop', 'version': '1.0.0'}), encoding='utf-8'
+            )
+            (source / 'LICENSE').write_text('Upstream license', encoding='utf-8')
+            pack = root / 'pack'
+            (pack / 'resources').mkdir(parents=True)
+            with patch.object(
+                notices, 'bundle_module_graph', return_value={'moduleCount': 0, 'packages': []}
+            ), patch.object(notices, 'asar_node_modules', return_value=set()), patch.object(
+                notices, 'unpacked_node_modules', return_value=set()
+            ), patch.object(notices, 'load_license_overrides', return_value=self.override()):
+                metadata = notices.write_notices(
+                    pack, source, 'main', 'a' * 40, 'example/bucket', 'b' * 40, 'run'
+                )
+            self.assertEqual(metadata['licenseOverrides']['unused'], ['fixture-package@1.0.0'])
+            self.assertEqual(
+                metadata['thirdParty']['inventory']['unusedOverrides'],
+                ['fixture-package@1.0.0'],
+            )
+            notice_text = (pack / 'THIRD-PARTY-NOTICES.txt').read_text(encoding='utf-8')
+            self.assertIn('fixture-package@1.0.0', notice_text)
 
     def test_collect_packages_reports_all_license_failures(self):
         with tempfile.TemporaryDirectory() as scratch:
