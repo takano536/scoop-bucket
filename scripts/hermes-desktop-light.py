@@ -692,7 +692,7 @@ def _publish_development():
     else:
         if not existing:
             gh('release', 'create', tag, '--repo', repository, '--draft', '--target', 'main',
-               '--title', f'Hermes Desktop Light development {version} (not stable)', '--notes',
+               '--title', f'DEVELOPMENT BUILD — NOT STABLE — Hermes Desktop Light {version}', '--notes',
                f'DEVELOPMENT BUILD — NOT STABLE. Unofficial unsigned Windows x64 Light build from {UPSTREAM}@{source_ref}. '
                f'Pinned main commit; MIT LICENSE SHA256 {license_digest}; conditions fingerprint {fingerprint}. Remote-only; no Python/local agent. '
                'Scoop owns updates. See provenance.json for build and smoke receipts.', '--latest=false')
