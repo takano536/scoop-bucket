@@ -147,20 +147,26 @@ def declared_license(metadata: dict) -> str:
     return ""
 
 
+def package_notice_files(package_dir: Path, matcher: re.Pattern[str]) -> list[Path]:
+    """Find package-owned notices, including vendored docs but not nested packages."""
+    paths = []
+    for path in sorted(package_dir.rglob("*"), key=lambda item: str(item).lower()):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(package_dir)
+        if "node_modules" in relative.parts:
+            continue
+        if matcher.fullmatch(path.name):
+            paths.append(path)
+    return paths
+
+
 def license_files(package_dir: Path) -> list[Path]:
-    return [
-        child
-        for child in sorted(package_dir.iterdir(), key=lambda item: item.name.lower())
-        if child.is_file() and LICENSE_FILE.fullmatch(child.name)
-    ]
+    return package_notice_files(package_dir, LICENSE_FILE)
 
 
 def notice_files(package_dir: Path) -> list[Path]:
-    return [
-        child
-        for child in sorted(package_dir.iterdir(), key=lambda item: item.name.lower())
-        if child.is_file() and NOTICE_FILE.fullmatch(child.name)
-    ]
+    return package_notice_files(package_dir, NOTICE_FILE)
 
 
 def load_license_overrides() -> dict[str, dict]:
@@ -418,14 +424,14 @@ def license_text(
         except OSError as exc:
             raise RuntimeError(f"Cannot read license notice for shipped package {name}: {path}") from exc
         if text:
-            license_pieces.append(f"[{path.name}]\n{text}")
+            license_pieces.append(f"[{path.relative_to(package_dir)}]\n{text}")
     for path in notices:
         try:
             text = path.read_text(encoding="utf-8", errors="replace").strip()
         except OSError as exc:
             raise RuntimeError(f"Cannot read NOTICE for shipped package {name}: {path}") from exc
         if text:
-            notice_pieces.append(f"[{path.name}]\n{text}")
+            notice_pieces.append(f"[{path.relative_to(package_dir)}]\n{text}")
 
     if override is not None and override["evidence"]["kind"] == "license":
         reconstructed = override_license_text(

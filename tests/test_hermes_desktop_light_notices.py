@@ -39,7 +39,9 @@ class NoticeTests(unittest.TestCase):
             json.dumps(metadata), encoding='utf-8'
         )
         for filename, text in (files or {}).items():
-            (package / filename).write_text(text, encoding='utf-8')
+            target = package / filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding='utf-8')
         return package, metadata
 
     def override(self, **changes):
@@ -341,7 +343,13 @@ SOFTWARE.
         mpl = '\n\n'.join(notices.MPL_REQUIRED_MARKERS) + '\n'
         with tempfile.TemporaryDirectory() as scratch:
             package, metadata = self.package(
-                Path(scratch), 'MPL-2.0', {'LICENSE.txt': mpl},
+                Path(scratch), 'MPL-2.0', {
+                    'LICENSE.txt': mpl,
+                    'docs/LICENSE.BSD-2-Clause': 'BSD-2-Clause vendored notice',
+                    'docs/LICENSE.BSD-3-Clause': 'BSD-3-Clause vendored notice',
+                    'docs/LICENSE.OFL-1.1': 'OFL-1.1 vendored notice',
+                    'vendor/pako/LICENSE': 'MIT License\n\nCopyright (C) 2014-2016 by Vitaly Puzrin\n\nPermission is hereby granted',
+                },
                 name='@novnc/novnc', version='1.7.0'
             )
             _, text = notices.license_text(package, metadata, '@novnc/novnc')
@@ -349,6 +357,13 @@ SOFTWARE.
             self.assertIn('novnc-1.7.0.tgz', text)
             self.assertIn('63107bd06d9e1f6136ff21aeda8cd62cbf0d433e', text)
 
+            for path in (
+                'docs/LICENSE.BSD-2-Clause',
+                'docs/LICENSE.BSD-3-Clause',
+                'docs/LICENSE.OFL-1.1',
+                'vendor/pako/LICENSE',
+            ):
+                self.assertIn(f'[{path}]', text)
 
 if __name__ == '__main__':
     unittest.main()
