@@ -287,23 +287,26 @@ Formは固定したnpm tarballとupstream commitから取得できる」とい�
 license本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
 fail-closedのままとする。
 
-### 最新Windows出力のfont/image/native確認（run 37795454669）
+### 最新Windows出力のfont/image/native確認（run 37799269169）
 
 license gate到達前に出力されたbuild log（upstream `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、
-head `a677db9ffda7af15c560a2ad9efdcf2c281061fc`）のasset一覧とsigning対象を一度確認した。
+head `c8a63a6a3818b72b9774d50aa22e482e8a5c1b99`）のasset一覧とsigning対象を一度確認した。
 最終ZIPはgateで生成されていないため、ここでいう「出荷」は`win-unpacked`へpackされる
-対象としての確認であり、通知生成の5件failureは別に列挙している。
+対象としての確認であり、通知生成の5件failureに加えてJetBrains font blockerを報告する。
 
 - **Font**: `Collapse-Bold-*.woff2` はCSSのsource pathが
   `@nous-research/ui@0.18.2`を指す。宣言MITだがexact tarballに完全本文/copyright
-  evidenceがなく、下記5件の不足に含まれる。`KaTeX_*`（Main/AMS/Math/Size/
+  evidenceがなく、5件のnpm不足に含まれる。`KaTeX_*`（Main/AMS/Math/Size/
   Caligraphic/Fraktur/Script/SansSerif/Typewriter、woff/woff2/ttf）は
   `katex@0.16.47`のpackage-supplied MIT本文を通知へ収録する対象で、generatorの
   package noticeに含まれる。`codicon-D*.ttf` は`@vscode/codicons@0.0.45`
   のCC-BY-4.0 package notice/attribution（同packageのlicense text）を収録する。
   `JetBrainsMono-{Regular,Bold,Italic}.woff2` は上流
   `apps/desktop/src/fonts`のapp-owned copied fontで、`styles.css`がApache-2.0と
-  明記する。個別のApache本文/source pointerは配布noticeにまだなく、追加の実配布条件不足である。
+  明記する。exact JetBrains release treeのblob SHAは対象commitの3 blobと一致せず、
+  固定versionのApache本文/source pointerを安全に選べないため、
+  `reviewed_distribution_blockers`がpackaged `JetBrainsMono-*.woff2` pathを
+  配布条件不足としてlicense errorと同時にfail-closedする。
 - **Image/icon**: `feature-{memory,automation,connect,sandbox}-*.webp`、
   `apps/desktop/assets`のicon/icon-dark（PNG/ICO/AppX各サイズ）、`apps/desktop/public`
   の`apple-touch-icon.png`/`nous-girl{,-dark}.png`等は対象commitのapp-owned source

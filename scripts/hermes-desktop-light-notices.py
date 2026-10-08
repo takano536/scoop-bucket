@@ -22,6 +22,12 @@ BUNDLE_GRAPH_FILE = "hermes-bundle-module-graph.json"
 LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying)(?:[._ -].*)?$", re.I)
 NOTICE_FILE = re.compile(r"^notice(?:[._ -].*)?$", re.I)
 OVERRIDES_FILE = Path(__file__).with_name("hermes-desktop-light-license-overrides.json")
+REVIEWED_DISTRIBUTION_BLOCKERS = (
+    (
+        re.compile(r"(?:^|/)JetBrainsMono-(?:Regular|Bold|Italic)(?:-[^/]+)?\.woff2$", re.I),
+        "JetBrains Mono is declared Apache-2.0 by the upstream CSS; no exact-version license text, copyright, or source pointer is included",
+    ),
+)
 
 MIT_LICENSE_TEXT = """MIT License
 
@@ -56,6 +62,19 @@ def sha256(path: Path) -> str:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+def reviewed_distribution_blockers(bundle_graph: dict) -> list[str]:
+    shipped = bundle_graph.get("shippedFiles", [])
+    if not isinstance(shipped, list) or not all(isinstance(item, str) and item for item in shipped):
+        raise RuntimeError("Bundle graph shipped file list is invalid")
+    blockers = []
+    for item in shipped:
+        normalized = item.replace("\\", "/")
+        for pattern, reason in REVIEWED_DISTRIBUTION_BLOCKERS:
+            if pattern.search(normalized):
+                blockers.append(f"{normalized}: {reason}")
+                break
+    return blockers
 
 
 def fetch_evidence(url: str) -> bytes:
@@ -1209,6 +1228,10 @@ def collect_packages(
     unused_overrides = validate_unused_overrides(overrides, used_overrides)
     if inventory is not None:
         inventory["unusedOverrides"] = unused_overrides
+    license_failures.extend(
+        f"Reviewed distribution-condition blocker: {item}"
+        for item in reviewed_distribution_blockers(bundle_graph)
+    )
     if license_failures:
         details = "\n".join(f"- {failure}" for failure in license_failures)
         origin_details = "; ".join(

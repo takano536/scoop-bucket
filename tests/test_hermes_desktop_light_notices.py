@@ -452,6 +452,29 @@ class NoticeTests(unittest.TestCase):
             )
             self.assertEqual(graph['unresolvedItems'], ['Unresolved shipped item: assets/unattributed.bin'])
 
+    def test_reviewed_jetbrains_font_blocker_fails_closed(self):
+        with tempfile.TemporaryDirectory() as scratch, patch.object(
+            notices, 'asar_node_modules', return_value=set()
+        ), patch.object(notices, 'unpacked_node_modules', return_value=set()), patch.object(
+            notices, 'load_license_overrides', return_value={}
+        ):
+            source = Path(scratch) / 'source'
+            desktop = source / 'apps' / 'desktop'
+            desktop.mkdir(parents=True)
+            (desktop / 'package.json').write_text(json.dumps({'name': 'desktop'}), encoding='utf-8')
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r'Reviewed distribution-condition blocker: assets/JetBrainsMono-Regular-abc123\.woff2: JetBrains Mono',
+            ):
+                notices.collect_packages(
+                    source,
+                    Path(scratch) / 'pack',
+                    {
+                        'packages': [],
+                        'shippedFiles': ['assets/JetBrainsMono-Regular-abc123.woff2'],
+                    },
+                )
+
     def test_bundle_module_graph_records_missing_evidence(self):
         with tempfile.TemporaryDirectory() as scratch:
             source = Path(scratch) / 'source'
