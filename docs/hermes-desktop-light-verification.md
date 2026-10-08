@@ -220,10 +220,11 @@ noVNCについては、inventory graphが実際の実行形式の位置を分類
 `677823284c7fc9f0baf9e62a6d912192a7eb15f9`の`packages/react/package.json`が
 version `0.6.2`であることを確認した。このcommitにはroot/`packages/react` LICENSEが
 ないため、同commitのroot README（SHA256
-`b131e67bff8cde4879eb0ba4595ab70cb99a0fcd6b9a76f06dc71f230cf0c87d`）を固定して
-MIT attribution overrideを適用する。同じcommitの`packages/core/package.json`は
-version `0.3.1`で、root READMEの同じattributionを使えるため、
-`@audiowave/core@0.3.1`も同じreviewed evidenceで解消する。`khroma@2.1.0`は
+`b131e67bff8cde4879eb0ba4595ab70cb99a0fcd6b9a76f06dc71f230cf0c87d`）を固定した
+reviewed attribution evidenceを確認した。同じcommitの`packages/core/package.json`は
+version `0.3.1`で同じroot attribution evidenceを確認した。今回の実CI inventoryでは
+両packageのbundle moduleが検出されなかったため、未使用overrideを成果物へ残さず、
+実際に出荷された版で再検出された場合だけこのexact evidenceを適用する。`khroma@2.1.0`は
 package.jsonのlicense宣言がないが、exact npm tarballの`package/license`に完全な
 MIT本文とcopyrightがあるため、そのtarball integrity/SHA256・file path・file SHA256
 を固定したoverrideで補う。同一versionの証拠が得られないpackageはoverrideを追加せず
@@ -241,6 +242,12 @@ SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)自体
 holder行がないことを明記する。registry `gitHead`
 `2126c95fd460c81d7b90e45a4588efdb23ba3f99`のupstream LICENSE（同一SHA256）でも
 一致を確認した。bucket側のcopyright行追加やoverrideによる再構成は行わない。
+
+bundle graphで新たに確認した`dijkstrajs@1.0.3`は、exact npm tarballの
+`package/LICENSE.md`がcopyright、MIT license名、完全なdisclaimerを含む短縮形だった。
+このpackage-supplied形式だけを受理し、generic本文は引き続き拒否する。`@pkgjs/parseargs@0.11.0`
+はpackage.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0本文で、
+宣言と実体が衝突するため、上流に正しいlicense宣言を確認するまでhard blockerとする。
 
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
 Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を
