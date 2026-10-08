@@ -4,7 +4,7 @@ function Get-ScoopInstalledState {
         [Parameter(Mandatory = $true)]
         [string]$AppName,
         [Parameter(Mandatory = $false)]
-        [string]$ManifestPath
+        [string]$BucketManifestPath
     )
 
     if (!$env:SCOOP) {
@@ -22,10 +22,10 @@ function Get-ScoopInstalledState {
     $manifestPath = Join-Path $resolvedCurrent 'manifest.json'
     $manifestSource = 'installed-current'
     if (!(Test-Path -LiteralPath $manifestPath)) {
-        if (!$ManifestPath -or !(Test-Path -LiteralPath $ManifestPath)) {
+        if (!$BucketManifestPath -or !(Test-Path -LiteralPath $BucketManifestPath)) {
             throw "Installed manifest is missing and no bucket manifest was supplied: $manifestPath"
         }
-        $manifestPath = (Resolve-Path -LiteralPath $ManifestPath).Path
+        $manifestPath = (Resolve-Path -LiteralPath $BucketManifestPath).Path
         $manifestSource = 'disposable-bucket'
     }
     $installPath = Join-Path $resolvedCurrent 'install.json'
