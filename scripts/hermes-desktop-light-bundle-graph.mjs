@@ -23,12 +23,25 @@ await mkdir(output, { recursive: true })
 
 const appRequire = createRequire(path.join(app, 'package.json'))
 const cssSources = new Set()
+const assetSources = new Map()
 const cssSourceTracker = {
   name: 'hermes-track-css-sources',
   transform(_code, id) {
     const cleanId = id.split(/[?#]/, 1)[0]
     if (cleanId.endsWith('.css')) cssSources.add(path.resolve(cleanId))
     return null
+  },
+  generateBundle(_options, bundle) {
+    for (const [fileName, asset] of Object.entries(bundle)) {
+      if (asset.type !== 'asset') continue
+      const originals = [
+        ...(Array.isArray(asset.originalFileNames) ? asset.originalFileNames : []),
+        ...(typeof asset.originalFileName === 'string' ? [asset.originalFileName] : []),
+      ]
+        .filter((file) => typeof file === 'string' && file.length > 0)
+      if (fileName.endsWith('.css') && originals.length === 0) originals.push(...cssSources)
+      if (originals.length > 0) assetSources.set(fileName, [...new Set(originals)].sort())
+    }
   },
 }
 const vite = await import(pathToFileURL(appRequire.resolve('vite')).href)
@@ -142,7 +155,7 @@ function outputFiles(root) {
       const relative = `${prefix}${entry.name}`
       const file = path.join(directory, entry.name)
       if (entry.isDirectory()) await visit(file, `${relative}/`)
-      else if (/\.(?:js|mjs)$/.test(entry.name)) result.set(relative.replaceAll(path.sep, '/'), readFileSync(file))
+      else if (/\.(?:js|mjs|cjs)$/.test(entry.name)) result.set(relative.replaceAll(path.sep, '/'), readFileSync(file))
     }
   }
   return visit(root).then(() => result)
@@ -156,7 +169,7 @@ const normalizedScripts = (files) => {
     if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
     const dist = name.indexOf('dist/')
     const relative = dist >= 0 ? name.slice(dist + 'dist/'.length) : name
-    if (/\.(?:js|mjs)$/.test(relative)) result.set(relative, bytes)
+    if (/\.(?:js|mjs|cjs)$/.test(relative)) result.set(relative, bytes)
   }
   return result
 }
@@ -196,6 +209,18 @@ const manifest = {
   cssSources: [...cssSources]
     .sort()
     .map((file) => path.relative(source, file).replaceAll(path.sep, '/')),
+  assetSources: Object.fromEntries(
+    [...assetSources]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([file, origins]) => [
+        file,
+        origins.map((origin) => (
+          path.isAbsolute(origin)
+            ? path.relative(source, origin).replaceAll(path.sep, '/')
+            : origin.replaceAll(path.sep, '/')
+        )),
+      ]),
+  ),
   equivalence: {
     asar: 'resources/app.asar/dist',
     unpacked: 'resources/app.asar.unpacked/dist',

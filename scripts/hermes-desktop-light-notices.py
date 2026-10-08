@@ -539,12 +539,8 @@ def source_map_path(map_file: Path, source_name: str) -> Path:
     return (map_file.parent / source_name).resolve()
 
 
-CSS_URL = re.compile(r"""url\(\s*(?P<quote>['"]?)(?P<url>.*?)(?P=quote)\s*\)""", re.I)
-
-
-def css_source_files(source: Path, roots: list[Path]) -> list[Path]:
-    """Read CSS modules recorded by the controlled Vite graph emitter."""
-    manifests = sorted(
+def graph_emitter_manifests(roots: list[Path]) -> list[Path]:
+    return sorted(
         {
             path.resolve()
             for root in roots
@@ -554,6 +550,14 @@ def css_source_files(source: Path, roots: list[Path]) -> list[Path]:
         },
         key=lambda item: str(item).lower(),
     )
+
+
+CSS_URL = re.compile(r"""url\(\s*(?P<quote>['"]?)(?P<url>.*?)(?P=quote)\s*\)""", re.I)
+
+
+def css_source_files(source: Path, roots: list[Path]) -> list[Path]:
+    """Read CSS modules recorded by the controlled Vite graph emitter."""
+    manifests = graph_emitter_manifests(roots)
     css_files: set[Path] = set()
     for manifest in manifests:
         metadata = read_json(manifest)
@@ -572,6 +576,86 @@ def css_source_files(source: Path, roots: list[Path]) -> list[Path]:
                 raise RuntimeError(f"Bundle graph CSS source is missing: {relative}")
             css_files.add(css_file)
     return sorted(css_files, key=lambda item: str(item).lower())
+
+def normalize_graph_output_name(name: str) -> str:
+    name = name.replace("\\", "/").lstrip("./")
+    for prefix in ("dist/", "renderer/"):
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
+def source_origin_path(source: Path, origin: str) -> Path | None:
+    origin = unquote(origin.split("?", 1)[0])
+    if "://" in origin:
+        origin = unquote(urlparse(origin).path)
+    raw = Path(origin)
+    candidates = (
+        (raw,) if raw.is_absolute() else (
+            source / raw,
+            source / "apps" / "desktop" / raw,
+            source / "apps" / "desktop" / "src" / raw,
+            source / "apps" / "desktop" / "public" / raw,
+        )
+    )
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def asset_source_records(source: Path, roots: list[Path]) -> dict[str, list[Path]]:
+    records: dict[str, list[Path]] = {}
+    for manifest in graph_emitter_manifests(roots):
+        metadata = read_json(manifest)
+        values = metadata.get("assetSources")
+        if not isinstance(values, dict):
+            raise RuntimeError(f"Bundle graph emitter has no asset source record: {manifest}")
+        for output_name, origins in values.items():
+            if not isinstance(output_name, str) or not output_name:
+                raise RuntimeError(f"Bundle graph emitter has an invalid asset name: {manifest}")
+            if not isinstance(origins, list) or not origins:
+                raise RuntimeError(f"Bundle graph emitter has no origins for asset: {output_name}")
+            resolved_origins: list[Path] = []
+            for origin in origins:
+                if not isinstance(origin, str) or not origin:
+                    raise RuntimeError(f"Bundle asset has an invalid origin: {output_name}")
+                path = source_origin_path(source, origin)
+                if path is None:
+                    raise RuntimeError(f"Bundle asset origin is missing: {origin} (asset={output_name})")
+                resolved_origins.append(path)
+            key = normalize_graph_output_name(output_name)
+            records.setdefault(key, [])
+            records[key].extend(resolved_origins)
+    for output_name, origins in records.items():
+        records[output_name] = sorted(set(origins), key=lambda item: str(item).lower())
+    return records
+
+
+def app_owned_source(source: Path, path: Path) -> bool:
+    desktop = source / "apps" / "desktop"
+    try:
+        relative = path.relative_to(desktop)
+    except ValueError:
+        return False
+    if not relative.parts or "node_modules" in relative.parts:
+        return False
+    return relative.parts[0] not in {"dist", "build", ".hermes-bundle-graph"}
+
+
+def asset_source_packages(source: Path, records: dict[str, list[Path]]) -> list[tuple[str, Path]]:
+    packages: set[tuple[str, Path]] = set()
+    for output_name, origins in records.items():
+        if not origins:
+            raise RuntimeError(f"Bundle asset has no origins: {output_name}")
+        for origin in origins:
+            package = package_at_path(origin)
+            if package is not None:
+                packages.add(package)
+            elif not app_owned_source(source, origin):
+                raise RuntimeError(f"Bundle asset origin is neither package nor app-owned: {origin} (asset={output_name})")
+    return sorted(packages, key=lambda item: (item[0].lower(), str(item[1]).lower()))
 
 
 def css_asset_packages(css_files: list[Path]) -> list[tuple[str, Path]]:
@@ -605,7 +689,79 @@ def add_graph_package(packages: dict[tuple[str, Path], dict], package: tuple[str
     entry["modules"] += 1
 
 
-def bundle_module_graph(source: Path) -> dict:
+def is_script_name(name: str) -> bool:
+    return name.endswith((".js", ".mjs", ".cjs"))
+
+
+def graph_output_relative(path: Path) -> str:
+    parts = path.resolve().parts
+    for marker in ("dist", "renderer"):
+        if marker in parts:
+            index = len(parts) - 1 - parts[::-1].index(marker)
+            return Path(*parts[index + 1:]).as_posix()
+    return path.name
+
+
+def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> set[str]:
+    outputs: set[str] = set()
+    for map_file in map_files:
+        relative = graph_output_relative(map_file)
+        if relative.endswith((".js.map", ".mjs.map", ".cjs.map")):
+            outputs.add(relative[:-4])
+        try:
+            metadata = json.loads(map_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot read bundle source map: {map_file}") from exc
+        file_name = metadata.get("file")
+        if isinstance(file_name, str) and is_script_name(normalize_graph_output_name(file_name)):
+            outputs.add(normalize_graph_output_name(file_name))
+    for metafile in metafile_files:
+        try:
+            metadata = json.loads(metafile.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot read bundle metafile: {metafile}") from exc
+        outputs_data = metadata.get("outputs")
+        if not isinstance(outputs_data, dict):
+            continue
+        for output_name in outputs_data:
+            if not isinstance(output_name, str):
+                continue
+            normalized = graph_output_relative(Path(output_name))
+            if is_script_name(normalized):
+                outputs.add(normalized)
+                outputs.add(Path(output_name).name)
+    return {normalize_graph_output_name(output) for output in outputs if output}
+
+
+def validate_shipped_dist_attribution(
+    source: Path,
+    pack: Path,
+    map_files: list[Path],
+    metafile_files: list[Path],
+    asset_records: dict[str, list[Path]],
+) -> set[str]:
+    shipped = shipped_dist_files(pack)
+    script_outputs = graph_script_outputs(map_files, metafile_files)
+    unattributed: list[str] = []
+    for relative in sorted(shipped):
+        parts = Path(relative).parts
+        if "node_modules" in parts:
+            continue
+        normalized = normalize_graph_output_name(relative)
+        if normalized in script_outputs:
+            continue
+        if normalized.endswith((".js.map", ".mjs.map", ".cjs.map")) and normalized[:-4] in script_outputs:
+            continue
+        if normalized in asset_records:
+            continue
+        unattributed.append(normalized)
+    if unattributed:
+        details = "\n".join(f"- {path}" for path in unattributed)
+        raise RuntimeError(f"Unattributed packaged app dist files:\n{details}")
+    return shipped
+
+
+def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     """Read Vite source maps and esbuild metafiles emitted by the controlled build."""
     roots = [
         source / "apps" / "desktop" / "dist",
@@ -638,16 +794,11 @@ def bundle_module_graph(source: Path) -> dict:
         for path in root.rglob("*.css")
         if path.is_file()
     }
-    emitter_files = {
-        path.resolve()
-        for root in roots
-        if root.is_dir()
-        for path in root.rglob("graph-emitter.json")
-        if path.is_file()
-    }
+    emitter_files = set(graph_emitter_manifests(roots))
     if css_output_files and not emitter_files:
         raise RuntimeError("Cannot obtain CSS bundle graph: no graph emitter manifest")
     css_files = css_source_files(source, roots)
+    asset_records = asset_source_records(source, roots)
     packages: dict[tuple[str, Path], dict] = {}
     module_count = 0
     for map_file in map_files:
@@ -709,6 +860,15 @@ def bundle_module_graph(source: Path) -> dict:
     for package in css_asset_packages(css_files):
         add_graph_package(packages, package)
         module_count += 1
+    for package in asset_source_packages(source, asset_records):
+        add_graph_package(packages, package)
+        module_count += 1
+    if pack is not None:
+        shipped_files = validate_shipped_dist_attribution(
+            source, pack, map_files, metafile_files, asset_records
+        )
+    else:
+        shipped_files = set()
     if not map_files and not metafile_files:
         raise RuntimeError("Cannot obtain bundled module graph: no source maps or esbuild metafiles")
     if not packages:
@@ -723,9 +883,54 @@ def bundle_module_graph(source: Path) -> dict:
         "schema": 1,
         "maps": [path.relative_to(source).as_posix() for path in map_files],
         "metafiles": [path.relative_to(source).as_posix() for path in metafile_files],
+        "assetSources": {
+            name: [path.relative_to(source).as_posix() for path in origins]
+            for name, origins in sorted(asset_records.items())
+        },
+        "shippedFiles": sorted(shipped_files),
         "moduleCount": module_count,
         "packages": sorted(packages.values(), key=lambda item: (item["name"].lower(), item["path"].lower())),
     }
+
+
+def asar_dist_files(pack: Path) -> set[str]:
+    """List every file under app.asar/dist from the ASAR header."""
+    asar = pack / "resources" / "app.asar"
+    try:
+        with asar.open("rb") as stream:
+            fields = stream.read(16)
+            if len(fields) != 16:
+                raise RuntimeError("ASAR header is truncated")
+            _, _, _, json_size = struct.unpack("<IIII", fields)
+            tree = json.loads(stream.read(json_size))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError("Cannot inspect packaged ASAR header") from exc
+    found: set[str] = set()
+    stack = [("", tree.get("files", {}))]
+    while stack:
+        prefix, node = stack.pop()
+        for child, value in node.items():
+            path = prefix + child
+            if isinstance(value, dict) and "files" in value:
+                stack.append((path + "/", value["files"]))
+            elif path.startswith("dist/") and isinstance(value, dict) and "offset" in value:
+                found.add(path[len("dist/"):])
+    return found
+
+
+def unpacked_dist_files(pack: Path) -> set[str]:
+    root = pack / "resources" / "app.asar.unpacked" / "dist"
+    if not root.is_dir():
+        return set()
+    return {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def shipped_dist_files(pack: Path) -> set[str]:
+    return asar_dist_files(pack) | unpacked_dist_files(pack)
 
 
 def asar_node_modules(pack: Path) -> set[str]:
@@ -889,7 +1094,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     if target_license.read_bytes() != source_license.read_bytes():
         raise RuntimeError("Copied upstream license does not match the checked-out source")
 
-    bundle_graph = bundle_module_graph(source)
+    bundle_graph = bundle_module_graph(source, pack)
     graph_target = pack / "resources" / BUNDLE_GRAPH_FILE
     graph_target.parent.mkdir(parents=True, exist_ok=True)
     graph_target.write_text(
@@ -904,7 +1109,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "=======================",
         "",
         "These notices cover code present in the Hermes Desktop Light win-unpacked payload.",
-        "The inventory is the union of package paths in the app.asar header, physical node_modules under resources/app.asar.unpacked/resources, and package modules or CSS asset references identified by the emitted Vite source maps, CSS sources, and esbuild metafiles.",
+        "The inventory is the union of package paths in the app.asar header, physical node_modules under resources/app.asar.unpacked/resources, and package modules or asset references identified by the emitted Vite source maps, CSS sources, asset-origin manifest, and esbuild metafiles.",
         "DevDependencies and build tooling are included only when the bundle graph proves that their modules shipped; packages listed only in package.json are not included.",
         f"Inventory source counts (unique package names): asar={inventory['asar']}; unpacked={inventory['unpacked']}; bundle-map={inventory['bundleMap']}.",
         f"Upstream repository: {UPSTREAM}",
