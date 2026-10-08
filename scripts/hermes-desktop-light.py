@@ -334,6 +334,7 @@ def _stable_admission_available():
     upstream_version = stable_version(release)
     if upstream_version is None:
         return False
+    tag = release['tag_name']
     commit = _commit(api(f'repos/{UPSTREAM}/commits/{tag}')['sha'])
     if not supports_light(commit):
         return False
