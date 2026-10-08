@@ -32,7 +32,7 @@
 ## Windows受入ジョブ（このPRで追加）
 
 `.github/workflows/hermes-light.yml` の`acceptance` jobは、`build`の
-Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local Git bucketの
+Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local bucketの
 test-only manifestで次を確認する。manifestはbucketの本番ツリーには追加しない。
 
 - Scoop install前後の`apps/<app>/current/manifest.json`と`install.json`を読み戻し、

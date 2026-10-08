@@ -478,19 +478,11 @@ try {
         hash = $zipHash
         shortcuts = @(, @($executableName, $shortcutName, $cdpArgument))
     }
+    $bucketDirectory = Join-Path (Join-Path $env:SCOOP 'buckets') $bucketName
+    $bucketManifestPath = Join-Path (Join-Path $bucketDirectory 'bucket') "$appName.json"
     New-Item -ItemType Directory -Force -Path (Join-Path $bucketDirectory 'bucket') | Out-Null
-    & git -C $bucketDirectory init --quiet
-    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the disposable acceptance bucket' }
-    & git -C $bucketDirectory config user.email 'hermes-light-acceptance@example.invalid'
-    & git -C $bucketDirectory config user.name 'Hermes Light acceptance'
-    if ($LASTEXITCODE -ne 0) { throw 'Could not configure the disposable acceptance bucket' }
     Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
-    & git -C $bucketDirectory add .
-    if ($LASTEXITCODE -ne 0) { throw 'Could not stage the initial acceptance manifest' }
-    & git -C $bucketDirectory commit --quiet -m 'acceptance before version'
-    if ($LASTEXITCODE -ne 0) { throw 'Could not commit the initial acceptance manifest' }
-    Invoke-Scoop -Arguments @('bucket', 'add', $bucketName, $bucketDirectory)
     Invoke-Scoop -Arguments @('install', $appName)
     $installedRoot = Get-AppRoot
     $beforeInstall = Get-ScoopInstalledState -AppName $appName
@@ -529,10 +521,6 @@ try {
     $manifest.version = $runtimeAfterVersion
     Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
-    & git -C $bucketDirectory add .
-    if ($LASTEXITCODE -ne 0) { throw 'Could not stage the updated acceptance manifest' }
-    & git -C $bucketDirectory commit --quiet -m 'acceptance after version'
-    if ($LASTEXITCODE -ne 0) { throw 'Could not commit the updated acceptance manifest' }
     Invoke-Scoop -Arguments @('update', $appName)
     $installedRoot = Get-AppRoot
     $afterInstall = Get-ScoopInstalledState -AppName $appName
