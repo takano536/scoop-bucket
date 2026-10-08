@@ -820,9 +820,14 @@ def collect_packages(
         license_failures.append(str(exc))
     if license_failures:
         details = "\n".join(f"- {failure}" for failure in license_failures)
+        origin_details = "; ".join(
+            f"{name}={','.join(sorted(origins.get(name, set())) or ['not-in-inventory'])}"
+            for name in ("@novnc/novnc",)
+        )
         counts = (
             f"Inventory source counts (unique package names): "
-            f"asar={len(asar_names)}; unpacked={len(unpacked_names)}; bundle-map={len(bundle_names)}."
+            f"asar={len(asar_names)}; unpacked={len(unpacked_names)}; bundle-map={len(bundle_names)}; "
+            f"origins: {origin_details}."
         )
         raise RuntimeError(f"License validation failed for shipped packages:\n{counts}\n{details}")
     packages.sort(key=lambda item: (item[0].lower(), item[1], str(item[4]).lower()))
