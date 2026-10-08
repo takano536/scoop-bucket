@@ -49,7 +49,7 @@ Actionsのcheckoutログで、ビルドjobが実際にcheckoutしたbucketのPR 
 - provenanceの配布version: `preview-a3ed4a1`。acceptanceの`bucketPackageVersion`は`preview`であり、安定版versionではない。
 - ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`。
 - ZIP SHA256: `cd577d5789cbaefecf4750cf580ea940e86ff659bba0953470fb9d4779780c3c`。
-- `provenance.json`の`run`は上記run URL、`payload`は`light`、`updateMechanism`は`external`、実行ファイルは`hermes-light-a3ed4a1.exe`、署名は`unsigned unofficial build`である。provenanceのSHA256とacceptanceの`artifactSha256`は一致する。
+- `provenance.json`の`run`は上記run URL、`payload`は`light`、`updateMechanism`は`external`、実行ファイルはupstream commitのpreview executable、署名は`unsigned unofficial build`である。provenanceのSHA256とacceptanceの`artifactSha256`は一致する。
 - provenanceのsmoke記録は、native launchを2回実行し、rendererのloadとlocalStorage保持を確認したものだった。これはPR用preview artifactであり、GitHub Releasesへの公開やmanifest登録は行っていない。
 
 ### acceptance artifactの内容と実際に確認したこと
@@ -72,7 +72,7 @@ before/afterは異なるtest-only versionを付けて**同じZIP（同じ名前�
 
 ## 失敗runの履歴
 
-[run 37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)は、旧`Hermes Light` workflowの`pull_request` runで、headは`be274390408caa73f1f79d89b96285b2c5662e9b`だった。`plan`と`build`はsuccess、`acceptance`はfailure（`Run Scoop and remote-gateway acceptance` step）、`publish`はskippedだった。このrunは履歴として保持するが、上記の成功runやruntime受入の証拠とは混同しない。
+[run 37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)は、旧workflowの`pull_request` runで、headは`be274390408caa73f1f79d89b96285b2c5662e9b`だった。`plan`と`build`はsuccess、`acceptance`はfailure（`Run Scoop and remote-gateway acceptance` step）、`publish`はskippedだった。このrunは履歴として保持するが、上記の成功runやruntime受入の証拠とは混同しない。
 
 ## PR #8 merge後のmain
 
