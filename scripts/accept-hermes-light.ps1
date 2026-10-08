@@ -331,6 +331,7 @@ function Get-PEImportEvidence {
     }
     $systemNames = Get-SystemDllNames
     $records = @()
+    $allImports = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $unparseable = @()
     $unresolved = @()
     $missingRuntime = @()
@@ -719,7 +720,7 @@ try {
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'acceptance.json') -Value $summary
     $exitCode = 0
 } catch {
-    $failure = Redact ("{0}`n{1}`n{2}" -f $_.Exception.Message, $_.InvocationInfo.PositionMessage, $_.ScriptStackTrace)
+    $failure = Redact $_.Exception.Message
     $exitCode = 1
     Write-Error $failure
 } finally {
