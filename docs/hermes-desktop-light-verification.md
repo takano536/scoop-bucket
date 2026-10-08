@@ -238,7 +238,7 @@ hard blockerとする。
 
 ### CIで追加検出したpackage evidence
 
-Hermes Desktop Lightの最終実CI（run `37770269027`、head `d1ef4be1bef21632998e4c6f94ccf51d4ccf1edc8`）では、実際の`win-unpacked` inventoryから`dbus-native@0.15.2`を`origin=bundle-map`として検出した。exact npm tarball
+Hermes Desktop Lightの最終実CI（run `37771200718`、head `eb7c4f104e6861f3e3ad2832e3f41c7a8acb7c6f`）では、実際の`win-unpacked` inventoryから`dbus-native@0.15.2`を`origin=bundle-map`として検出した。exact npm tarball
 (`https://registry.npmjs.org/dbus-native/-/dbus-native-0.15.2.tgz`,
 SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)自体に
 `package/LICENSE`（SHA256
@@ -263,7 +263,7 @@ MIT license名、完全なdisclaimerを含む短縮形だった。registry `gitH
 ない。package.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0
 本文だったという宣言と実体の衝突は調査上の観察として残すが、未出荷packageの通知には追加しない。
 
-最終確認run `37770269027`（head `d1ef4be1bef21632998e4c6f94ccf51d4ccf1edc8`）では、
+最終確認run `37771200718`（head `eb7c4f104e6861f3e3ad2832e3f41c7a8acb7c6f`）では、
 inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=351`だった。`@novnc/novnc@1.7.0`
 は`bundle-map`のみで、未変更の`node_modules` fileではなくrenderer bundleへinline/minifyされた
 実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
