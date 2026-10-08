@@ -162,7 +162,7 @@ try {
 }
 const shippedNames = [...shippedJs.keys()].sort()
 const prepared = JSON.parse(readFileSync(path.join(source, '.build', 'desktop-job', 'prepared.json'), 'utf8'))
-const exactProduct = path.join(output, 'upstream-product')
+const exactProduct = path.resolve(source, '..', '.hermes-upstream-product')
 const upstreamDesktop = await import(pathToFileURL(path.join(source, 'scripts', 'build', 'desktop.mjs')).href)
 await upstreamDesktop.buildDesktop({
   source,
