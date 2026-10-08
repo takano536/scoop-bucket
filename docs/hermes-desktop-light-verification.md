@@ -284,14 +284,16 @@ MIT license名、完全なdisclaimerを含む短縮形だった。registry `gitH
 ない。package.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0
 本文だったという宣言と実体の衝突は調査上の観察として残すが、未出荷packageの通知には追加しない。
 
-最終確認run `37771200718`（head `eb7c4f104e6861f3e3ad2832e3f41c7a8acb7c6f`）では、
-inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=351`だった。`@novnc/novnc@1.7.0`
+最終確認run `37782539150`（head `126ff5c9e310d6311022c382f7dc9157d79d2195`）では、
+inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=352`だった。`@novnc/novnc@1.7.0`
 は`bundle-map`のみで、未変更の`node_modules` fileではなくrenderer bundleへinline/minifyされた
 実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
 Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
-同runで残るfailureは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
-`unicode-animations@1.0.3`、`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに
-対応する完全なlicense本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
+`@nous-research/ui@0.18.2`は出荷CSSの`url(...)`から参照されるfont assetとして
+`bundle-map`に追加された。残るfailureは`@nous-research/ui@0.18.2`、
+`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、`unicode-animations@1.0.3`、
+`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに対応する完全な
+license本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
 fail-closedのままとする。
 
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
