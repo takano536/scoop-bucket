@@ -31,30 +31,42 @@
 
 ## Windows受入ジョブ（このPRで追加）
 
-`.github/workflows/hermes-light.yml` の `acceptance` job は、`build` の
-Actions ArtifactをWindows runnerへ渡し、実行時だけ作る
-`hermes-agent-light-acceptance` manifestで次を確認する。manifestは
-`%RUNNER_TEMP%` に置き、bucket/へ追加しない。
+`.github/workflows/hermes-light.yml` の`acceptance` jobは、`build`の
+Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local Git bucketの
+test-only manifestで次を確認する。manifestはbucketの本番ツリーには追加しない。
 
+- Scoop install前後の`apps/<app>/current/manifest.json`と`install.json`を読み戻し、
+  `version`一致を確認する。before/afterは`0.0.0-test-before-<commit>`と
+  `0.0.1-test-after-<commit>`という異なるtest-only versionであり、同じ版のno-op更新は
+  assertionの回帰テストを含めて失敗する。
+- before/afterのresolved `current` targetとStart Menu `.lnk` targetを読み戻し、
+  after versionが期待版、resolved current targetが変更、shortcut targetがafterの
+  installed executableを指すことを`Assert-ScoopUpdateSwitch`でassertする。実測値は
+  `scoop-update-evidence.json`と`acceptance.json`へ記録する。
 - Scoop install/update/uninstall、Start Menuの`.lnk`経由起動、アプリ本体と
   shortcutの削除、`HERMES_HOME`/Desktop user-dataの残存。
-- `dumpbin /DEPENDENTS` によるパッケージのexeとnative `.node` imports、
-  `vcruntime`/`msvcp`等の同梱有無。GitHub-hosted runnerはクリーンなWindows
-  ではないため、起動成功だけではVC++ runtimeのクリーン環境独立性を証明しない。
-- 上流checkoutと同じcommitの `hermes serve --skip-build` をlocalhostで起動し、
-  job内で生成した `HERMES_DASHBOARD_SESSION_TOKEN` をmaskして、Desktopの
-  実HTTP+WebSocket接続を確認する。接続設定はUIクリックではなく、CDPから
-  アプリのpreload bridge IPC（`applyConnectionConfig`、
-  `getConnectionConfig`、`getGatewayWsUrl`）を呼ぶ。Scoop update後は、保存済み
-  secretからbridgeがmintしたWS URLだけをrendererへ渡し、renderer自身が
-  `session.list` JSON-RPCを送り、返却された`result.sessions`を検証する。
-  別にNodeから`/api/sessions`を呼ぶ結果はdirect gateway probeと明示する。
-  provider/LLM credentialは渡さない。
+- インストール済みapp treeの全`*.dll`/`*.exe`/`*.node`を`dumpbin /DEPENDENTS`で
+  列挙・parseし、各importをapp tree（importing module directoryを優先）または
+  Windows KnownDLLs/System32/API Setへ解決する。unparseable PE、unresolved import、
+  app treeに同梱されないVC++/UCRT importはacceptance failure（publish blocker）とし、
+  診断だけで成功にしない。runtime evidenceには各file/import/resolutionとfailureを
+  記録する。
+- GitHub-hosted Windows runnerはクリーンなWindowsではないため、runner上で解決・起動
+  してもクリーン環境のruntime独立性を証明しない。この制限は受入条件として維持する。
+- 上流checkoutと同じcommitの`hermes serve --skip-build`をlocalhostで起動し、
+  job内で生成した`HERMES_DASHBOARD_SESSION_TOKEN`をmaskして、Desktopの実HTTP+
+  WebSocket接続を確認する。接続設定はUIクリックではなく、CDPからアプリの
+  preload bridge IPC（`applyConnectionConfig`、`getConnectionConfig`、
+  `getGatewayWsUrl`）を呼ぶ。Scoop update後は、保存済みsecretからbridgeがmintした
+  WS URLだけをrendererへ渡し、renderer自身が`session.list` JSON-RPCを送り、返却された
+  `result.sessions`を検証する。別にNodeから`/api/sessions`を呼ぶ結果はdirect gateway
+  probeと明示する。provider/LLM credentialは渡さない。
 - `resources/agent-payload`なし、local backend probeが`bootstrap-needed`で
   bootstrapを実行しないこと、remote接続設定、Scoop更新後の設定・認証・
   authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
   app tree不変を確認する。
 
+以下のrunはこの強化前の実装による履歴であり、新しい版切替assertionおよび全PE import受入の成功証拠として扱わない。今回のPRでは新しいWindows CI runを実行し、結果と実測evidenceをPRへ追記する。
 改訂後の実Windows受入run（rerun）は成功した。
 
 - run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)

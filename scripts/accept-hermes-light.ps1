@@ -14,6 +14,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+. (Join-Path $PSScriptRoot 'accept-hermes-light-helpers.ps1')
 
 $ArtifactDirectory = (Resolve-Path -LiteralPath $ArtifactDirectory).Path
 $UpstreamDirectory = (Resolve-Path -LiteralPath $UpstreamDirectory).Path
@@ -29,10 +30,14 @@ $gatewayErrorLog = Join-Path $scratch 'gateway-error.log'
 $httpProcess = $null
 $gatewayProcess = $null
 $failure = $null
+$runtimeFailure = $null
 $exitCode = 0
 $secret = $null
 $appName = 'hermes-agent-light-acceptance'
 $shortcutName = 'Hermes Light Acceptance'
+$bucketName = 'hermes-light-acceptance'
+$bucketDirectory = Join-Path $scratch 'acceptance-bucket'
+$bucketManifestPath = Join-Path (Join-Path $bucketDirectory 'bucket') "$appName.json"
 $zipPath = $null
 $installedRoot = $null
 $hermesHome = Join-Path $scratch 'hermes-home'
@@ -209,6 +214,32 @@ function Find-Dumpbin {
     return $null
 }
 
+
+function Get-SystemDllNames {
+    $names = @{}
+    foreach ($directory in @(
+        (Join-Path $env:SystemRoot 'System32'),
+        (Join-Path $env:SystemRoot 'SysWOW64')
+    ) | Where-Object { Test-Path -LiteralPath $_ }) {
+        Get-ChildItem -LiteralPath $directory -File -Filter '*.dll' -ErrorAction SilentlyContinue |
+            ForEach-Object { $names[$_.Name] = $true }
+    }
+    foreach ($registryPath in @(
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs',
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs32'
+    )) {
+        if (Test-Path -LiteralPath $registryPath) {
+            $properties = Get-ItemProperty -LiteralPath $registryPath
+            foreach ($property in $properties.PSObject.Properties) {
+                if ($property.Name -notmatch '^PS' -and $property.Value) {
+                    $names[[string]$property.Value] = $true
+                }
+            }
+        }
+    }
+    return $names
+}
+
 function Get-PEImportEvidence {
     param(
         [Parameter(Mandatory = $true)]
@@ -222,54 +253,138 @@ function Get-PEImportEvidence {
         throw 'dumpbin.exe was not available on the Windows runner; PE runtime evidence cannot be collected'
     }
 
-    $files = @()
-    $exe = Join-Path $Root $ExecutableName
-    if (Test-Path -LiteralPath $exe) {
-        $files += Get-Item -LiteralPath $exe
-    }
-    $files += @(Get-ChildItem -LiteralPath $Root -File -Recurse -Filter '*.node' -ErrorAction SilentlyContinue)
+    $files = @(Get-ChildItem -LiteralPath $Root -File -Recurse -Force -ErrorAction Stop |
+        Where-Object { $_.Extension -in @('.dll', '.exe', '.node') } |
+        Sort-Object FullName -Unique)
     if ($files.Count -eq 0) {
-        throw 'No executable or native .node files were found in the installed package'
+        throw 'No executable, DLL, or native .node files were found in the installed package'
+    }
+    $expectedExecutable = Join-Path $Root $ExecutableName
+    if (!(Test-Path -LiteralPath $expectedExecutable)) {
+        throw "The manifest executable is missing from the installed package: $ExecutableName"
     }
 
+    $shippedByName = @{}
+    foreach ($file in $files) {
+        if (!$shippedByName.ContainsKey($file.Name)) {
+            $shippedByName[$file.Name] = @()
+        }
+        $shippedByName[$file.Name] += $file
+    }
+    $systemNames = Get-SystemDllNames
     $records = @()
     $allImports = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($file in $files | Sort-Object FullName -Unique) {
+    $unparseable = @()
+    $unresolved = @()
+    $missingRuntime = @()
+    $crtPattern = '^(api-ms-win-crt-|ucrtbase|vcruntime|msvcp|concrt|msvcr).*\.dll$'
+
+    foreach ($file in $files) {
+        $relativeFile = [IO.Path]::GetRelativePath($Root, $file.FullName)
         $dump = (& $dumpbin /DEPENDENTS $file.FullName 2>&1 | Out-String)
+        $dumpExitCode = $LASTEXITCODE
+        if ($dumpExitCode -ne 0 -or $dump -notmatch '(?im)^\s*Image has the following dependencies:\s*$') {
+            $unparseable += $relativeFile
+            $records += [ordered]@{
+                file = $relativeFile
+                imports = @()
+                resolutions = @()
+                parseError = "dumpbin /DEPENDENTS exit=$dumpExitCode"
+            }
+            continue
+        }
         $imports = @(
             [regex]::Matches($dump, '(?im)^\s+([A-Za-z0-9_.-]+\.dll)\s*$') |
-                ForEach-Object { $_.Value.Trim() } |
+                ForEach-Object { $_.Groups[1].Value } |
                 Sort-Object -Unique
         )
+        $resolutions = @()
         foreach ($import in $imports) {
             [void]$allImports.Add($import)
+            $resolution = $null
+            $localCandidate = Join-Path $file.DirectoryName $import
+            if (Test-Path -LiteralPath $localCandidate -PathType Leaf) {
+                $resolution = [ordered]@{
+                    name = $import
+                    kind = 'app-local'
+                    path = [IO.Path]::GetRelativePath($Root, (Resolve-Path -LiteralPath $localCandidate).Path)
+                }
+            } elseif ($shippedByName.ContainsKey($import)) {
+                $resolution = [ordered]@{
+                    name = $import
+                    kind = 'app-tree'
+                    path = [IO.Path]::GetRelativePath($Root, $shippedByName[$import][0].FullName)
+                }
+            } elseif ($systemNames.ContainsKey($import)) {
+                $resolution = [ordered]@{
+                    name = $import
+                    kind = 'system-known-dll'
+                    path = $import
+                }
+            } elseif ($import -match '^(?:api|ext)-ms-win-') {
+                $resolution = [ordered]@{
+                    name = $import
+                    kind = 'system-api-set'
+                    path = 'Windows API Set'
+                }
+            } elseif (Test-Path -LiteralPath (Join-Path $env:SystemRoot "System32\$import") -PathType Leaf) {
+                $resolution = [ordered]@{
+                    name = $import
+                    kind = 'system32'
+                    path = (Join-Path $env:SystemRoot "System32\$import")
+                }
+            }
+            if (!$resolution) {
+                $unresolved += "$relativeFile -> $import"
+            } elseif ($import -match $crtPattern -and $resolution.kind -notin @('app-local', 'app-tree')) {
+                $missingRuntime += "$relativeFile -> $import ($($resolution.kind))"
+            }
+            if ($resolution) {
+                $resolutions += $resolution
+            }
         }
         $records += [ordered]@{
-            file = [IO.Path]::GetRelativePath($Root, $file.FullName)
+            file = $relativeFile
             imports = @($imports)
+            resolutions = @($resolutions)
         }
     }
 
-    $shipped = @(Get-ChildItem -LiteralPath $Root -File -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^(api-ms-win-crt-|ucrtbase|vcruntime|msvcp|concrt|msvcr).*\.dll$' } |
+    $runtimeImports = @($allImports | Where-Object { $_ -match $crtPattern } | Sort-Object)
+    $shippedRuntimeDlls = @($files |
+        Where-Object { $_.Extension -eq '.dll' -and $_.Name -match $crtPattern } |
         ForEach-Object { [IO.Path]::GetRelativePath($Root, $_.FullName) } |
         Sort-Object)
-    $runtimeImports = @($allImports | Where-Object { $_ -match '^(api-ms-win-crt-|ucrtbase|vcruntime|msvcp|concrt|msvcr)' } | Sort-Object)
+    $accepted = $unparseable.Count -eq 0 -and $unresolved.Count -eq 0 -and $missingRuntime.Count -eq 0
+    $failures = @()
+    if ($unparseable.Count -gt 0) {
+        $failures += "unparseable PE files: $($unparseable -join ', ')"
+    }
+    if ($unresolved.Count -gt 0) {
+        $failures += "unresolved imports: $($unresolved -join ', ')"
+    }
+    if ($missingRuntime.Count -gt 0) {
+        $failures += "VC++/UCRT imports are not shipped by the artifact: $($missingRuntime -join ', ')"
+    }
 
     return [ordered]@{
         tool = $dumpbin
         files = @($records)
+        fileCount = $files.Count
         runtimeImports = @($runtimeImports)
-        shippedRuntimeDlls = @($shipped)
+        shippedRuntimeDlls = @($shippedRuntimeDlls)
+        unparseable = @($unparseable)
+        unresolved = @($unresolved)
+        missingShippedRuntime = @($missingRuntime)
+        accepted = $accepted
         runnerIsClean = $false
         runnerLimit = 'GitHub-hosted Windows includes system runtimes and is not a clean Windows installation.'
-        conclusion = if ($shipped.Count -gt 0) {
-            'The package ships at least one CRT/runtime DLL; launch success still does not prove independence from the runner image.'
-        } elseif ($runtimeImports.Count -gt 0) {
-            'Native imports reference Windows CRT/runtime components not shipped in this package; a clean Windows host needs the corresponding supported VC++ runtime/system components.'
+        conclusion = if ($accepted) {
+            'Every bundled PE import parsed and resolved to the app tree or Windows KnownDLLs/System32/API Set; no unshipped VC++/UCRT import was observed.'
         } else {
-            'No CRT/runtime imports were observed in the inspected executable/native modules; launch success was still observed only on the non-clean runner.'
+            $failures -join '; '
         }
+        failures = @($failures)
     }
 }
 
@@ -363,24 +478,38 @@ try {
         hash = $zipHash
         shortcuts = @(, @($executableName, $shortcutName, $cdpArgument))
     }
+    New-Item -ItemType Directory -Force -Path (Join-Path $bucketDirectory 'bucket') | Out-Null
+    & git -C $bucketDirectory init --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the disposable acceptance bucket' }
+    & git -C $bucketDirectory config user.email 'hermes-light-acceptance@example.invalid'
+    & git -C $bucketDirectory config user.name 'Hermes Light acceptance'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not configure the disposable acceptance bucket' }
+    Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
-    Invoke-Scoop -Arguments @('install', $manifestPath)
+    & git -C $bucketDirectory add .
+    if ($LASTEXITCODE -ne 0) { throw 'Could not stage the initial acceptance manifest' }
+    & git -C $bucketDirectory commit --quiet -m 'acceptance before version'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not commit the initial acceptance manifest' }
+    Invoke-Scoop -Arguments @('bucket', 'add', $bucketName, $bucketDirectory)
+    Invoke-Scoop -Arguments @('install', $appName)
     $installedRoot = Get-AppRoot
+    $beforeInstall = Get-ScoopInstalledState -AppName $appName
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
-    $shortcutShell = New-Object -ComObject WScript.Shell
-    $shortcutTarget = $shortcutShell.CreateShortcut([string]$shortcutPath)
-    $shortcutTargetPath = [string]$shortcutTarget.TargetPath
-    $shortcutTargetArguments = [string]$shortcutTarget.Arguments
-    if ([IO.Path]::GetFullPath($shortcutTargetPath) -ne [IO.Path]::GetFullPath((Join-Path $installedRoot $executableName))) {
-        throw "Scoop shortcut target does not point at the installed executable"
+    $beforeShortcut = Get-ShortcutState -Path $shortcutPath
+    $expectedBeforeShortcut = [IO.Path]::GetFullPath((Join-Path $beforeInstall.currentTargetResolved $executableName))
+    if ($beforeShortcut.target -ne $expectedBeforeShortcut) {
+        throw "Scoop start-menu shortcut target $($beforeShortcut.target) does not match installed executable $expectedBeforeShortcut"
     }
-    if ($shortcutTargetArguments -notmatch [regex]::Escape($cdpArgument)) {
-        throw 'Scoop start-menu shortcut did not preserve the CDP launch argument'
+    if ($beforeInstall.version -ne $runtimeVersion) {
+        throw "Scoop installed unexpected initial version: $($beforeInstall.version)"
     }
 
     $runtimeEvidence = Get-PEImportEvidence -Root $installedRoot -ExecutableName $executableName
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'runtime-evidence.json') -Value $runtimeEvidence
+    if (!$runtimeEvidence.accepted) {
+        $runtimeFailure = "Bundled PE runtime acceptance failed: $($runtimeEvidence.conclusion)"
+    }
 
     $node = (Get-Command node -ErrorAction Stop).Source
     $acceptanceJs = Join-Path $PSScriptRoot 'accept-hermes-light.cjs'
@@ -398,11 +527,35 @@ try {
     Stop-OwnProcesses -KeepServices
     Start-Sleep -Seconds 2
     $manifest.version = $runtimeAfterVersion
+    Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
+    & git -C $bucketDirectory add .
+    if ($LASTEXITCODE -ne 0) { throw 'Could not stage the updated acceptance manifest' }
+    & git -C $bucketDirectory commit --quiet -m 'acceptance after version'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not commit the updated acceptance manifest' }
     Invoke-Scoop -Arguments @('update', $appName)
     $installedRoot = Get-AppRoot
+    $afterInstall = Get-ScoopInstalledState -AppName $appName
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
+    $afterShortcut = Get-ShortcutState -Path $shortcutPath
+    $expectedAfterShortcut = [IO.Path]::GetFullPath((Join-Path $afterInstall.currentTargetResolved $executableName))
+    $updateEvidence = Assert-ScoopUpdateSwitch `
+        -BeforeInstall $beforeInstall `
+        -AfterInstall $afterInstall `
+        -BeforeShortcut $beforeShortcut `
+        -AfterShortcut $afterShortcut `
+        -ExpectedVersion $runtimeAfterVersion `
+        -ExpectedCurrentTarget $afterInstall.currentTargetResolved `
+        -ExpectedShortcutTarget $expectedAfterShortcut
+    Write-EvidenceJson -Path (Join-Path $OutputDirectory 'scoop-update-evidence.json') -Value ([ordered]@{
+        before = $beforeInstall
+        after = $afterInstall
+        beforeShortcut = $beforeShortcut
+        afterShortcut = $afterShortcut
+        assertion = $updateEvidence
+    })
+
     $afterJson = Join-Path $OutputDirectory 'after.json'
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
@@ -424,6 +577,9 @@ try {
     if (!(Test-Path -LiteralPath $userData) -or !(Test-Path -LiteralPath $userDataMarker)) {
         throw 'Expected user data did not remain after Scoop uninstall'
     }
+    if ($runtimeFailure) {
+        throw $runtimeFailure
+    }
 
     $summary = [ordered]@{
         schema = 1
@@ -439,8 +595,14 @@ try {
         testOnlyManifest = $true
         scoop = [ordered]@{
             app = $appName
-            beforeVersion = $runtimeVersion
-            afterVersion = $runtimeAfterVersion
+            beforeVersion = $updateEvidence.beforeVersion
+            afterVersion = $updateEvidence.afterVersion
+            beforeCurrentTarget = $updateEvidence.beforeCurrentTarget
+            afterCurrentTarget = $updateEvidence.afterCurrentTarget
+            beforeShortcutTarget = $updateEvidence.beforeShortcutTarget
+            afterShortcutTarget = $updateEvidence.afterShortcutTarget
+            expectedVersion = $updateEvidence.expectedVersion
+            updateAssertion = 'installed manifest/install versions changed to expected test-only version; resolved current target changed; shortcut target read back'
             shortcut = "$shortcutName.lnk"
             startMenu = [Environment]::GetFolderPath('StartMenu')
             installedAndUpdated = $true
@@ -457,11 +619,7 @@ try {
         }
         runtime = $runtimeEvidence
         localExecution = 'Light ZIP has no resources/agent-payload; probe observed bootstrap-needed and no local agent was started. The first-run local-install affordance is bootstrap-only, not a bundled local backend.'
-        updater = if ($receipt.preview -eq $true) {
-            'Scoop-installed preview returned external/unsupported, reason=commit-build, and refused apply; app tree fingerprint was unchanged.'
-        } else {
-            'Scoop-installed stable package returned external/manual-only (reason=bundled-not-appinstaller) and refused in-place apply; app tree fingerprint was unchanged.'
-        }
+        updater = 'Scoop update used a disposable local bucket with distinct test-only manifests; installed manifest/install versions, resolved current target, and shortcut target were read back and asserted.'
         retention = 'Settings and tokenSet survived the test-only Scoop update; the post-update app revalidated the same gateway.'
         uninstall = 'App directory and Start-menu shortcut removed; HERMES_HOME/user data remained by design.'
     }
