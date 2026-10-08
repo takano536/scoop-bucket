@@ -177,9 +177,11 @@ const reconstructed = upstreamProducts.find((candidate) => {
   return JSON.stringify(names) === JSON.stringify(shippedNames)
 })?.files
 if (!reconstructed) {
-  const candidates = upstreamProducts.map(({ product }) => product).join(',') || '(none)'
+  const candidates = upstreamProducts.map(({ product, files }) =>
+    `${product} (${files.size} scripts: ${[...files.keys()].sort().slice(0, 5).join(',')})`,
+  ).join('; ') || '(none)'
   throw new Error(
-    `No upstream electron-builder product matches shipped script set: shipped=${shippedNames.join(',')} candidates=${candidates}`,
+    `No upstream electron-builder product matches shipped script set: shipped=${shippedNames.length} scripts candidates=${candidates}`,
   )
 }
 const reconstructedNames = [...reconstructed.keys()].sort()
