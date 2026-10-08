@@ -185,16 +185,19 @@ package固有の権利表示を収録する。Electron/Chromiumの既存
 bundleに残る `dist/node_modules` packageを読み取り、`resources/app.asar.unpacked`
 と `resources` 配下の物理 `node_modules` も走査する。さらに管理対象のbuild stepが
 renderer Viteのsource mapとmain/preload esbuildのmetafileを出力し、そのsource path
-からbundleへinline化されたpackageを解決してunionする。`devDependencies`はこの
-bundle graphで実際に参照されたものだけを含め、package.jsonに列挙されただけの
-未出荷build-time toolingやproduction graph全体は通知対象にしない。map/metafileを
-取得できない場合、またはsource pathからpackageを解決できない場合はfail-closedとする。
+からbundleへinline化されたpackageを解決してunionする。Vite emitterが記録した出荷CSS
+source moduleの`url(...)`からpackage-owned assetも同じbundle graphへ追加する。
+`devDependencies`はこのbundle graphで実際に参照されたものだけを含め、package.jsonに
+列挙されただけの未出荷build-time toolingやproduction graph全体は通知対象にしない。
+map/metafile、CSS emitter manifest/sourceを取得できない場合、またはsource pathからpackageを
+解決できない場合はfail-closedとする。
 
 このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
 PowerShell build stepは、本番electron-builderが生成した上流の永続出力
 `apps/desktop/dist`を、`scripts/build/desktop.mjs`のrenderer/main/preload成果物（`productOutput`
 後にbuilderがpackした同じディレクトリ）として読み取る。同じstepで管理対象Vite/esbuild実行
-からsource map/metafileだけを`apps/desktop/.hermes-bundle-graph`へ保存し、graphの入力を作る。
+からsource map/metafileとCSS source manifestを`apps/desktop/.hermes-bundle-graph`へ保存し、
+graphの入力を作る。
 永続`dist`のJS chunk setと内容を、`resources/app.asar` headerのoffsetおよび
 `resources/app.asar.unpacked/dist`から読み取ったwin-unpackedの実体と突合し、setまたはbytesが
 違えばnotice生成前にfail-closedする（末尾の`//# sourceMappingURL=`行だけは比較から除外）。

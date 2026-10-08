@@ -22,12 +22,22 @@ await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 
 const appRequire = createRequire(path.join(app, 'package.json'))
+const cssSources = new Set()
+const cssSourceTracker = {
+  name: 'hermes-track-css-sources',
+  transform(_code, id) {
+    const cleanId = id.split(/[?#]/, 1)[0]
+    if (cleanId.endsWith('.css')) cssSources.add(path.resolve(cleanId))
+    return null
+  },
+}
 const vite = await import(pathToFileURL(appRequire.resolve('vite')).href)
 await vite.build({
   root: app,
   publicDir: path.join(app, 'public'),
   cacheDir: path.join(output, 'vite-cache'),
   configLoader: 'runner',
+  plugins: [cssSourceTracker],
   build: {
     outDir: renderer,
     emptyOutDir: true,
@@ -183,6 +193,9 @@ const manifest = {
   schema: 1,
   rendererMaps: renderer,
   mainMetafiles: main,
+  cssSources: [...cssSources]
+    .sort()
+    .map((file) => path.relative(source, file).replaceAll(path.sep, '/')),
   equivalence: {
     asar: 'resources/app.asar/dist',
     unpacked: 'resources/app.asar.unpacked/dist',

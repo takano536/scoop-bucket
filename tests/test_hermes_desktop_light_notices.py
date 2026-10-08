@@ -324,6 +324,54 @@ class NoticeTests(unittest.TestCase):
                 [('bundled-only', '1.0.0')],
             )
 
+    def test_css_asset_dependency_is_detected_from_graph_emitter(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / 'source'
+            desktop = source / 'apps' / 'desktop'
+            (desktop / 'src').mkdir(parents=True)
+            (desktop / 'package.json').write_text(
+                json.dumps({'name': 'desktop', 'version': '1.0.0'}),
+                encoding='utf-8',
+            )
+            package = source / 'node_modules' / '@nous-research' / 'ui'
+            package.mkdir(parents=True)
+            (package / 'package.json').write_text(
+                json.dumps({'name': '@nous-research/ui', 'version': '0.18.2', 'license': 'MIT'}),
+                encoding='utf-8',
+            )
+            (package / 'LICENSE').write_text(notices.MIT_LICENSE_TEXT, encoding='utf-8')
+            (desktop / 'src' / 'styles.css').write_text(
+                '@font-face { src: url("../../../node_modules/@nous-research/ui/dist/fonts/Collapse-Bold.woff2"); }',
+                encoding='utf-8',
+            )
+            dist = desktop / 'dist' / 'assets'
+            dist.mkdir(parents=True)
+            (dist / 'index.js.map').write_text(
+                json.dumps({'version': 3, 'sources': []}),
+                encoding='utf-8',
+            )
+            (dist / 'index.css').write_text('body { color: black; }', encoding='utf-8')
+            emitter = desktop / '.hermes-bundle-graph'
+            emitter.mkdir()
+            (emitter / 'graph-emitter.json').write_text(
+                json.dumps({'schema': 1, 'cssSources': ['apps/desktop/src/styles.css']}),
+                encoding='utf-8',
+            )
+            bundle_graph = notices.bundle_module_graph(source)
+            self.assertEqual(
+                [entry['name'] for entry in bundle_graph['packages']],
+                ['@nous-research/ui'],
+            )
+            with patch.object(notices, 'load_license_overrides', return_value={}), patch.object(
+                notices, 'asar_node_modules', return_value=set()
+            ), patch.object(notices, 'unpacked_node_modules', return_value=set()):
+                packages = notices.collect_packages(source, root / 'pack', bundle_graph)
+            self.assertEqual(
+                [(name, version) for name, version, *_ in packages],
+                [('@nous-research/ui', '0.18.2')],
+            )
+
     def test_bundle_module_graph_missing_fails_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             source = Path(scratch) / 'source'
