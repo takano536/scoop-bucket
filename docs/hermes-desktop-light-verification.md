@@ -238,8 +238,7 @@ hard blockerとする。
 
 ### CIで追加検出したpackage evidence
 
-Hermes Desktop Lightの実CI（run `37744831557`）では、実際の`win-unpacked` inventory
-から`dbus-native@0.15.2`も検出された。exact npm tarball
+Hermes Desktop Lightの最終実CI（run `37770269027`、head `d1ef4be1bef21632998e4c6f94ccf51d4ccf1edc8`）では、実際の`win-unpacked` inventoryから`dbus-native@0.15.2`を`origin=bundle-map`として検出した。exact npm tarball
 (`https://registry.npmjs.org/dbus-native/-/dbus-native-0.15.2.tgz`,
 SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)自体に
 `package/LICENSE`（SHA256
@@ -249,23 +248,27 @@ holder行がないことを明記する。registry `gitHead`
 `2126c95fd460c81d7b90e45a4588efdb23ba3f99`のupstream LICENSE（同一SHA256）でも
 一致を確認した。bucket側のcopyright行追加やoverrideによる再構成は行わない。
 
-bundle graphで新たに確認した`dijkstrajs@1.0.3`は、exact npm tarball
+同じ最終inventoryで`dijkstrajs@1.0.3`も`origin=bundle-map`だった。exact npm tarball
 （`https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.3.tgz`, SHA256
 `07149886ab98299c227b8de61912770b24b8a17b250996a4b5727c9f8bff4c00`）の
 `package/LICENSE.md`（SHA256
 `c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2`）がcopyright、
 MIT license名、完全なdisclaimerを含む短縮形だった。registry `gitHead`
 `49ad1ecd5c519281ee3c4711bb78db4d96e19c83`とも照合した。このpackage-supplied形式だけを
-受理し、generic本文は引き続き拒否する。`@pkgjs/parseargs@0.11.0`
-はpackage.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0本文で、
-宣言と実体が衝突するため、上流に正しいlicense宣言を確認するまでhard blockerとする。
+受理し、generic本文は引き続き拒否する。
 
-最終確認run `37767945730`（commit `798f38fd83c8206826954b38311ac333e4d36701`）では、
+一方、`@pkgjs/parseargs@0.11.0`は最終inventoryに存在せず（最終CIのorigin診断でも
+`not-in-inventory`）、過剰なtransitive traversalを使っていた旧検出でのみ対象になった
+非出荷transitive dependencyである。したがって現在のlicense gateの対象・hard blockerでは
+ない。package.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0
+本文だったという宣言と実体の衝突は調査上の観察として残すが、未出荷packageの通知には追加しない。
+
+最終確認run `37770269027`（head `d1ef4be1bef21632998e4c6f94ccf51d4ccf1edc8`）では、
 inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=351`だった。`@novnc/novnc@1.7.0`
 は`bundle-map`のみで、未変更の`node_modules` fileではなくrenderer bundleへinline/minifyされた
 実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
 Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
-最終runで残るfailureは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
+同runで残るfailureは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
 `unicode-animations@1.0.3`、`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに
 対応する完全なlicense本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
 fail-closedのままとする。
