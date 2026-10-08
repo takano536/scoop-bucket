@@ -28,7 +28,10 @@ function Get-ScoopInstalledState {
         $manifestPath = (Resolve-Path -LiteralPath $BucketManifestPath).Path
         $manifestSource = 'disposable-bucket'
     }
-    $installPath = Join-Path $resolvedCurrent 'install.json'
+    $installPath = Join-Path $appDirectory 'install.json'
+    if (!(Test-Path -LiteralPath $installPath)) {
+        $installPath = Join-Path $resolvedCurrent 'install.json'
+    }
     if (!(Test-Path -LiteralPath $installPath)) {
         throw "Scoop install receipt is missing: $installPath"
     }
