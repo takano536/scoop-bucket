@@ -161,30 +161,24 @@ try {
   if (error?.code !== 'ENOENT') throw error
 }
 const shippedNames = [...shippedJs.keys()].sort()
-const upstreamProducts = []
-for (const entry of await readdir(app, { withFileTypes: true })) {
-  if (!entry.isDirectory() || !/^\.dist-build-/.test(entry.name)) continue
-  const product = path.join(app, entry.name, 'product')
-  try {
-    const files = normalizedScripts(await outputFiles(product))
-    upstreamProducts.push({ product, files })
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error
-  }
-}
-const reconstructed = upstreamProducts.find((candidate) => {
-  const names = [...candidate.files.keys()].sort()
-  return JSON.stringify(names) === JSON.stringify(shippedNames)
-})?.files
-if (!reconstructed) {
-  const candidates = upstreamProducts.map(({ product, files }) =>
-    `${product} (${files.size} scripts: ${[...files.keys()].sort().slice(0, 5).join(',')})`,
-  ).join('; ') || '(none)'
+const prepared = JSON.parse(readFileSync(path.join(source, '.build', 'desktop-job', 'prepared.json'), 'utf8'))
+const exactProduct = path.join(output, 'upstream-product')
+const upstreamDesktop = await import(pathToFileURL(path.join(source, 'scripts', 'build', 'desktop.mjs')).href)
+await upstreamDesktop.buildDesktop({
+  source,
+  out: exactProduct,
+  icons: path.join(source, 'apps', 'desktop', 'build', 'products', 'icons'),
+  stamp: stampPath,
+  nativeDeps: prepared.native,
+  platform: 'win32',
+})
+const reconstructed = normalizedScripts(await outputFiles(exactProduct))
+const reconstructedNames = [...reconstructed.keys()].sort()
+if (JSON.stringify(shippedNames) !== JSON.stringify(reconstructedNames)) {
   throw new Error(
-    `No upstream electron-builder product matches shipped script set: shipped=${shippedNames.length} scripts candidates=${candidates}`,
+    `Upstream desktop output set differs from shipped scripts: shipped=${shippedNames.length} reconstructed=${reconstructedNames.length}`,
   )
 }
-const reconstructedNames = [...reconstructed.keys()].sort()
 for (const name of shippedNames) {
   if (stripSourceMapLine(shippedJs.get(name)) !== stripSourceMapLine(reconstructed.get(name))) {
     throw new Error(`Bundle graph output differs from shipped product file: dist/${name}`)
@@ -198,7 +192,7 @@ const manifest = {
   equivalence: {
     asar: 'resources/app.asar/dist',
     unpacked: 'resources/app.asar.unpacked/dist',
-    product: upstreamProducts.map(({ product }) => product),
+    product: exactProduct,
     shippedJs: shippedNames,
     comparedAfter: 'stripping trailing //# sourceMappingURL= line',
   },
