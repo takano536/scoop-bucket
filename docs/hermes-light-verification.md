@@ -1,5 +1,37 @@
 # Hermes Light 検証
 
+## 個別検証の入口
+
+共通のローカル手順は[検証手順](verification.md)から実行する。Hermes Light固有の
+Node.js smokeスクリプトは、次で構文を確認する。
+
+```bash
+node --check scripts/smoke-hermes-light.cjs
+```
+
+PythonのHermes Light・配布契約テストは、共通の`unittest discover`に加えて、必要なら
+次のように個別実行できる。
+
+```bash
+python3 -m unittest discover -s tests -p 'test_hermes_light*.py' -v
+python3 -m unittest discover -s tests -p 'test_distribution.py' -v
+```
+
+## Hermes Light workflow
+
+[`hermes-light.yml`](../.github/workflows/hermes-light.yml)は、UTCの4時間ごとのschedule、
+`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Requestで
+起動する。`plan`はUbuntuで個別テストと`hermes-light.py plan`をread-only実行し、
+Light対応と対象を決める。対象がある場合だけ`build`がWindows 2025でビルド・smokeを
+実行し、`hermes-light-windows-x64` artifact（保持14日）を作る。
+
+`publish`は`vars.HERMES_LIGHT_RELEASE_ENABLED == 'true'`、scheduleまたは
+`workflow_dispatch`、`refs/heads/main`、build対象のすべてを満たす場合だけ実行する。
+公開済みassetの再検証とRelease公開、manifest・READMEのmain書き戻しを行うpublishの
+詳細なゲートと未確認事項は、この文書の公開ゲート節に従う。Pull Requestではpublishを
+実行しない。
+
+
 ## 実Windows CI
 
 - [ビルド・起動検証](https://github.com/takano536/scoop-bucket/actions/runs/37620186448)
