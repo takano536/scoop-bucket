@@ -251,7 +251,7 @@ class ReleaseTests(unittest.TestCase):
                 smoke='two native launches; renderer loaded; localStorage retained',
                 conditionsFingerprint=conditions,
                 notices=notices,
-                audit={'status': 'complete', 'limitations': []},
+                audit={'status': 'complete', 'limitations': [], 'unresolved': []},
                 sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
             )
             self.assertEqual(
