@@ -600,7 +600,7 @@ def source_origin_path(source: Path, origin: str) -> Path | None:
     )
     for candidate in candidates:
         resolved = candidate.resolve()
-        if resolved.is_file():
+        if resolved.is_file() or resolved.is_dir():
             return resolved
     return None
 
@@ -694,12 +694,13 @@ def is_script_name(name: str) -> bool:
 
 
 def graph_output_relative(path: Path) -> str:
-    parts = path.resolve().parts
+    normalized = path.as_posix().replace("\\", "/")
+    parts = normalized.split("/")
     for marker in ("dist", "renderer"):
         if marker in parts:
             index = len(parts) - 1 - parts[::-1].index(marker)
-            return Path(*parts[index + 1:]).as_posix()
-    return path.name
+            return "/".join(parts[index + 1:])
+    return parts[-1]
 
 
 def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> set[str]:
@@ -708,13 +709,17 @@ def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> s
         relative = graph_output_relative(map_file)
         if relative.endswith((".js.map", ".mjs.map", ".cjs.map")):
             outputs.add(relative[:-4])
+            outputs.add(Path(relative).name[:-4])
         try:
             metadata = json.loads(map_file.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"Cannot read bundle source map: {map_file}") from exc
         file_name = metadata.get("file")
-        if isinstance(file_name, str) and is_script_name(normalize_graph_output_name(file_name)):
-            outputs.add(normalize_graph_output_name(file_name))
+        if isinstance(file_name, str):
+            normalized = normalize_graph_output_name(file_name)
+            if is_script_name(normalized):
+                outputs.add(normalized)
+                outputs.add(normalized.rsplit("/", 1)[-1])
     for metafile in metafile_files:
         try:
             metadata = json.loads(metafile.read_text(encoding="utf-8"))
@@ -729,7 +734,7 @@ def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> s
             normalized = graph_output_relative(Path(output_name))
             if is_script_name(normalized):
                 outputs.add(normalized)
-                outputs.add(Path(output_name).name)
+                outputs.add(normalized.rsplit("/", 1)[-1])
     return {normalize_graph_output_name(output) for output in outputs if output}
 
 
