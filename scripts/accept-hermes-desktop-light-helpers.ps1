@@ -186,6 +186,85 @@ function Assert-ScoopUpdateSwitch {
     }
 }
 
+function New-ScoopUpdateSummary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [System.Collections.IDictionary]$Assertion,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeShortcut,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterShortcut
+    )
+
+    if ($null -eq $Assertion -or $Assertion.noOpRejected -ne $true) {
+        throw 'Scoop update summary requires a passed update assertion'
+    }
+    $observed = [ordered]@{
+        beforeVersion = $BeforeInstall.version
+        afterVersion = $AfterInstall.version
+        beforeCurrentTarget = $BeforeInstall.currentTargetResolved
+        afterCurrentTarget = $AfterInstall.currentTargetResolved
+        beforeShortcutTarget = $BeforeShortcut.target
+        afterShortcutTarget = $AfterShortcut.target
+        beforeShortcutResolvedTarget = if ($BeforeShortcut.resolvedTarget) { $BeforeShortcut.resolvedTarget } else { $BeforeShortcut.target }
+        afterShortcutResolvedTarget = if ($AfterShortcut.resolvedTarget) { $AfterShortcut.resolvedTarget } else { $AfterShortcut.target }
+    }
+    $errors = @()
+    foreach ($name in $observed.Keys) {
+        $observedValue = [string]$observed[$name]
+        $assertedValue = [string]$Assertion[$name]
+        if ([string]::IsNullOrWhiteSpace($observedValue) -or [string]::IsNullOrWhiteSpace($assertedValue)) {
+            $errors += "$name evidence is missing"
+        } elseif ($observedValue -ne $assertedValue) {
+            $errors += "$name assertion value $assertedValue does not match observed $observedValue"
+        }
+    }
+    foreach ($name in @('expectedVersion', 'expectedCurrentTarget', 'expectedShortcutTarget')) {
+        if ([string]::IsNullOrWhiteSpace([string]$Assertion[$name])) {
+            $errors += "$name evidence is missing"
+        }
+    }
+    if ($errors.Count -eq 0) {
+        if ($observed.beforeVersion -eq $observed.afterVersion) {
+            $errors += "Scoop update was a no-op: before and after version are $($observed.afterVersion)"
+        }
+        if ($observed.beforeCurrentTarget -eq $observed.afterCurrentTarget) {
+            $errors += 'Scoop current target did not change across update'
+        }
+        if ($observed.beforeShortcutResolvedTarget -eq $observed.afterShortcutResolvedTarget) {
+            $errors += 'shortcut resolved target did not change across update'
+        }
+        if ($observed.afterVersion -ne $Assertion.expectedVersion) {
+            $errors += "after version $($observed.afterVersion) does not equal expected $($Assertion.expectedVersion)"
+        }
+        if ($observed.afterCurrentTarget -ne $Assertion.expectedCurrentTarget) {
+            $errors += "after current target $($observed.afterCurrentTarget) does not equal expected $($Assertion.expectedCurrentTarget)"
+        }
+        if ($observed.afterShortcutResolvedTarget -ne $Assertion.expectedShortcutTarget) {
+            $errors += "after shortcut target $($observed.afterShortcutResolvedTarget) does not equal expected $($Assertion.expectedShortcutTarget)"
+        }
+    }
+    if ($errors.Count -gt 0) {
+        throw "Scoop update summary evidence invalid:`n- $($errors -join "`n- ")"
+    }
+
+    $summary = [ordered]@{}
+    foreach ($name in $observed.Keys) {
+        $summary[$name] = $observed[$name]
+    }
+    $summary.expectedVersion = $Assertion.expectedVersion
+    $summary.expectedCurrentTarget = $Assertion.expectedCurrentTarget
+    $summary.expectedShortcutTarget = $Assertion.expectedShortcutTarget
+    $summary.updateAssertion = 'passed'
+    return $summary
+}
+
 function Get-WindowsImportClassification {
     [CmdletBinding()]
     param(

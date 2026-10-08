@@ -1,20 +1,20 @@
 BeforeAll {
-    . (Join-Path $PSScriptRoot '../scripts/accept-hermes-light-helpers.ps1')
+    . (Join-Path $PSScriptRoot '../scripts/accept-hermes-desktop-light-helpers.ps1')
 }
 
-Describe 'Hermes Light Scoop update assertions' {
+Describe 'Hermes Desktop Light Scoop update assertions' {
     It 'rejects a no-op update with unchanged current target' {
         $beforeInstall = [ordered]@{
             version = '0.0.0-test-before'
-            currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before'
         }
         $afterInstall = [ordered]@{
             version = '0.0.0-test-before'
-            currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before'
         }
         $beforeShortcut = [ordered]@{
-            target = 'C:\scoop\apps\hermes-agent-light-acceptance\current\Hermes Light.exe'
-            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe'
+            target = 'C:\scoop\apps\hermes-desktop-light-acceptance\current\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before\Hermes Light.exe'
         }
         $afterShortcut = [ordered]@{
             target = $beforeShortcut.target
@@ -25,34 +25,34 @@ Describe 'Hermes Light Scoop update assertions' {
             Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
                 -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut `
                 -ExpectedVersion '0.0.1-test-after' `
-                -ExpectedCurrentTarget 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after' `
-                -ExpectedShortcutTarget 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after\Hermes Light.exe'
+                -ExpectedCurrentTarget 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after' `
+                -ExpectedShortcutTarget 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after\Hermes Light.exe'
         } | Should -Throw '*no-op*'
     }
 
     It 'accepts distinct installed versions and changed current target' {
         $beforeInstall = [ordered]@{
             version = '0.0.0-test-before'
-            currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before'
         }
         $afterInstall = [ordered]@{
             version = '0.0.1-test-after'
-            currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after'
         }
         $beforeShortcut = [ordered]@{
-            target = 'C:\scoop\apps\hermes-agent-light-acceptance\current\Hermes Light.exe'
-            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe'
+            target = 'C:\scoop\apps\hermes-desktop-light-acceptance\current\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before\Hermes Light.exe'
         }
         $afterShortcut = [ordered]@{
             target = $beforeShortcut.target
-            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after\Hermes Light.exe'
         }
 
         $result = Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
             -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut `
             -ExpectedVersion '0.0.1-test-after' `
-            -ExpectedCurrentTarget 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after' `
-            -ExpectedShortcutTarget 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after\Hermes Light.exe'
+            -ExpectedCurrentTarget 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after' `
+            -ExpectedShortcutTarget 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after\Hermes Light.exe'
 
         $result.noOpRejected | Should -BeTrue
         $result.beforeVersion | Should -Not -Be $result.afterVersion
@@ -61,7 +61,7 @@ Describe 'Hermes Light Scoop update assertions' {
     }
 }
 
-Describe 'Hermes Light Windows runtime classification' {
+Describe 'Hermes Desktop Light Windows runtime classification' {
     It 'accepts a host-resolved Windows 10 API set as OS-provided' {
         $result = Get-WindowsImportClassification -ImportName 'api-ms-win-crt-runtime-l1-1-0.dll' `
             -ResolutionKind 'system-api-set' -ApiSetResolved $true

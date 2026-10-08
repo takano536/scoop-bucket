@@ -14,16 +14,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-. (Join-Path $PSScriptRoot 'accept-hermes-light-helpers.ps1')
+. (Join-Path $PSScriptRoot 'accept-hermes-desktop-light-helpers.ps1')
 
 $ArtifactDirectory = (Resolve-Path -LiteralPath $ArtifactDirectory).Path
 $UpstreamDirectory = (Resolve-Path -LiteralPath $UpstreamDirectory).Path
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
-$scratch = Join-Path $env:RUNNER_TEMP ("hermes-light-acceptance-{0}" -f ([guid]::NewGuid().ToString('N')))
+$scratch = Join-Path $env:RUNNER_TEMP ("hermes-desktop-light-acceptance-{0}" -f ([guid]::NewGuid().ToString('N')))
 New-Item -ItemType Directory -Force -Path $scratch | Out-Null
-$manifestPath = Join-Path $scratch 'hermes-agent-light-acceptance.json'
+$manifestPath = Join-Path $scratch 'hermes-desktop-light-acceptance.json'
 $httpLog = Join-Path $scratch 'artifact-http.log'
 $gatewayLog = Join-Path $scratch 'gateway.log'
 $gatewayErrorLog = Join-Path $scratch 'gateway-error.log'
@@ -33,9 +33,9 @@ $failure = $null
 $runtimeFailure = $null
 $exitCode = 0
 $secret = $null
-$appName = 'hermes-agent-light-acceptance'
-$shortcutName = 'Hermes Light Acceptance'
-$bucketName = 'hermes-light-acceptance'
+$appName = 'hermes-desktop-light-acceptance'
+$shortcutName = 'Hermes Desktop Light Acceptance'
+$bucketName = 'hermes-desktop-light-acceptance'
 $bucketDirectory = Join-Path $scratch 'acceptance-bucket'
 $bucketManifestPath = Join-Path (Join-Path $bucketDirectory 'bucket') "$appName.json"
 $zipPath = $null
@@ -247,12 +247,12 @@ function Test-WindowsApiSetResolution {
         [string]$Name
     )
 
-    if ($null -eq ('HermesLightNativeMethodsV2' -as [type])) {
+    if ($null -eq ('HermesDesktopLightNativeMethodsV2' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class HermesLightNativeMethodsV2
+public static class HermesDesktopLightNativeMethodsV2
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
@@ -272,7 +272,7 @@ public static class HermesLightNativeMethodsV2
 '@
     }
 
-    if ([HermesLightNativeMethodsV2]::Probe($Name, 0x00000002)) {
+    if ([HermesDesktopLightNativeMethodsV2]::Probe($Name, 0x00000002)) {
         return [ordered]@{
             name = $Name
             resolved = $true
@@ -281,7 +281,7 @@ public static class HermesLightNativeMethodsV2
             minimumWindows = 'Windows 10'
         }
     }
-    if ([HermesLightNativeMethodsV2]::Probe($Name, 0)) {
+    if ([HermesDesktopLightNativeMethodsV2]::Probe($Name, 0)) {
         return [ordered]@{
             name = $Name
             resolved = $true
@@ -558,7 +558,7 @@ try {
     $cdpArgument = "--remote-debugging-port=$cdpPort"
     $manifest = [ordered]@{
         version = $runtimeVersion
-        description = 'TEST-ONLY Hermes Light acceptance manifest; never a production Scoop manifest.'
+        description = 'TEST-ONLY Hermes Desktop Light acceptance manifest; never a production Scoop manifest.'
         homepage = 'https://github.com/NousResearch/hermes-agent'
         license = 'UNOFFICIAL-TEST-BUILD'
         url = $artifactUri
@@ -591,7 +591,7 @@ try {
     }
 
     $node = (Get-Command node -ErrorAction Stop).Source
-    $acceptanceJs = Join-Path $PSScriptRoot 'accept-hermes-light.cjs'
+    $acceptanceJs = Join-Path $PSScriptRoot 'accept-hermes-desktop-light.cjs'
     $beforeJson = Join-Path $OutputDirectory 'before.json'
     $isPreview = ($PackageVersion -eq 'preview') -or ([string]$receipt.preview -ieq 'true')
     $previewSwitch = if ($isPreview) { '--preview' } else { $null }
@@ -641,6 +641,9 @@ try {
         })
         throw
     }
+    $updateSummary = New-ScoopUpdateSummary -Assertion $updateAssertion `
+        -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
+        -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'scoop-update-evidence.json') -Value ([ordered]@{
         before = $beforeInstall
         after = $afterInstall
@@ -648,6 +651,7 @@ try {
         afterShortcut = $afterShortcut
         assertion = $updateAssertion
         assertionStatus = $updateAssertionStatus
+        summary = $updateSummary
     })
 
     $afterJson = Join-Path $OutputDirectory 'after.json'
@@ -675,6 +679,15 @@ try {
         throw $runtimeFailure
     }
 
+    $scoopSummary = [ordered]@{ app = $appName }
+    foreach ($key in $updateSummary.Keys) {
+        $scoopSummary[$key] = $updateSummary[$key]
+    }
+    $scoopSummary.shortcut = "$shortcutName.lnk"
+    $scoopSummary.startMenu = [Environment]::GetFolderPath('StartMenu')
+    $scoopSummary.installedAndUpdated = $true
+    $scoopSummary.uninstalledAppAndShortcut = $true
+    $scoopSummary.userDataRemained = $true
     $summary = [ordered]@{
         schema = 1
         status = 'passed'
@@ -687,22 +700,7 @@ try {
         preview = $receipt.preview -eq $true
         testManifest = [IO.Path]::GetFileName($manifestPath)
         testOnlyManifest = $true
-        scoop = [ordered]@{
-            app = $appName
-            beforeVersion = $updateEvidence.beforeVersion
-            afterVersion = $updateEvidence.afterVersion
-            beforeCurrentTarget = $updateEvidence.beforeCurrentTarget
-            afterCurrentTarget = $updateEvidence.afterCurrentTarget
-            beforeShortcutTarget = $updateEvidence.beforeShortcutTarget
-            afterShortcutTarget = $updateEvidence.afterShortcutTarget
-            expectedVersion = $updateEvidence.expectedVersion
-            updateAssertion = 'installed manifest/install versions changed to expected test-only version; resolved current target changed; shortcut target read back'
-            shortcut = "$shortcutName.lnk"
-            startMenu = [Environment]::GetFolderPath('StartMenu')
-            installedAndUpdated = $true
-            uninstalledAppAndShortcut = $true
-            userDataRemained = $true
-        }
+        scoop = $scoopSummary
         gateway = [ordered]@{
             command = 'hermes serve --host 127.0.0.1 --port <ephemeral> --skip-build'
             sourceCommit = $sourceCommit

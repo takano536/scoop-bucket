@@ -25,27 +25,34 @@ def stable_version(release):
     return tag[1:] if VERSION.fullmatch(tag) else None
 
 
+def validate_upstream_release(release, source_ref, version):
+    """Require the planned source tag to remain a published stable release."""
+    upstream_version = version.rsplit('-r', 1)[0]
+    if release.get('tag_name') != source_ref or stable_version(release) != upstream_version:
+        raise ValueError('Upstream source is no longer a published stable release')
+
+
 def manifest(version, repository, digest):
     version_key(version)
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repository) or not re.fullmatch(r'[a-f0-9]{64}', digest):
         raise ValueError('Invalid artifact identity')
-    name = f'hermes-agent-light-{version}-windows-x64.zip'
+    name = f'hermes-desktop-light-{version}-windows-x64.zip'
     return {
         'version': version,
-        'description': 'Hermes Agent remote-only desktop client (Light)',
+        'description': 'Hermes Desktop Light remote-only desktop client (Light)',
         'homepage': 'https://github.com/NousResearch/hermes-agent',
         'license': 'MIT',
         'architecture': {'64bit': {
-            'url': f'https://github.com/{repository}/releases/download/{quote(release_tag("hermes-agent-light", version), safe="")}/{name}',
+            'url': f'https://github.com/{repository}/releases/download/{quote(release_tag("hermes-desktop-light", version), safe="")}/{name}',
             'hash': digest,
         }},
-        'shortcuts': [['Hermes Light.exe', 'Hermes Agent Light']],
+        'shortcuts': [['Hermes Light.exe', 'Hermes Desktop Light']],
         'checkver': {
-            'url': f'https://raw.githubusercontent.com/{repository}/main/bucket/hermes-agent-light.json',
+            'url': f'https://raw.githubusercontent.com/{repository}/main/bucket/hermes-desktop-light.json',
             'regex': r'"version"\s*:\s*"(\d+\.\d+\.\d+-r[1-9]\d*)"',
         },
         'autoupdate': {'architecture': {'64bit': {
-            'url': f'https://github.com/{repository}/releases/download/hermes-agent-light%2Fv$version/hermes-agent-light-$version-windows-x64.zip',
+            'url': f'https://github.com/{repository}/releases/download/hermes-desktop-light%2Fv$version/hermes-desktop-light-$version-windows-x64.zip',
         }}},
         'notes': 'Unofficial unsigned x64 build. Connect to an existing Hermes gateway; no local Python or agent is bundled. Settings remain in the application user-data directory outside Scoop.',
     }
@@ -108,12 +115,16 @@ def plan():
     release = api(f'repos/{UPSTREAM}/releases/latest')
     version = stable_version(release)
     if version is None:
-        print(f"Waiting for a published stable SemVer release with Light support; latest: {release['tag_name']}")
+        tag = release.get('tag_name', '')
+        if re.fullmatch(r'v20\d{2}\.[0-9]+\.[0-9]+(?:\.[0-9]+)?', tag):
+            print(f'Skipping {tag}: historical CalVer tags are outside the upstream SemVer release contract')
+        else:
+            print(f"Waiting for a published stable SemVer release with Light support; latest: {tag}")
         output(build='false')
         return
     upstream_version = version
     version = package_version(upstream_version, os.environ.get('BUILD_REVISION', '1'))
-    current = Path('bucket/hermes-agent-light.json')
+    current = Path('bucket/hermes-desktop-light.json')
     if current.exists() and version_key(json.loads(current.read_text())['version']) >= version_key(version):
         print('Manifest is already current; nothing to build')
         output(build='false')
@@ -140,7 +151,7 @@ def verify_artifact(root, record, version, source_ref):
     expected = {
         'schema': 1, 'upstream': UPSTREAM, 'version': version, 'sourceRef': source_ref,
         'preview': False, 'payload': 'light', 'updateMechanism': 'external',
-        'artifact': f'hermes-agent-light-{version}-windows-x64.zip',
+        'artifact': f'hermes-desktop-light-{version}-windows-x64.zip',
         'executable': 'Hermes Light.exe',
         'smoke': 'two native launches; renderer loaded; localStorage retained',
     }
@@ -174,10 +185,12 @@ def publish():
     root = Path('output')
     record = json.loads((root / 'provenance.json').read_text(encoding='utf-8-sig'))
     artifact = verify_artifact(root, record, version, source_ref)
+    upstream_release = api(f'repos/{UPSTREAM}/releases/tags/{source_ref}')
+    validate_upstream_release(upstream_release, source_ref, version)
     upstream_commit = api(f'repos/{UPSTREAM}/commits/{source_ref}')['sha']
     if record['commit'] != upstream_commit:
         raise ValueError('Upstream tag moved or build has wrong source')
-    tag = release_tag('hermes-agent-light', version)
+    tag = release_tag('hermes-desktop-light', version)
     pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repository}/releases?per_page=100'))
     existing = next((row for page in pages for row in page if row['tag_name'] == tag), None)
     if existing and not existing['draft']:
@@ -194,12 +207,12 @@ def publish():
     else:
         if not existing:
             gh('release', 'create', tag, '--repo', repository, '--draft', '--target', 'main',
-               '--title', f'Hermes Agent Light {version}', '--notes',
+               '--title', f'Hermes Desktop Light {version}', '--notes',
                f'Unofficial unsigned Windows x64 Light build from {UPSTREAM}@{upstream_commit}. '
                'Remote-only; no Python/local agent. Scoop owns updates. See provenance.json for build and smoke receipts.',
                '--latest=false')
         state = api(f'repos/{repository}/releases/tags/{quote(tag, safe="")}')
-        history_manifest = root / 'hermes-agent-light.json'
+        history_manifest = root / 'hermes-desktop-light.json'
         history_manifest.write_text(json.dumps(manifest(version, repository, record['sha256']), indent=4) + '\n', encoding='utf-8')
         for file in (artifact, root / 'provenance.json', history_manifest):
             prior = next((asset for asset in state['assets'] if asset['name'] == file.name), None)
@@ -230,7 +243,7 @@ def publish():
         subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
         # Disposable Actions checkout only; always retain concurrent main changes.
         subprocess.run(['git', 'reset', '--hard', 'origin/main'], check=True)
-        target = Path('bucket/hermes-agent-light.json')
+        target = Path('bucket/hermes-desktop-light.json')
         if target.exists() and version_key(json.loads(target.read_text())['version']) > version_key(version):
             raise ValueError('Refusing manifest downgrade')
         target.write_text(json.dumps(data, indent=4) + '\n', encoding='utf-8')
@@ -239,9 +252,9 @@ def publish():
         subprocess.run(['git', 'add', str(target), 'README.md'], check=True)
         if subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode == 0:
             return
-        subprocess.run(['git', 'commit', '-m', f'chore: update hermes-agent-light to {version}'], check=True)
+        subprocess.run(['git', 'commit', '-m', f'chore: update hermes-desktop-light to {version}'], check=True)
         if subprocess.run(['git', 'push', 'origin', 'HEAD:main']).returncode == 0:
-            remote = api(f'repos/{repository}/contents/bucket/hermes-agent-light.json?ref=main')
+            remote = api(f'repos/{repository}/contents/bucket/hermes-desktop-light.json?ref=main')
             import base64
             actual = json.loads(base64.b64decode(remote['content']))
             if actual != data:

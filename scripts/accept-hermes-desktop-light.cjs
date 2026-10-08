@@ -172,7 +172,7 @@ async function persistedGatewayRpc(client, method, params = {}) {
 
   const request = {
     jsonrpc: '2.0',
-    id: `hermes-light-acceptance-${Date.now()}`,
+    id: `hermes-desktop-light-acceptance-${Date.now()}`,
     method,
     params
   }
@@ -290,7 +290,7 @@ async function run() {
         remoteTokenSet: config.value.remoteTokenSet === true,
         tokenNotExported: !Object.prototype.hasOwnProperty.call(config.value, 'remoteToken')
       }
-      await evaluate(client, `localStorage.setItem('hermes-light-acceptance-marker', 'retained'); true`)
+      await evaluate(client, `localStorage.setItem('hermes-desktop-light-acceptance-marker', 'retained'); true`)
     } else {
       const config = await bridge(client, 'getConnectionConfig')
       assert(config.ok && config.value?.mode === 'remote', 'remote mode did not survive Scoop update')
@@ -302,7 +302,7 @@ async function run() {
         remoteTokenSet: config.value.remoteTokenSet === true,
         tokenNotExported: !Object.prototype.hasOwnProperty.call(config.value, 'remoteToken')
       }
-      const marker = await evaluate(client, `localStorage.getItem('hermes-light-acceptance-marker')`)
+      const marker = await evaluate(client, `localStorage.getItem('hermes-desktop-light-acceptance-marker')`)
       assert(marker === 'retained', 'renderer user data did not survive Scoop update')
       const persistedRpc = await persistedGatewayRpc(client, 'session.list', { limit: 1 })
       assert(persistedRpc && Array.isArray(persistedRpc.sessions),

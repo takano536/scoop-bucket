@@ -14,7 +14,7 @@ from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('light_publish', ROOT / 'scripts/hermes-light.py')
+spec = importlib.util.spec_from_file_location('light_publish', ROOT / 'scripts/hermes-desktop-light.py')
 assert spec is not None and spec.loader is not None
 light = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(light)
@@ -47,7 +47,7 @@ class PublishTests(unittest.TestCase):
         self.initial = self.git('rev-parse', 'HEAD').strip()
         self.output = self.work / 'output'
         self.output.mkdir()
-        self.name = 'hermes-agent-light-0.22.0-r1-windows-x64.zip'
+        self.name = 'hermes-desktop-light-0.22.0-r1-windows-x64.zip'
         # These bytes are test fixtures, not an application or CI build evidence.
         self.published = self.package('previously published fixture')
         self.record = dict(schema=1, upstream=light.UPSTREAM, version='0.22.0-r1', sourceRef='v0.22.0',
@@ -80,12 +80,14 @@ class PublishTests(unittest.TestCase):
         return data.getvalue()
 
     def api(self, endpoint):
+        if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+            return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
         if endpoint == f'repos/{light.UPSTREAM}/commits/v0.22.0':
             return {'sha': 'a' * 40}
-        if endpoint == 'repos/fixture/bucket/releases/tags/hermes-agent-light%2Fv0.22.0-r1':
+        if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
             return {'draft': False, 'prerelease': False}
-        if endpoint == 'repos/fixture/bucket/contents/bucket/hermes-agent-light.json?ref=main':
-            actual = self.git('show', 'origin/main:bucket/hermes-agent-light.json')
+        if endpoint == 'repos/fixture/bucket/contents/bucket/hermes-desktop-light.json?ref=main':
+            actual = self.git('show', 'origin/main:bucket/hermes-desktop-light.json')
             return {'content': base64.b64encode(actual.encode()).decode()}
         if endpoint == 'repos/fixture/bucket/contents/README.md?ref=main':
             actual = self.git('show', 'origin/main:README.md')
@@ -94,7 +96,7 @@ class PublishTests(unittest.TestCase):
 
     def gh(self, *args):
         if args == ('api', '--paginate', '--slurp', 'repos/fixture/bucket/releases?per_page=100'):
-            return json.dumps([[{'tag_name': 'hermes-agent-light/v0.22.0-r1', 'draft': False}]])
+            return json.dumps([[{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': False}]])
         if args[:2] == ('release', 'download'):
             saved = Path(args[args.index('--dir') + 1])
             saved.mkdir()
@@ -108,7 +110,7 @@ class PublishTests(unittest.TestCase):
              patch('urllib.request.urlopen', return_value=io.BytesIO(self.published if public_bytes is None else public_bytes)) as download:
             light.publish()
             download.assert_called_once_with(
-                'https://github.com/fixture/bucket/releases/download/hermes-agent-light%2Fv0.22.0-r1/' + self.name,
+                'https://github.com/fixture/bucket/releases/download/hermes-desktop-light%2Fv0.22.0-r1/' + self.name,
                 timeout=120)
 
     def test_publication_requires_explicit_enablement_and_trusted_actions_main(self):
@@ -124,9 +126,9 @@ class PublishTests(unittest.TestCase):
 
     def test_existing_release_reuses_immutable_bytes_and_writes_manifest_readme(self):
         self.run_publish()
-        manifest = json.loads(self.git('show', 'origin/main:bucket/hermes-agent-light.json'))
+        manifest = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
         self.assertEqual(manifest['architecture']['64bit']['hash'], self.record['sha256'])
-        self.assertIn('hermes-agent-light', self.git('show', 'origin/main:README.md'))
+        self.assertIn('hermes-desktop-light', self.git('show', 'origin/main:README.md'))
         self.assertEqual(self.git('status', '--short', '--untracked-files=no').strip(), '')
         # Repeating publication is a no-op, not a rebuilt upload or duplicate commit.
         before = self.git('rev-parse', 'HEAD')
@@ -138,7 +140,7 @@ class PublishTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Public release URL has wrong digest'):
             self.run_publish(b'wrong public fixture')
         self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-        self.assertFalse((self.work / 'bucket/hermes-agent-light.json').exists())
+        self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
         self.assertEqual(self.git('rev-parse', 'origin/main').strip(), self.initial)
 
     def test_other_application_releases_are_ignored(self):
@@ -146,17 +148,17 @@ class PublishTests(unittest.TestCase):
         def gh(*args):
             if args[:3] == ('api', '--paginate', '--slurp'):
                 return json.dumps([[{'tag_name': 'other-app/v99.0.0-r10', 'draft': False}],
-                                   [{'tag_name': 'hermes-agent-light/v0.22.0-r1', 'draft': False}]])
+                                   [{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': False}]])
             return real_gh(*args)
         with patch.object(light, 'api', side_effect=self.api), patch.object(light, 'gh', side_effect=gh), \
              patch('urllib.request.urlopen', return_value=io.BytesIO(self.published)):
             light.publish()
-        result = json.loads(self.git('show', 'origin/main:bucket/hermes-agent-light.json'))
+        result = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
         self.assertEqual(result['version'], '0.22.0-r1')
-        self.assertEqual(result['checkver']['url'], 'https://raw.githubusercontent.com/fixture/bucket/main/bucket/hermes-agent-light.json')
+        self.assertEqual(result['checkver']['url'], 'https://raw.githubusercontent.com/fixture/bucket/main/bucket/hermes-desktop-light.json')
 
     def test_same_upstream_revision_downgrade_is_refused(self):
-        target = self.work / 'bucket/hermes-agent-light.json'
+        target = self.work / 'bucket/hermes-desktop-light.json'
         target.write_text(json.dumps(light.manifest('0.22.0-r10', 'fixture/bucket', 'b' * 64)))
         self.git('add', str(target))
         self.git('commit', '-m', 'newer revision fixture')
@@ -185,7 +187,7 @@ class PublishTests(unittest.TestCase):
         real_api = self.api
 
         def api(endpoint):
-            if '/releases/tags/' in endpoint:
+            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
                 return state
             return real_api(endpoint)
 
@@ -199,7 +201,7 @@ class PublishTests(unittest.TestCase):
                 state['draft'] = False
             elif args[:2] != ('release', 'create'):
                 raise AssertionError(args)
-            self.assertFalse((self.work / 'bucket/hermes-agent-light.json').exists())
+            self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
             return ''
 
         built = (self.output / self.name).read_bytes()
@@ -207,26 +209,26 @@ class PublishTests(unittest.TestCase):
              patch('urllib.request.urlopen', return_value=io.BytesIO(built)):
             light.publish()
         self.assertEqual([call[1] for call in mutations], ['create', 'upload', 'upload', 'upload', 'edit'])
-        historical = json.loads((self.output / 'hermes-agent-light.json').read_text())
+        historical = json.loads((self.output / 'hermes-desktop-light.json').read_text())
         self.assertEqual(historical['version'], '0.22.0-r1')
         self.assertEqual(historical['architecture']['64bit']['hash'], hashlib.sha256(built).hexdigest())
         self.assertIn('--draft', mutations[0])
         self.assertIn('--latest=false', mutations[0])
         self.assertFalse(any('--clobber' in call for call in mutations))
-        data = json.loads(self.git('show', 'origin/main:bucket/hermes-agent-light.json'))
+        data = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
         self.assertEqual(data['architecture']['64bit']['hash'], hashlib.sha256(built).hexdigest())
 
     def test_different_partial_draft_is_not_overwritten_or_published(self):
         real_api = self.api
 
         def api(endpoint):
-            if '/releases/tags/' in endpoint:
+            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
                 return {'draft': True, 'prerelease': False, 'assets': [{'name': self.name}]}
             return real_api(endpoint)
 
         def gh(*args):
             if args[:3] == ('api', '--paginate', '--slurp'):
-                return json.dumps([[{'tag_name': 'hermes-agent-light/v0.22.0-r1', 'draft': True}]])
+                return json.dumps([[{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': True}]])
             if args[:2] == ('release', 'download'):
                 (Path(args[args.index('--dir') + 1]) / self.name).write_bytes(self.published)
                 return ''
@@ -238,18 +240,34 @@ class PublishTests(unittest.TestCase):
                 light.publish()
             download.assert_not_called()
         self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-        self.assertFalse((self.work / 'bucket/hermes-agent-light.json').exists())
+        self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
 
     def test_moved_upstream_tag_is_rejected_before_release_mutation(self):
-        with patch.object(light, 'api', return_value={'sha': 'b' * 40}), \
-             patch.object(light, 'gh') as gh:
+        def api(endpoint):
+            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
+            return {'sha': 'b' * 40}
+
+        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
             with self.assertRaisesRegex(ValueError, 'Upstream tag moved'):
                 light.publish()
             gh.assert_not_called()
         self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
 
+    def test_upstream_release_must_remain_published_stable(self):
+        def api(endpoint):
+            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
+                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}
+            return {'sha': 'a' * 40}
+
+        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
+            with self.assertRaisesRegex(ValueError, 'no longer a published stable release'):
+                light.publish()
+            gh.assert_not_called()
+        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
+
     def test_manifest_downgrade_is_refused(self):
-        target = self.work / 'bucket/hermes-agent-light.json'
+        target = self.work / 'bucket/hermes-desktop-light.json'
         target.write_text(json.dumps(light.manifest('0.23.0-r1', 'fixture/bucket', 'b' * 64)))
         self.git('add', str(target))
         self.git('commit', '-m', 'newer fixture distribution')

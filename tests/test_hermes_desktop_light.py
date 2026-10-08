@@ -2,12 +2,12 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-light.py'
+SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-desktop-light.py'
 
 
 class ReleaseTests(unittest.TestCase):
     def test_only_published_stable_semver_is_admitted(self):
-        self.assertTrue(SCRIPT.exists(), 'Light release helper is missing')
+        self.assertTrue(SCRIPT.exists(), 'Desktop Light release helper is missing')
         spec = importlib.util.spec_from_file_location('light', SCRIPT)
         assert spec is not None and spec.loader is not None
         light = importlib.util.module_from_spec(spec)
@@ -17,6 +17,20 @@ class ReleaseTests(unittest.TestCase):
             self.assertIsNone(light.stable_version({'tag_name': tag, 'draft': False, 'prerelease': False}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': True, 'prerelease': False}))
+
+    def test_historical_calver_is_explicitly_skipped(self):
+        from unittest.mock import Mock, patch
+        spec = importlib.util.spec_from_file_location('light', SCRIPT)
+        assert spec is not None and spec.loader is not None
+        light = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(light)
+        output = Mock()
+        with patch.object(light, 'api', return_value={
+                'tag_name': 'v2026.9.24', 'draft': False, 'prerelease': False}), \
+                patch.object(light, 'output', output), patch('builtins.print') as printed:
+            light.plan()
+        output.assert_called_once_with(build='false')
+        self.assertIn('historical CalVer', printed.call_args.args[0])
 
 
     def test_manifest_binds_version_repository_and_exact_bytes(self):
@@ -28,8 +42,8 @@ class ReleaseTests(unittest.TestCase):
         result = light.manifest('0.22.0-r1', 'takano536/scoop-bucket', 'a' * 64)
         self.assertEqual(result['version'], '0.22.0-r1')
         self.assertEqual(result['architecture']['64bit']['hash'], 'a' * 64)
-        self.assertEqual(result['architecture']['64bit']['url'], 'https://github.com/takano536/scoop-bucket/releases/download/hermes-agent-light%2Fv0.22.0-r1/hermes-agent-light-0.22.0-r1-windows-x64.zip')
-        self.assertEqual(result['autoupdate']['architecture']['64bit']['url'], 'https://github.com/takano536/scoop-bucket/releases/download/hermes-agent-light%2Fv$version/hermes-agent-light-$version-windows-x64.zip')
+        self.assertEqual(result['architecture']['64bit']['url'], 'https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fv0.22.0-r1/hermes-desktop-light-0.22.0-r1-windows-x64.zip')
+        self.assertEqual(result['autoupdate']['architecture']['64bit']['url'], 'https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fv$version/hermes-desktop-light-$version-windows-x64.zip')
         self.assertEqual(result['shortcuts'][0][0], 'Hermes Light.exe')
         for version, repository, digest in [('0.22.0-rc.1', 'a/b', 'a' * 64), ('0.22.0-r1', 'bad', 'a' * 64), ('0.22.0-r1', 'a/b', 'bad')]:
             with self.assertRaises(ValueError):
@@ -60,7 +74,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(hasattr(light, 'verify_artifact'), 'Artifact validation is missing')
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
-            artifact = root / 'hermes-agent-light-0.22.0-r1-windows-x64.zip'
+            artifact = root / 'hermes-desktop-light-0.22.0-r1-windows-x64.zip'
             # Synthetic packaging fixture, never published or reported as a build.
             with zipfile.ZipFile(artifact, 'w') as archive:
                 archive.writestr('Hermes Light.exe', b'test fixture')
@@ -142,7 +156,7 @@ class PlanTests(unittest.TestCase):
             try:
                 os.chdir(scratch)
                 Path('bucket').mkdir()
-                target = Path('bucket/hermes-agent-light.json')
+                target = Path('bucket/hermes-desktop-light.json')
                 target.write_text(json.dumps({'version': '0.22.0-r2'}))
                 with patch.dict(os.environ, BUILD_REVISION='1'):
                     self.run_plan(self.response)
