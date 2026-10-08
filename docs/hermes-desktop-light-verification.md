@@ -85,11 +85,18 @@ Hermes Desktop Lightのgateway接続・認証移行などの既存阻害条件�
 - 将来のScoop配布用GitHub Releases公開は、mainかつ明示有効化されたpublisherのみ。
   現在は無効のままで、マージや公開の有効化は今回の作業に含めない。
 
-## Windows受入ジョブ（このPRで追加）
+## Windows受入ジョブ
 
 `.github/workflows/hermes-desktop-light.yml` の`acceptance` jobは、`build`の
 Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local bucketの
 test-only manifestで次を確認する。manifestはbucketの本番ツリーには追加しない。
+
+`New-ScoopUpdateSummary` はassertionを実測したbefore/after version、resolved current
+target、shortcut target（resolved target）と突き合わせ、各値が空でなく一致し、
+before/afterがno-opでなく、afterが期待version・current target・shortcut target
+（`expectedVersion`・`expectedCurrentTarget`・`expectedShortcutTarget`）に一致する
+場合だけsummaryを生成する。このsummaryが`scoop-update-evidence.json`の`summary`と
+`acceptance.json`の`scoop`に書き込まれる。
 
 - Scoop install前後の`current/manifest.json`とScoopのinstall receipt（環境によっては
   receiptが作られないため`Scoop list`の実測行）を読み戻し、`version`一致を確認する。
