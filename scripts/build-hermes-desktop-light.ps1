@@ -32,10 +32,35 @@ foreach ($entry in @(
     @{ Output = 'preview-guest-preload.js'; Metafile = 'preview-guest-preload.metafile.json' }
 )) {
     $old = "    outfile: join(out, '$($entry.Output)'),"
-    $new = "$old`n    metafile: metafileDir ? join(metafileDir, '$($entry.Metafile)') : undefined,"
+    $new = "$old`n    metafile: Boolean(metafileDir),"
     if (!$mainBundle.Contains($old)) { throw "Upstream Electron bundle output marker changed: $($entry.Output)" }
     $mainBundle = $mainBundle.Replace($old, $new)
 }
+$importMarker = "import { mkdirSync, readFileSync } from 'node:fs'"
+$importReplacement = "import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'"
+if (!$mainBundle.Contains($importMarker)) { throw 'Upstream Electron bundle import marker changed; refusing to build with metafiles' }
+$mainBundle = $mainBundle.Replace($importMarker, $importReplacement)
+$buildMarker = "  await build({"
+$first = $mainBundle.IndexOf($buildMarker)
+if ($first -lt 0) { throw 'Upstream Electron main build marker changed' }
+$mainBundle = $mainBundle.Substring(0, $first) + "  const mainResult = await build({" + $mainBundle.Substring($first + $buildMarker.Length)
+$second = $mainBundle.IndexOf($buildMarker, $first + 1)
+if ($second -lt 0) { throw 'Upstream Electron preload build marker changed' }
+$firstClose = $mainBundle.LastIndexOf("  })", $second)
+$mainBundle = $mainBundle.Substring(0, $firstClose + 4) + "`n  if (metafileDir && mainResult.metafile) writeFileSync(join(metafileDir, 'electron-main.metafile.json'), JSON.stringify(mainResult.metafile))" + $mainBundle.Substring($firstClose + 4)
+$second = $mainBundle.IndexOf($buildMarker, $first + 1)
+$mainBundle = $mainBundle.Substring(0, $second) + "  const preloadResult = await build({" + $mainBundle.Substring($second + $buildMarker.Length)
+$third = $mainBundle.IndexOf($buildMarker, $second + 1)
+if ($third -lt 0) { throw 'Upstream Electron preview preload build marker changed' }
+$secondClose = $mainBundle.LastIndexOf("  })", $third)
+$mainBundle = $mainBundle.Substring(0, $secondClose + 4) + "`n  if (metafileDir && preloadResult.metafile) writeFileSync(join(metafileDir, 'electron-preload.metafile.json'), JSON.stringify(preloadResult.metafile))" + $mainBundle.Substring($secondClose + 4)
+$third = $mainBundle.IndexOf($buildMarker, $second + 1)
+$mainBundle = $mainBundle.Substring(0, $third) + "  const guestResult = await build({" + $mainBundle.Substring($third + $buildMarker.Length)
+$returnMarker = "  return { stampClock"
+$returnAt = $mainBundle.IndexOf($returnMarker, $third + 1)
+if ($returnAt -lt 0) { throw 'Upstream Electron bundle return marker changed' }
+$thirdClose = $mainBundle.LastIndexOf("  })", $returnAt)
+$mainBundle = $mainBundle.Substring(0, $thirdClose + 4) + "`n  if (metafileDir && guestResult.metafile) writeFileSync(join(metafileDir, 'preview-guest-preload.metafile.json'), JSON.stringify(guestResult.metafile))" + $mainBundle.Substring($thirdClose + 4)
 Set-Content $mainBundlePath -Value $mainBundle -Encoding utf8NoBOM -NoNewline
 $env:HERMES_BUNDLE_METAFILE_DIR = $bundleGraphDir
 git -C $source update-index --assume-unchanged -- scripts/build/desktop.mjs apps/desktop/scripts/bundle-electron-main.mjs
