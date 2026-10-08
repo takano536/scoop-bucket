@@ -240,6 +240,69 @@ function Get-SystemDllNames {
     return $names
 }
 
+function Test-WindowsApiSetResolution {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    if ($null -eq ('HermesLightNativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class HermesLightNativeMethods
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeLibrary(IntPtr hModule);
+
+    public static bool Probe(string name, uint flags, out int errorCode)
+    {
+        var handle = LoadLibraryEx(name, IntPtr.Zero, flags);
+        errorCode = Marshal.GetLastWin32Error();
+        if (handle == IntPtr.Zero)
+            return false;
+        FreeLibrary(handle);
+        return true;
+    }
+}
+'@
+    }
+
+    $dataFileError = 0
+    if ([HermesLightNativeMethods]::Probe($Name, 0x00000002, [ref]$dataFileError)) {
+        return [ordered]@{
+            name = $Name
+            resolved = $true
+            mechanism = 'LoadLibraryEx(LOAD_LIBRARY_AS_DATAFILE)'
+            error = 0
+            minimumWindows = 'Windows 10'
+        }
+    }
+    $loaderError = 0
+    if ([HermesLightNativeMethods]::Probe($Name, 0, [ref]$loaderError)) {
+        return [ordered]@{
+            name = $Name
+            resolved = $true
+            mechanism = 'LoadLibraryEx'
+            error = 0
+            minimumWindows = 'Windows 10'
+        }
+    }
+    return [ordered]@{
+        name = $Name
+        resolved = $false
+        mechanism = 'LoadLibraryEx(LOAD_LIBRARY_AS_DATAFILE) and LoadLibraryEx'
+        error = $loaderError
+        dataFileError = $dataFileError
+        minimumWindows = 'Windows 10'
+    }
+}
+
 function Get-PEImportEvidence {
     param(
         [Parameter(Mandatory = $true)]
@@ -273,11 +336,12 @@ function Get-PEImportEvidence {
     }
     $systemNames = Get-SystemDllNames
     $records = @()
-    $allImports = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $unparseable = @()
     $unresolved = @()
     $missingRuntime = @()
-    $crtPattern = '^(api-ms-win-crt-|ucrtbase|vcruntime|msvcp|concrt|msvcr).*\.dll$'
+    $apiSetProbeCache = @{}
+    $apiSetProbes = @()
+    $runtimePattern = '^(?:(?:api|ext)-ms-win-.+|ucrtbase|vcruntime140(?:_\d+)?|msvcp140(?:_\d+)?|concrt140|vccorlib140|mfc\d+[ud]?|msvcr\d+)\.dll$'
 
     foreach ($file in $files) {
         $relativeFile = [IO.Path]::GetRelativePath($Root, $file.FullName)
@@ -302,6 +366,14 @@ function Get-PEImportEvidence {
         foreach ($import in $imports) {
             [void]$allImports.Add($import)
             $resolution = $null
+            $apiSetProbe = $null
+            if ($import -match '^(?:api|ext)-ms-win-') {
+                if (!$apiSetProbeCache.ContainsKey($import)) {
+                    $apiSetProbeCache[$import] = Test-WindowsApiSetResolution -Name $import
+                    $apiSetProbes += $apiSetProbeCache[$import]
+                }
+                $apiSetProbe = $apiSetProbeCache[$import]
+            }
             $localCandidate = Join-Path $file.DirectoryName $import
             if (Test-Path -LiteralPath $localCandidate -PathType Leaf) {
                 $resolution = [ordered]@{
@@ -321,11 +393,12 @@ function Get-PEImportEvidence {
                     kind = 'system-known-dll'
                     path = $import
                 }
-            } elseif ($import -match '^(?:api|ext)-ms-win-') {
+            } elseif ($apiSetProbe -and $apiSetProbe.resolved) {
                 $resolution = [ordered]@{
                     name = $import
                     kind = 'system-api-set'
-                    path = 'Windows API Set'
+                    path = 'Windows 10+ ApiSet schema'
+                    apiSetProbe = $apiSetProbe
                 }
             } elseif (Test-Path -LiteralPath (Join-Path $env:SystemRoot "System32\$import") -PathType Leaf) {
                 $resolution = [ordered]@{
@@ -334,12 +407,20 @@ function Get-PEImportEvidence {
                     path = (Join-Path $env:SystemRoot "System32\$import")
                 }
             }
-            if (!$resolution) {
-                $unresolved += "$relativeFile -> $import"
-            } elseif ($import -match $crtPattern -and $resolution.kind -notin @('app-local', 'app-tree')) {
-                $missingRuntime += "$relativeFile -> $import ($($resolution.kind))"
+            $resolutionKind = if ($resolution) { $resolution.kind } else { 'unresolved' }
+            $classification = Get-WindowsImportClassification `
+                -ImportName $import `
+                -ResolutionKind $resolutionKind `
+                -ApiSetResolved ($apiSetProbe -and $apiSetProbe.resolved)
+            if (!$resolution -or !$classification.accepted) {
+                if (!$resolution -or $classification.kind -eq 'unresolved-api-set') {
+                    $unresolved += "$relativeFile -> $import ($($classification.reason))"
+                } else {
+                    $missingRuntime += "$relativeFile -> $import ($($classification.reason))"
+                }
             }
             if ($resolution) {
+                $resolution.classification = $classification.kind
                 $resolutions += $resolution
             }
         }
@@ -350,9 +431,15 @@ function Get-PEImportEvidence {
         }
     }
 
-    $runtimeImports = @($allImports | Where-Object { $_ -match $crtPattern } | Sort-Object)
+    $runtimeImports = @($allImports | Where-Object { $_ -match $runtimePattern } | Sort-Object)
+    $osProvidedImports = @($allImports |
+        Where-Object { $_ -match '^(?:api|ext)-ms-win-.+\.dll$' -or $_ -ieq 'ucrtbase.dll' } |
+        Sort-Object)
+    $redistributableImports = @($allImports |
+        Where-Object { $_ -match '^(?:vcruntime140(?:_\d+)?|msvcp140(?:_\d+)?|concrt140|vccorlib140|mfc\d+[ud]?|msvcr\d+)\.dll$' } |
+        Sort-Object)
     $shippedRuntimeDlls = @($files |
-        Where-Object { $_.Extension -eq '.dll' -and $_.Name -match $crtPattern } |
+        Where-Object { $_.Extension -eq '.dll' -and $_.Name -match '^(?:vcruntime140(?:_\d+)?|msvcp140(?:_\d+)?|concrt140|vccorlib140|mfc\d+[ud]?|msvcr\d+)\.dll$' } |
         ForEach-Object { [IO.Path]::GetRelativePath($Root, $_.FullName) } |
         Sort-Object)
     $accepted = $unparseable.Count -eq 0 -and $unresolved.Count -eq 0 -and $missingRuntime.Count -eq 0
@@ -364,7 +451,7 @@ function Get-PEImportEvidence {
         $failures += "unresolved imports: $($unresolved -join ', ')"
     }
     if ($missingRuntime.Count -gt 0) {
-        $failures += "VC++/UCRT imports are not shipped by the artifact: $($missingRuntime -join ', ')"
+        $failures += "VC++ redistributable imports are not shipped by the artifact: $($missingRuntime -join ', ')"
     }
 
     return [ordered]@{
@@ -372,6 +459,9 @@ function Get-PEImportEvidence {
         files = @($records)
         fileCount = $files.Count
         runtimeImports = @($runtimeImports)
+        osProvidedImports = @($osProvidedImports)
+        redistributableImports = @($redistributableImports)
+        apiSetProbes = @($apiSetProbes)
         shippedRuntimeDlls = @($shippedRuntimeDlls)
         unparseable = @($unparseable)
         unresolved = @($unresolved)
@@ -379,8 +469,9 @@ function Get-PEImportEvidence {
         accepted = $accepted
         runnerIsClean = $false
         runnerLimit = 'GitHub-hosted Windows includes system runtimes and is not a clean Windows installation.'
+        minimumWindows = 'Windows 10+ (Electron supported minimum)'
         conclusion = if ($accepted) {
-            'Every bundled PE import parsed and resolved to the app tree or Windows KnownDLLs/System32/API Set; no unshipped VC++/UCRT import was observed.'
+            'Every bundled PE import parsed and resolved to the app tree or Windows 10+ KnownDLLs/System32/ApiSet schema; no unshipped VC++ redistributable import was observed.'
         } else {
             $failures -join '; '
         }

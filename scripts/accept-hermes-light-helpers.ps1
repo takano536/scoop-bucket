@@ -185,3 +185,63 @@ function Assert-ScoopUpdateSwitch {
         noOpRejected = $true
     }
 }
+
+function Get-WindowsImportClassification {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ImportName,
+        [Parameter(Mandatory = $true)]
+        [string]$ResolutionKind,
+        [Parameter(Mandatory = $false)]
+        [bool]$ApiSetResolved = $false
+    )
+
+    $apiSet = $ImportName -match '^(?:api|ext)-ms-win-'
+    $osProvided = $ImportName -match '^(?:api|ext)-ms-win-' -or
+        $ImportName -ieq 'ucrtbase.dll'
+    $redistributable = $ImportName -match '^(?:vcruntime140(?:_\d+)?|msvcp140(?:_\d+)?|concrt140|vccorlib140|mfc\d+[ud]?|msvcr\d+)\.dll$'
+    if ($apiSet) {
+        if (!$ApiSetResolved) {
+            return [ordered]@{
+                kind = 'unresolved-api-set'
+                accepted = $false
+                osProvided = $true
+                redistributable = $false
+                reason = "$ImportName was not resolved by the host ApiSet loader"
+            }
+        }
+        return [ordered]@{
+            kind = 'system-api-set'
+            accepted = $true
+            osProvided = $true
+            redistributable = $false
+            reason = 'Windows 10+ ApiSet schema'
+        }
+    }
+    if ($ResolutionKind -eq 'unresolved') {
+        return [ordered]@{
+            kind = 'unresolved'
+            accepted = $false
+            osProvided = $osProvided
+            redistributable = $redistributable
+            reason = "$ImportName was not resolved in the app tree or supported Windows locations"
+        }
+    }
+    if ($redistributable -and $ResolutionKind -notin @('app-local', 'app-tree')) {
+        return [ordered]@{
+            kind = 'missing-redistributable'
+            accepted = $false
+            osProvided = $false
+            redistributable = $true
+            reason = "$ImportName is a VC++ redistributable and is not shipped next to the importer"
+        }
+    }
+    return [ordered]@{
+        kind = if ($osProvided) { 'os-provided' } else { $ResolutionKind }
+        accepted = $true
+        osProvided = $osProvided
+        redistributable = $redistributable
+        reason = if ($osProvided) { 'Windows 10+ system component' } else { 'Resolved dependency' }
+    }
+}

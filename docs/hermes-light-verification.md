@@ -48,10 +48,14 @@ test-only manifestで次を確認する。manifestはbucketの本番ツリーに
   shortcutの削除、`HERMES_HOME`/Desktop user-dataの残存。
 - インストール済みapp treeの全`*.dll`/`*.exe`/`*.node`を`dumpbin /DEPENDENTS`で
   列挙・parseし、各importをapp tree（importing module directoryを優先）または
-  Windows KnownDLLs/System32/API Setへ解決する。unparseable PE、unresolved import、
-  app treeに同梱されないVC++/UCRT importはacceptance failure（publish blocker）とし、
-  診断だけで成功にしない。runtime evidenceには各file/import/resolutionとfailureを
-  記録する。
+  Windows 10+のKnownDLLs/System32へ解決する。`api-ms-win-*`/`ext-ms-win-*`
+  API setは`LoadLibraryEx` probeでhostのApiSet schema解決を実測し、`ucrtbase.dll`
+  はWindows 10+ OS提供コンポーネントとして扱う。
+- `vcruntime140*.dll`、`msvcp140*.dll`、`concrt140.dll`、`vccorlib140.dll`、
+  `mfc*`等のVC++ redistributable importがapp treeに同梱されない場合はacceptance
+  failure（publish blocker）とし、unparseable PE・unresolved importも同様に扱う。
+  診断だけで成功にせず、runtime evidenceには各file/import/resolution/API-set probeと
+  failureを記録する。Electronの対応最小環境と同じWindows 10+を前提とする。
 - GitHub-hosted Windows runnerはクリーンなWindowsではないため、runner上で解決・起動
   してもクリーン環境のruntime独立性を証明しない。この制限は受入条件として維持する。
 - 上流checkoutと同じcommitの`hermes serve --skip-build`をlocalhostで起動し、
@@ -67,8 +71,8 @@ test-only manifestで次を確認する。manifestはbucketの本番ツリーに
   authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
   app tree不変を確認する。
 
-以下のrunはこの強化前の実装による履歴であり、新しい版切替assertionおよび全PE import受入の成功証拠として扱わない。今回のPRでは新しいWindows CI runを実行し、結果と実測evidenceをPRへ追記する。
-改訂後の実Windows受入run（rerun）は成功した。
+以下のrunはこの強化前の実装による履歴であり、新しい版切替assertionおよび全PE import受入の成功証拠として扱わない。最新runでは版切替と全PE検査を実行し、未同梱VC++ redistributableが見つかったため公開blockerとして失敗した。
+最新の実Windows受入run: [37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)。実測evidenceは`hermes-light-windows-acceptance` artifactへ保存した。
 
 - run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)
 - acceptance job: [112983466324](https://github.com/takano536/scoop-bucket/actions/runs/37673954715/job/112983466324)
@@ -84,8 +88,9 @@ test-only manifestで次を確認する。manifestはbucketの本番ツリーに
 - 異なるLight対応upstream commitの同一runビルドはまだないため、before/afterは
   同じZIPを異なるtest-only versionとして使った。これはScoop更新時の設定保持を
   検証するが、異なるバイナリ間のmigrationは証明しない。
-- PE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
-  `false`であり、クリーンなWindowsへのruntime独立性は未証明。
+- 旧runのPE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
+  `false`であり、クリーンなWindowsへのruntime独立性は未証明。最新runではWindows 10+
+  API-set probeを実施し、OS提供API set/UCRTとVC++ redistributableを区別して記録した。
 - previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
   applyを拒否しapp tree不変だった。local-install表示は残るが、probeは
   `bootstrap-needed`で、ローカルagentの起動は行われなかった。
