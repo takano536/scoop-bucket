@@ -626,9 +626,19 @@ def verify_artifact(root, record, version, source_ref, channel='stable', expecte
         if not isinstance(notices['thirdParty'].get('packages'), int) or notices['thirdParty']['packages'] < 1:
             raise ValueError('Third-party notice package count is invalid')
         audit = record.get('audit')
-        if (not isinstance(audit, dict) or audit.get('status') != 'complete' or
-                audit.get('limitations') != []):
-            raise ValueError('Audit limitations block publication')
+        if not isinstance(audit, dict) or audit.get('status') not in ('complete', 'limited'):
+            raise ValueError('Audit evidence is missing')
+        limitations = audit.get('limitations')
+        unresolved = audit.get('unresolved')
+        if (not isinstance(limitations, list) or
+                not all(isinstance(item, str) and item for item in limitations)):
+            raise ValueError('Audit limitation evidence is invalid')
+        if (not isinstance(unresolved, list) or
+                not all(isinstance(item, str) and item for item in unresolved)):
+            raise ValueError('Unresolved shipped-item evidence is invalid')
+        if unresolved:
+            details = ', '.join(unresolved)
+            raise ValueError(f'Unresolved shipped items block publication: {details}')
         _verify_common_stamp(archive, record)
     return artifact
 

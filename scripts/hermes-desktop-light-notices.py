@@ -822,8 +822,10 @@ def validate_shipped_dist_attribution(
     asset_records: dict[str, list[Path]],
     emitter_script_outputs: set[str],
     audit_limitations: list[str] | None = None,
+    unresolved_items: list[str] | None = None,
 ) -> set[str]:
     audit_limitations = audit_limitations if audit_limitations is not None else []
+    unresolved_items = unresolved_items if unresolved_items is not None else []
     shipped = shipped_dist_files(pack)
     script_outputs = graph_script_outputs(map_files, metafile_files, audit_limitations) | emitter_script_outputs
     unattributed: list[str] = []
@@ -844,12 +846,14 @@ def validate_shipped_dist_attribution(
             "Shipped files lacked source-map/metafile or asset-origin attribution: "
             + ", ".join(unattributed)
         )
+        unresolved_items.extend(f"Unresolved shipped item: {item}" for item in unattributed)
     return shipped
 
 
 def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     """Read Vite source maps and esbuild metafiles emitted by the controlled build."""
     audit_limitations: list[str] = []
+    unresolved_items: list[str] = []
     roots = [
         source / "apps" / "desktop" / "dist",
         source / "apps" / "desktop" / ".hermes-bundle-graph",
@@ -888,11 +892,13 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         css_files = css_source_files(source, roots)
     except RuntimeError as exc:
         audit_limitations.append(f"CSS source attribution unavailable: {exc}")
+        unresolved_items.append(f"Unresolved asset evidence: {exc}")
         css_files = []
     try:
         asset_records = asset_source_records(source, roots)
     except RuntimeError as exc:
         audit_limitations.append(f"Asset-origin attribution unavailable: {exc}")
+        unresolved_items.append(f"Unresolved asset evidence: {exc}")
         asset_records = {}
     try:
         emitter_script_outputs = graph_emitter_script_outputs(roots)
@@ -980,20 +986,31 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             module_count += 1
     except RuntimeError as exc:
         audit_limitations.append(f"CSS asset evidence unavailable: {exc}")
+        unresolved_items.append(f"Unresolved asset evidence: {exc}")
     try:
         for package in asset_source_packages(source, asset_records):
             add_graph_package(packages, package)
             module_count += 1
     except RuntimeError as exc:
         audit_limitations.append(f"Asset package evidence unavailable: {exc}")
+        unresolved_items.append(f"Unresolved asset evidence: {exc}")
     if pack is not None:
         shipped_files = validate_shipped_dist_attribution(
-            source, pack, map_files, metafile_files, asset_records, emitter_script_outputs, audit_limitations
+            source,
+            pack,
+            map_files,
+            metafile_files,
+            asset_records,
+            emitter_script_outputs,
+            audit_limitations,
+            unresolved_items,
         )
     else:
         shipped_files = set()
     if not packages:
         audit_limitations.append("No package modules were resolved from bundle evidence")
+        if pack is not None and not shipped_files:
+            unresolved_items.append("Unresolved shipped item: no package modules were resolved from bundle evidence")
     for entry in packages.values():
         if entry["name"] in fallback_names:
             entry["evidence"] = "fallback-production-source"
@@ -1013,6 +1030,7 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         },
         "shippedFiles": sorted(shipped_files),
         "auditLimitations": sorted(set(audit_limitations)),
+        "unresolvedItems": sorted(set(unresolved_items)),
         "moduleCount": module_count,
         "packages": sorted(packages.values(), key=lambda item: (item["name"].lower(), item["path"].lower())),
     }
@@ -1230,10 +1248,18 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     inventory: dict = {}
     packages = collect_packages(source, pack, bundle_graph, inventory)
     audit_limitations = bundle_graph.get("auditLimitations", [])
+    unresolved_items = bundle_graph.get("unresolvedItems", [])
     if not isinstance(audit_limitations, list) or not all(
         isinstance(item, str) and item for item in audit_limitations
     ):
         raise RuntimeError("Bundle graph audit limitations are invalid")
+    if not isinstance(unresolved_items, list) or not all(
+        isinstance(item, str) and item for item in unresolved_items
+    ):
+        raise RuntimeError("Bundle graph unresolved shipped items are invalid")
+    if unresolved_items:
+        details = "\n".join(f"- {item}" for item in sorted(set(unresolved_items)))
+        raise RuntimeError(f"Unresolved shipped items block publication:\n{details}")
     lines = [
         "THIRD-PARTY NOTICES",
         "=======================",
@@ -1250,7 +1276,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     if audit_limitations:
         lines.extend(
             [
-                "Additional audit limitations (not a license determination; publication is blocked until resolved):",
+                "Additional audit limitations (recorded evidence; not a license determination and not a publication blocker when fallback evidence resolves the target):",
                 *[f"- {item}" for item in audit_limitations],
                 "",
             ]
@@ -1322,6 +1348,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "audit": {
             "status": "complete" if not audit_limitations else "limited",
             "limitations": audit_limitations,
+            "unresolved": unresolved_items,
         },
         "licenseOverrides": {"unused": inventory["unusedOverrides"]},
         "upstreamLicense": {"path": "LICENSE", "sha256": sha256(target_license)},
@@ -1336,6 +1363,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "bundleMap": inventory["bundleMap"],
                 "unusedOverrides": inventory["unusedOverrides"],
                 "auditLimitations": audit_limitations,
+                "unresolved": unresolved_items,
             },
         },
     }
