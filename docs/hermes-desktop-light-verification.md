@@ -4,13 +4,14 @@
 
 - [ビルド・起動検証](https://github.com/takano536/scoop-bucket/actions/runs/37620186448)
 - 上流: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- 検証ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
+- 検証ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`（旧PR runの履歴artifact）
 - SHA256: `b83ff46eaed9e30600f7dafcb2ed69c0521bb50ff7dc925e6b5362110d325ec9`
 - ZIP: 170,392,861 bytes / 1,191 entries。ダウンロード後のSHA256照合とZIP CRC検証に成功。
 - Packaged Electronの起動・再起動とlocalStorage保持を検証。`payload=light`、
   `updateMechanism=external`、source commit一致、`resources/agent-payload` 非同梱を確認。
 - 設定先にはCIの一時ディレクトリを使用。実gatewayや認証情報を与えていない。
-- これはPR専用の検証成果物。安定版としての公開・manifest登録はしていない。
+- これは旧PR runの履歴検証成果物。現在のPRはpreview固定SHAではなく、pinしたmain commitの
+  development buildをWindowsで検証し、安定版としての公開・manifest登録はしていない。
 
 ![Windows CIでの初回起動画面](images/unformatted/hermes-desktop-light-preview.png)
 
@@ -20,9 +21,12 @@
 
 - schedule/workflow_dispatchは実行開始時の`main`を完全なcommit SHAへ解決し、そのSHAの
   Light identityと管理されたbuilder contractを検査する。非対応・必要ファイルなしは正常なskip、
-  API障害・権限エラーは非対応と混同せず失敗とする。
-- PRは従来どおり固定commitのpreviewビルド。mainの開発channelは同じLight admissionに加え、
-  exact commitのMIT LICENSE本文とSHA256を確認し、`provenance.json`へ記録する。
+  API障害・権限エラーは非対応と混同せず失敗とする。scheduleはstable gateが有効でstable
+  admission（identity・builder・annotated claim）を満たす場合だけstableを計画し、それ以外は
+  developmentを計画する。選択channelのgateが無効なscheduleはbuildせずskipする。
+- PRも同じmain pinのdevelopment buildで、bucket Release一覧を参照しない。exact commitの
+  MIT LICENSE本文とSHA256、conditions fingerprintを確認し、`provenance.json`へ記録する。
+  PRではpublish/writebackしない。
 - Windows runner上では`upstream/apps/desktop/release/win-unpacked`を直接ZIP化し、
   `output/`にZIP・provenance・smoke証拠を置く。ここでの`release/`は上流のローカル
   ビルド出力であり、GitHub Releasesへの公開ではない。
@@ -42,9 +46,9 @@ upstream commit、SHA256を記録する。そのstable Releaseまたはmarkerが
 hard-refuseする。manifestは自動切替せず、Scoop version順（全dev < stable）によりbounceしない。
 stable公開・manifest書き戻しは、stable gateの明示許可後だけ行う。
 
-この文書の上記preview記録は、Scoop Release公開・manifest登録を証明するものではない。
-main開発版の実Windows build/smoke結果は、最初の有効なCI run後にcommit hash、LICENSE hash、
-conditions fingerprint、ZIP SHA256とともに追記する。
+この文書7〜13行のpreview名artifactは旧runの履歴であり、Scoop Release公開・manifest登録を
+証明するものではない。main開発版の実Windows build/smoke結果は、最初の有効なCI run後に
+commit hash、LICENSE hash、conditions fingerprint、ZIP SHA256とともに追記する。
 
 上の画面には「Install Hermes locally」も表示される。Lightとしての非同梱構成と
 起動は確認済みだが、リモート専用のUI/実行制約、gateway接続、接続/認証設定の
@@ -64,8 +68,10 @@ conditions fingerprint、ZIP SHA256とともに追記する。
 開発公開ジョブはリポジトリ変数`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、
 stable公開ジョブは`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`の場合だけ実行する。
 両変数は未設定で、このPRでは有効化しない。mainのread-only plan/build/smokeはgateと分離する。
-scheduleは開発`r1`の通常追従だけを許可し、同じcommitの条件変更による`r2+`は明示的な
-workflow_dispatchだけを許可する。
+scheduleはstable gateが有効でstable admissionを満たす場合だけstable buildを計画する。
+stable buildが失敗・skipしてstable Releaseが実際に公開されるまでdev manifestを維持し、
+dev channelへbounceしない。developmentを選んだscheduleは`r1`だけを許可し、同じcommitの
+条件変更による`r2+`は明示的なworkflow_dispatchだけを許可する。
 
 publisher自身もActionsのschedule/workflow_dispatchかつmainと、channel固有の明示gateを要求する。
 ローカルcheckoutやPRで誤って実行しても、API操作やhard resetの前に停止する。成果物取得に必要な

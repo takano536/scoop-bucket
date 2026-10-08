@@ -43,16 +43,26 @@
   Scoopの`Compare-Version`でdevSeq・revisionは数値順になり、全dev versionは
   `0.0.0-r1`および将来のstable versionより小さい。`devSeq`は公開済みの
   `hermes-desktop-light/dev/` Releaseから最大値+1として算出する（mutableな外部counterは持たない）。
+  Scoopのnamed capture placeholderは実装の`ToTitleCase`に合わせ、camel-caseの`shortSha`を
+  `$matchShortsha`として記述する（pointer JSONのキーは`shortSha`のまま）。`$matchVersion`、
+  `$matchCommit`、`$matchShortsha`はpointerの検証済み値だけから生成する。
 - 同一upstream commit・同一build conditions fingerprint（bucketのbuild/verify workflowと
   scripts、upstream ref/variant/target、runner/Python、builder args、compression、signing、
   local payload、bundle環境ハッシュを含む）のschedule再実行は同じversion/tag/assetsを再利用し、
   revisionを増やさない。条件が変わった同じcommitの配布修正は、明示的な`workflow_dispatch`
   の`revision=2`以降だけ許可する（r2+をscheduleから生成しない）。異なるcommitはr1から開始する。
   公開済みReleaseのassetを上書きせず、draft中の異なるbytesも拒否する。
+- scheduleはstable gateが有効で、upstream stableがLight identity、managed builder、annotated
+  claim admissionを満たす場合だけstable buildを計画する。それ以外はdevelopmentを計画し、
+  選択channelのgateが無効ならbuildをskipしてrunnerを起動しない。stable buildが失敗/skipして
+  stable Releaseがまだ公開されているわけでない場合、dev manifestは維持する。
+- PRはbucket Release一覧を参照せず、pinしたupstream main commitのdevelopment build/smoke、
+  exact MIT gate、conditions fingerprintをread-onlyで検証する。publish/writebackはしない。
 - Light stable Releaseが公開されるtransitionは一方向で、`metadata/hermes-desktop-light-channel.json`
   にstable version/tag、upstream commit、artifact SHA256を記録する。以後、stable publisherだけが
-  `bucket/hermes-desktop-light.json`を更新し、開発publisherはそのmarkerまたはこのアプリのstable
-  Releaseを検出してhard-refuseする。channelを自動切替せず、devへbounceしない。
+  `bucket/hermes-desktop-light.json`を更新し、開発publisherはそのmarkerまたはこのappのstable
+  Releaseを検出してhard-refuseする。stable Releaseが実際に公開されるまでmanifestを自動切替せず、
+  channelをbounceしない。
 
 ## 公開と過去版
 

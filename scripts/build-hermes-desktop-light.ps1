@@ -5,10 +5,13 @@ $source = Join-Path $root 'upstream'
 $out = Join-Path $root 'output'
 New-Item -ItemType Directory -Path $out | Out-Null
 $commit = (git -C $source rev-parse HEAD).Trim()
-$development = $env:CHANNEL -eq 'development' -and $env:PREVIEW -ne 'true'
-if ($env:PREVIEW -eq 'true') {
-    python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
-} elseif ($development) {
+$development = $env:CHANNEL -eq 'development'
+if ($development -and
+    ($env:LICENSE_SHA256 -cnotmatch '^[a-f0-9]{64}$' -or
+     $env:CONDITIONS_FINGERPRINT -cnotmatch '^[a-f0-9]{64}$')) {
+    throw 'Development admission digests are missing or malformed'
+}
+if ($development) {
     if ($env:PACKAGE_VERSION -cnotmatch '^0\.0\.0-alpha\.dev\.[1-9][0-9]*-r[1-9][0-9]*$' -or
         $env:SOURCE_REF -cne $commit -or $env:SOURCE_REF -cnotmatch '^[a-f0-9]{40}$') {
         throw 'Development release identity mismatch'
@@ -27,13 +30,12 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
 }
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
 $exeName = 'Hermes Light.exe'
-if ($env:PREVIEW -eq 'true' -or $development) { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
+if ($development) { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
 $exe = Get-Item (Join-Path $pack $exeName)
 # Use the exact managed Node admitted by upstream preparation.
 $prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
 & $prepared.node "$root/bucket/scripts/smoke-hermes-desktop-light.cjs" $source $exe.FullName $out
 $version = $env:PACKAGE_VERSION
-if ($env:PREVIEW -eq 'true') { $version = "preview-$($commit.Substring(0, 7))" }
 if ($development) {
     $name = "hermes-desktop-light-dev-$version-$commit-windows-x64.zip"
 } else {
@@ -46,9 +48,9 @@ $receipt = @{
     sourceRef = $env:SOURCE_REF
     commit = $commit
     version = $version
-    preview = ($env:PREVIEW -eq 'true')
+    preview = $false
     development = $development
-    channel = if ($development) { 'development' } elseif ($env:PREVIEW -eq 'true') { 'preview' } else { 'stable' }
+    channel = if ($development) { 'development' } else { 'stable' }
     artifact = $name
     sha256 = (Get-FileHash "$out/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
     payload = $stamp.payload

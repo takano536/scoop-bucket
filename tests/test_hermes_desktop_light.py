@@ -13,7 +13,7 @@ class ReleaseTests(unittest.TestCase):
         light = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(light)
         self.assertEqual(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}), '0.22.0')
-        for tag in ('v2026.9.24', 'v0.22.0-rc.1', 'v0.22.0+canary.20261007T000000Z', 'main', 'v00.22.0'):
+        for tag in ('v2026.9.24', 'v2026.10.1', 'v0.22.0-rc.1', 'v0.22.0+canary.20261007T000000Z', 'main', 'v00.22.0'):
             self.assertIsNone(light.stable_version({'tag_name': tag, 'draft': False, 'prerelease': False}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': True, 'prerelease': False}))
@@ -71,8 +71,12 @@ class ReleaseTests(unittest.TestCase):
             result['architecture']['64bit']['url'],
             f'https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fdev%2Fv{version}-{commit}/hermes-desktop-light-dev-{version}-{commit}-windows-x64.zip',
         )
-        self.assertIn('(?<version>', result['checkver']['regex'])
-        self.assertIn('$matchCommit', result['autoupdate']['architecture']['64bit']['url'])
+        self.assertIn('(?<shortsha>', result['checkver']['regex'])
+        self.assertEqual(result['autoupdate']['architecture']['64bit']['hash'], {
+            'url': 'https://raw.githubusercontent.com/takano536/scoop-bucket/main/metadata/hermes-desktop-light-dev.json',
+            'jsonpath': '$.sha256',
+        })
+        self.assertIn('$matchShortsha', result['autoupdate']['shortcuts'][0][0])
         self.assertEqual(result['shortcuts'][0][0], 'hermes-light-aaaaaaa.exe')
 
 
@@ -164,16 +168,34 @@ class PlanTests(unittest.TestCase):
         self.calls = []
         self.result = Mock()
 
-    def run_plan(self, response, preview=False):
+    def run_plan(self, response):
         from unittest.mock import patch
         import os
         def api(endpoint):
             self.calls.append(endpoint)
             return response(endpoint)
-        with patch.dict(os.environ, {'PREVIEW': str(preview).lower()}), patch.object(self.light, 'api', side_effect=api), patch.object(self.light, 'output', self.result):
+        values = {'CHANNEL': 'stable', 'GITHUB_EVENT_NAME': 'workflow_dispatch'}
+        with patch.dict(os.environ, values), patch.object(self.light, 'api', side_effect=api), patch.object(self.light, 'output', self.result):
             self.light.plan()
 
-    def run_dev_plan(self, rows=(), revision='1', explicit='false', pointer=None):
+    def run_schedule(self, response, stable_enabled='true'):
+        from unittest.mock import patch
+        import os
+        def api(endpoint):
+            self.calls.append(endpoint)
+            return response(endpoint)
+        values = {
+            'GITHUB_EVENT_NAME': 'schedule',
+            'CHANNEL': 'development',
+            'STABLE_RELEASE_ENABLED': stable_enabled,
+            'DEV_RELEASE_ENABLED': '',
+            'BUILD_REVISION': '1',
+            'REVISION_EXPLICIT': 'false',
+        }
+        with patch.dict(os.environ, values), patch.object(self.light, 'api', side_effect=api), patch.object(self.light, 'output', self.result):
+            self.light.plan()
+
+    def run_dev_plan(self, rows=(), revision='1', explicit='false', pointer=None, event='workflow_dispatch', dev_enabled='true'):
         import json
         import os
         import tempfile
@@ -186,20 +208,22 @@ class PlanTests(unittest.TestCase):
                     Path('metadata').mkdir()
                     Path('metadata/hermes-desktop-light-dev.json').write_text(json.dumps(pointer))
                 values = {
-                    'PREVIEW': 'false',
                     'CHANNEL': 'development',
+                    'GITHUB_EVENT_NAME': event,
                     'GITHUB_REPOSITORY': 'fixture/bucket',
                     'BUILD_REVISION': revision,
                     'REVISION_EXPLICIT': explicit,
+                    'DEV_RELEASE_ENABLED': dev_enabled,
                 }
                 with patch.dict(os.environ, values), \
                      patch.object(self.light, 'main_commit', return_value=self.commit), \
                      patch.object(self.light, 'supports_light', return_value=True), \
                      patch.object(self.light, 'license_sha', return_value='e' * 64), \
-                     patch.object(self.light, '_release_rows', return_value=list(rows)), \
+                     patch.object(self.light, '_release_rows', return_value=list(rows)) as releases, \
                      patch.object(self.light, 'conditions_fingerprint', return_value='d' * 64), \
                      patch.object(self.light, 'output', self.result):
                     self.light.plan()
+                    return releases
             finally:
                 os.chdir(previous)
 
@@ -323,14 +347,35 @@ class PlanTests(unittest.TestCase):
         self.run_plan(self.response)
         self.result.assert_called_once_with(build='false')
 
-    def test_preview_checks_pinned_commit_capability(self):
-        self.run_plan(self.response, preview=True)
-        self.result.assert_called_once_with(build='true', ref=self.light.PREVIEW_SHA, version='preview', claim='', claim_object='')
-        self.assertTrue(all('ref=' + self.light.PREVIEW_SHA in call for call in self.calls))
-        self.result.reset_mock()
-        self.identity = {'content': 'ZnVsbCBvbmx5'}
-        self.run_plan(self.response, preview=True)
-        self.result.assert_called_once_with(build='false')
+
+    def test_schedule_selects_stable_only_after_admission_and_gate(self):
+        self.run_schedule(self.response)
+        self.result.assert_called_once_with(
+            build='true', ref='v0.22.0', version='0.22.0-r1',
+            claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable',
+        )
+
+    def test_pull_request_development_pins_main_without_bucket_release_listing(self):
+        releases = self.run_dev_plan(event='pull_request')
+        self.result.assert_called_once_with(
+            build='true',
+            channel='development',
+            ref=self.commit,
+            version='0.0.0-alpha.dev.1-r1',
+            release_tag=f'hermes-desktop-light/dev/v0.0.0-alpha.dev.1-r1-{self.commit}',
+            artifact=f'hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-{self.commit}-windows-x64.zip',
+            short_sha='a' * 7,
+            dev_seq=1,
+            revision=1,
+            license_sha='e' * 64,
+            conditions_fingerprint='d' * 64,
+        )
+        releases.assert_not_called()
+
+    def test_scheduled_development_without_gate_skips_before_build(self):
+        self.run_dev_plan(event='schedule', dev_enabled='')
+        self.result.assert_called_once_with(build='false', channel='development')
+        self.assertEqual(self.result.call_count, 1)
 
 
 if __name__ == '__main__':

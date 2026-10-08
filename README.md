@@ -93,10 +93,11 @@ Latest Releaseや他アプリの公開順には依存しません。
 ## Hermes Desktop Light
 
 `Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）は、4時間ごとに
-公式`NousResearch/hermes-agent`の`main`を完全なcommit SHAへ固定し、Light対応のmanaged
-builder contractがそのcommitにある場合だけ、Windows x64のリモート専用開発版をCIでビルドします。
+公式`NousResearch/hermes-agent`の`main`を完全なcommit SHAへ固定します。stable gateが有効で
+Light対応stable admissionを満たす場合はstable buildをtransition候補として計画し、それ以外は
+Light対応managed builder contractを持つmainをWindows x64のリモート専用開発版としてビルドします。
 展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、Desktop Lightの
-構成・更新所有者・SHA256を検証してから、開発用Releaseへ公開します。
+構成・更新所有者・SHA256を検証してから、選択されたchannelのReleaseへ公開します。
 
 **DEVELOPMENT BUILD — NOT STABLE** です。開発版のScoop versionは
 `0.0.0-alpha.dev.<devSeq>-r<revision>`、tagは
@@ -104,17 +105,21 @@ builder contractがそのcommitにある場合だけ、Windows x64のリモー�
 `hermes-desktop-light-dev-<version>-<upstreamの完全なcommit SHA>-windows-x64.zip`です。
 `devSeq`はこのアプリの公開済み開発Releaseからだけ算出し、同じcommit・同じbuild
 conditions fingerprintの再実行では番号を増やさず、同じcommitの配布修正だけを
-明示的なworkflow_dispatchで`r2`以降にします。scheduleは`r1`以外を生成しません。
+明示的なworkflow_dispatchで`r2`以降にします。scheduleは`r1`以外を生成せず、stable gateが
+無効なら開発gateが有効な場合だけ開発版をbuildします。両gateが無効なscheduleは、Windows
+runnerを起動せずskipします。PRはbucket Release一覧を参照せず、pinしたmain commitの
+開発版build/smoke・license・conditions検証だけを行い、publishしません。
 過去のRelease・ZIP・manifest・`metadata/hermes-desktop-light-dev.json`は保持し、
 manifestのcheckver/autoupdateはこのpointerと検証済みReleaseだけを参照します。
 
 publish gateは初期状態で無効です。開発版を公開するには管理者が
 `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`を設定する必要があります（このPRでは設定しません）。
-Light対応の安定版をこのアプリ用にビルド・Windows検証・公開できた時点で、開発追従は一方向に終了し、
-`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。その後は
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`の安定版だけを追従し、開発publisherは安定版Release
-または遷移記録が存在すると即時拒否します。安定版versionはすべての開発版よりScoopで大きくなるため、
-channelを自動切替したり、開発版へ戻ったりしません。stable gateもこのPRでは設定しません。
+stable gateが有効でstable admissionを満たすscheduleはstable buildを計画しますが、dev manifestを
+自動で切り替えません。Light対応の安定版をこのアプリ用にbuild・Windows検証・公開できた時点で
+初めて開発追従を一方向に終了し、`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。
+stable Releaseが実際に公開される前の失敗・skipではdev manifestを維持し、channelをbounceしません。
+その後は`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`のstableだけを追従し、開発publisherはstable
+Releaseまたは遷移記録が存在すると即時拒否します。stable gateもこのPRでは設定しません。
 
 `v2026.9.24`はLight非対応ですが、Light対応の`main`開発commitを公開すれば現在でも
 インストールできます。Release title/body、manifest description/notes、READMEには常に

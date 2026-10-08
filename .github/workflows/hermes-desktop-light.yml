@@ -55,10 +55,11 @@ jobs:
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          PREVIEW: ${{ github.event_name == 'pull_request' }}
           CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'development' }}
           BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
           REVISION_EXPLICIT: ${{ github.event_name == 'workflow_dispatch' }}
+          DEV_RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED }}
+          STABLE_RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
         run: python3 scripts/hermes-desktop-light.py plan
 
   build:
@@ -94,7 +95,6 @@ jobs:
           CHANNEL: ${{ needs.plan.outputs.channel }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
-          PREVIEW: ${{ github.event_name == 'pull_request' }}
         run: ./bucket/scripts/build-hermes-desktop-light.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -134,4 +134,5 @@ jobs:
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
+          LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
         run: python3 scripts/hermes-desktop-light.py publish

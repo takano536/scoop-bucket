@@ -22,7 +22,6 @@ VERSION = re.compile(r'v(0|[1-9]\d{0,2})\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
 DEV_TAG = re.compile(
     rf'^{re.escape(APP)}/dev/v0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)-([a-f0-9]{{40}})$')
 STABLE_TAG = re.compile(rf'^{re.escape(APP)}/v(.+)$')
-PREVIEW_SHA = 'a3ed4a173070e981332e4d879ff6cc8b9efd57ab'
 DEV_POINTER = Path('metadata/hermes-desktop-light-dev.json')
 CHANNEL_RECORD = Path('metadata/hermes-desktop-light-channel.json')
 
@@ -106,13 +105,14 @@ def dev_manifest(version, repository, digest, commit, conditions_fingerprint):
         'shortcuts': [[f'hermes-light-{short_sha}.exe', 'Hermes Desktop Light (Development)']],
         'checkver': {
             'url': pointer,
-            'regex': r'"version"\s*:\s*"(?<version>0\.0\.0-alpha\.dev\.[1-9]\d*-r[1-9]\d*)"[\s\S]*?"commit"\s*:\s*"(?<commit>[a-f0-9]{40})"[\s\S]*?"shortSha"\s*:\s*"(?<shortSha>[a-f0-9]{7})"',
+            'regex': r'"version"\s*:\s*"(?<version>0\.0\.0-alpha\.dev\.[1-9]\d*-r[1-9]\d*)"[\s\S]*?"commit"\s*:\s*"(?<commit>[a-f0-9]{40})"[\s\S]*?"shortSha"\s*:\s*"(?<shortsha>[a-f0-9]{7})"',
         },
         'autoupdate': {
             'architecture': {'64bit': {
                 'url': f'https://github.com/{_repository(repository)}/releases/download/{APP}%2Fdev%2Fv$matchVersion-$matchCommit/{APP}-dev-$matchVersion-$matchCommit-windows-x64.zip',
+                'hash': {'url': pointer, 'jsonpath': '$.sha256'},
             }},
-            'shortcuts': [[f'hermes-light-$matchShortSha.exe', 'Hermes Desktop Light (Development)']],
+            'shortcuts': [[f'hermes-light-$matchShortsha.exe', 'Hermes Desktop Light (Development)']],
         },
         'notes': 'DEVELOPMENT BUILD — NOT STABLE. Unofficial unsigned x64 build from the pinned upstream main commit; connect to an existing Hermes gateway. No local Python or agent is bundled.',
     }
@@ -308,6 +308,25 @@ def _revision(value):
     return int(value)
 
 
+def _stable_admission_available():
+    """Check the upstream stable admission without mutating bucket state."""
+    release = api(f'repos/{UPSTREAM}/releases/latest')
+    upstream_version = stable_version(release)
+    if upstream_version is None:
+        return False
+    tag = release['tag_name']
+    commit = api(f'repos/{UPSTREAM}/commits/{tag}')['sha']
+    if not supports_light(commit):
+        return False
+    ref = api(f'repos/{UPSTREAM}/git/ref/tags/{tag}')['object']
+    if ref['type'] != 'tag':
+        raise ValueError('Stable build requires an annotated upstream release tag')
+    record = api(f"repos/{UPSTREAM}/git/tags/{ref['sha']}")
+    metadata = json.loads(record['message'].split('\n-----BEGIN ', 1)[0])
+    release_claim(metadata, upstream_version, commit)
+    return True
+
+
 def _plan_stable():
     release = api(f'repos/{UPSTREAM}/releases/latest')
     version = stable_version(release)
@@ -339,49 +358,59 @@ def _plan_stable():
 
 
 def _plan_development():
+    event = os.environ.get('GITHUB_EVENT_NAME', '')
+    if event == 'schedule' and os.environ.get('DEV_RELEASE_ENABLED') != 'true':
+        print('Scheduled development publication is disabled; development gate is not true')
+        output(build='false', channel='development')
+        return
     commit = main_commit()
     if not supports_light(commit):
         output(build='false', channel='development')
         return
-    repository = os.environ.get('GITHUB_REPOSITORY', '')
-    rows = _release_rows(repository)
-    if _has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present():
+    exact_license_sha = license_sha(commit)
+    fingerprint = conditions_fingerprint(commit)
+    pull_request = event == 'pull_request'
+    repository = '' if pull_request else os.environ.get('GITHUB_REPOSITORY', '')
+    rows = [] if pull_request else _release_rows(repository)
+    if not pull_request and (_has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present()):
         print('Development tracking has ended: a stable Hermes Desktop Light release exists')
         output(build='false', channel='development', transition='stable')
         return
-    exact_license_sha = license_sha(commit)
-    fingerprint = conditions_fingerprint(commit)
-    pointer = _read_json(DEV_POINTER)
+    pointer = None if pull_request else _read_json(DEV_POINTER)
     requested = _revision(os.environ.get('BUILD_REVISION', '1'))
     explicit = os.environ.get('REVISION_EXPLICIT') == 'true'
-    if requested > 1 and not explicit:
+    if requested > 1 and not explicit and not pull_request:
         raise ValueError('Development revisions above r1 require workflow_dispatch')
 
-    published = [_dev_release(row) for row in rows]
-    published = [item for item in published if item]
-    same_commit = [item for item in published if item[2] == commit]
-    if pointer and pointer.get('commit') == commit:
-        sequence = int(pointer['version'].split('.dev.', 1)[1].split('-r', 1)[0])
-        previous_revision = dev_version_key(pointer['version'])[1]
-        if pointer.get('conditionsFingerprint') == fingerprint:
-            if requested != previous_revision:
-                raise ValueError('Same development build conditions require the existing revision')
-            print('Development build is already published for this commit and conditions')
-            output(build='false', channel='development')
-            return
-        if requested <= previous_revision:
-            raise ValueError('Development conditions changed; workflow_dispatch with a higher revision is required')
-    elif same_commit:
-        sequence = max(item[0] for item in same_commit)
-        previous_revision = max(item[1] for item in same_commit)
-        if requested <= previous_revision:
-            requested = previous_revision
-        elif not explicit:
-            raise ValueError('Development revisions above r1 require workflow_dispatch')
+    if pull_request:
+        sequence = 1
+        requested = 1
     else:
-        sequence = max((item[0] for item in published), default=0) + 1
-        if requested != 1:
-            raise ValueError('A new upstream commit must start at development r1')
+        published = [_dev_release(row) for row in rows]
+        published = [item for item in published if item]
+        same_commit = [item for item in published if item[2] == commit]
+        if pointer and pointer.get('commit') == commit:
+            sequence = int(pointer['version'].split('.dev.', 1)[1].split('-r', 1)[0])
+            previous_revision = dev_version_key(pointer['version'])[1]
+            if pointer.get('conditionsFingerprint') == fingerprint:
+                if requested != previous_revision:
+                    raise ValueError('Same development build conditions require the existing revision')
+                print('Development build is already published for this commit and conditions')
+                output(build='false', channel='development')
+                return
+            if requested <= previous_revision:
+                raise ValueError('Development conditions changed; workflow_dispatch with a higher revision is required')
+        elif same_commit:
+            sequence = max(item[0] for item in same_commit)
+            previous_revision = max(item[1] for item in same_commit)
+            if requested <= previous_revision:
+                requested = previous_revision
+            elif not explicit:
+                raise ValueError('Development revisions above r1 require workflow_dispatch')
+        else:
+            sequence = max((item[0] for item in published), default=0) + 1
+            if requested != 1:
+                raise ValueError('A new upstream commit must start at development r1')
     version = dev_package_version(sequence, requested)
     output(build='true', channel='development', ref=commit, version=version,
            release_tag=dev_release_tag(APP, version, commit),
@@ -391,13 +420,17 @@ def _plan_development():
 
 
 def plan():
-    if os.environ.get('PREVIEW') == 'true':
-        if not supports_light(PREVIEW_SHA):
-            output(build='false')
-            return
-        output(build='true', ref=PREVIEW_SHA, version='preview', claim='', claim_object='')
+    event = os.environ.get('GITHUB_EVENT_NAME', '')
+    if event == 'schedule':
+        if (os.environ.get('STABLE_RELEASE_ENABLED') == 'true' and
+                _stable_admission_available()):
+            _plan_stable()
+        else:
+            _plan_development()
         return
     channel = os.environ.get('CHANNEL', 'stable')
+    if event == 'pull_request':
+        channel = 'development'
     if channel == 'development':
         _plan_development()
     elif channel == 'stable':
@@ -540,9 +573,10 @@ def _publish_development():
     if record.get('licenseSha256') != license_digest:
         raise ValueError('Build license digest does not match the admitted commit')
     artifact = verify_artifact(Path('output'), record, version, source_ref, 'development', fingerprint)
-    upstream_commit = api(f'repos/{UPSTREAM}/commits/{source_ref}')['sha']
-    if record['commit'] != upstream_commit:
-        raise ValueError('Upstream main moved or build has wrong source')
+    if api(f'repos/{UPSTREAM}/commits/{source_ref}').get('sha') != source_ref:
+        raise ValueError('Pinned upstream commit does not exist at the exact SHA')
+    if record['commit'] != source_ref:
+        raise ValueError('Build provenance is not bound to the pinned upstream commit')
     tag = dev_release_tag(APP, version, record['commit'])
     if os.environ.get('RELEASE_TAG') and os.environ['RELEASE_TAG'] != tag:
         raise ValueError('Development release tag mismatch')
@@ -555,14 +589,14 @@ def _publish_development():
            '--pattern', 'provenance.json', '--dir', str(saved))
         published = json.loads((saved / 'provenance.json').read_text(encoding='utf-8-sig'))
         artifact = verify_artifact(saved, published, version, source_ref, 'development', fingerprint)
-        if published['commit'] != upstream_commit:
+        if published['commit'] != source_ref:
             raise ValueError('Existing release belongs to another source')
         record = published
     else:
         if not existing:
             gh('release', 'create', tag, '--repo', repository, '--draft', '--target', 'main',
                '--title', f'Hermes Desktop Light development {version} (not stable)', '--notes',
-               f'DEVELOPMENT BUILD — NOT STABLE. Unofficial unsigned Windows x64 Light build from {UPSTREAM}@{upstream_commit}. '
+               f'DEVELOPMENT BUILD — NOT STABLE. Unofficial unsigned Windows x64 Light build from {UPSTREAM}@{source_ref}. '
                f'Pinned main commit; MIT LICENSE SHA256 {license_digest}; conditions fingerprint {fingerprint}. Remote-only; no Python/local agent. '
                'Scoop owns updates. See provenance.json for build and smoke receipts.', '--latest=false')
         state = api(f'repos/{repository}/releases/tags/{quote(tag, safe="")}')
