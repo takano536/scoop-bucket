@@ -17,8 +17,16 @@ function Get-ScoopInstalledState {
     }
 
     $currentItem = Get-Item -LiteralPath $currentLink -Force
-    $resolvedCurrent = (Resolve-Path -LiteralPath $currentLink).Path
     $rawTarget = [string]$currentItem.Target
+    if ($rawTarget) {
+        if ([IO.Path]::IsPathRooted($rawTarget)) {
+            $resolvedCurrent = [IO.Path]::GetFullPath($rawTarget)
+        } else {
+            $resolvedCurrent = [IO.Path]::GetFullPath((Join-Path $appDirectory $rawTarget))
+        }
+    } else {
+        $resolvedCurrent = (Resolve-Path -LiteralPath $currentLink).Path
+    }
     $manifestPath = Join-Path $resolvedCurrent 'manifest.json'
     $manifestSource = 'installed-current'
     if (!(Test-Path -LiteralPath $manifestPath)) {

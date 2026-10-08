@@ -528,20 +528,39 @@ try {
     Wait-Path -Path $shortcutPath
     $afterShortcut = Get-ShortcutState -Path $shortcutPath
     $expectedAfterShortcut = [IO.Path]::GetFullPath((Join-Path $afterInstall.currentTargetResolved $executableName))
-    $updateEvidence = Assert-ScoopUpdateSwitch `
-        -BeforeInstall $beforeInstall `
-        -AfterInstall $afterInstall `
-        -BeforeShortcut $beforeShortcut `
-        -AfterShortcut $afterShortcut `
-        -ExpectedVersion $runtimeAfterVersion `
-        -ExpectedCurrentTarget $afterInstall.currentTargetResolved `
-        -ExpectedShortcutTarget $expectedAfterShortcut
+    try {
+        $updateAssertion = Assert-ScoopUpdateSwitch `
+            -BeforeInstall $beforeInstall `
+            -AfterInstall $afterInstall `
+            -BeforeShortcut $beforeShortcut `
+            -AfterShortcut $afterShortcut `
+            -ExpectedVersion $runtimeAfterVersion `
+            -ExpectedCurrentTarget $afterInstall.currentTargetResolved `
+            -ExpectedShortcutTarget $expectedAfterShortcut
+        $updateAssertionStatus = 'passed'
+    } catch {
+        $updateAssertion = [ordered]@{
+            status = 'failed'
+            error = $_.Exception.Message
+            noOpRejected = $false
+        }
+        $updateAssertionStatus = 'failed'
+        Write-EvidenceJson -Path (Join-Path $OutputDirectory 'scoop-update-evidence.json') -Value ([ordered]@{
+            before = $beforeInstall
+            after = $afterInstall
+            beforeShortcut = $beforeShortcut
+            afterShortcut = $afterShortcut
+            assertion = $updateAssertion
+        })
+        throw
+    }
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'scoop-update-evidence.json') -Value ([ordered]@{
         before = $beforeInstall
         after = $afterInstall
         beforeShortcut = $beforeShortcut
         afterShortcut = $afterShortcut
-        assertion = $updateEvidence
+        assertion = $updateAssertion
+        assertionStatus = $updateAssertionStatus
     })
 
     $afterJson = Join-Path $OutputDirectory 'after.json'
