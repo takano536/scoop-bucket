@@ -260,6 +260,16 @@ MIT license名、完全なdisclaimerを含む短縮形だった。registry `gitH
 はpackage.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0本文で、
 宣言と実体が衝突するため、上流に正しいlicense宣言を確認するまでhard blockerとする。
 
+最終確認run `37767945730`（commit `798f38fd83c8206826954b38311ac333e4d36701`）では、
+inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=351`だった。`@novnc/novnc@1.7.0`
+は`bundle-map`のみで、未変更の`node_modules` fileではなくrenderer bundleへinline/minifyされた
+実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
+Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
+最終runで残るfailureは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
+`unicode-animations@1.0.3`、`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに
+対応する完全なlicense本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
+fail-closedのままとする。
+
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
 Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を
 「許可」とは扱わず、個別の許諾が必要だとも断定しない。第三者再配布での商標・
