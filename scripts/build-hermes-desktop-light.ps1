@@ -9,6 +9,7 @@ $bundleGraphDir = Join-Path $source 'apps/desktop/.hermes-bundle-graph'
 New-Item -ItemType Directory -Path $bundleGraphDir -Force | Out-Null
 $rendererBuildPath = Join-Path $source 'scripts/build/desktop.mjs'
 $rendererBuild = Get-Content $rendererBuildPath -Raw
+$rendererOriginal = $rendererBuild
 $rendererMarker = 'build: { outDir: product, emptyOutDir: true },'
 if (!$rendererBuild.Contains($rendererMarker)) { throw 'Upstream renderer build marker changed; refusing to build without source maps' }
 $rendererBuild = $rendererBuild.Replace(
@@ -18,6 +19,7 @@ $rendererBuild = $rendererBuild.Replace(
 Set-Content $rendererBuildPath -Value $rendererBuild -Encoding utf8NoBOM -NoNewline
 $mainBundlePath = Join-Path $source 'apps/desktop/scripts/bundle-electron-main.mjs'
 $mainBundle = Get-Content $mainBundlePath -Raw
+$mainOriginal = $mainBundle
 $commonMarker = '  const common = {'
 if (!$mainBundle.Contains($commonMarker)) { throw 'Upstream Electron bundle marker changed; refusing to build without metafiles' }
 $mainBundle = $mainBundle.Replace(
@@ -36,11 +38,18 @@ foreach ($entry in @(
 }
 Set-Content $mainBundlePath -Value $mainBundle -Encoding utf8NoBOM -NoNewline
 $env:HERMES_BUNDLE_METAFILE_DIR = $bundleGraphDir
-if ($env:PREVIEW -eq 'true') {
-    python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
-} else {
-    if ($env:PACKAGE_VERSION -cnotmatch '^([0-9]+\.[0-9]+\.[0-9]+)-r[1-9][0-9]*$' -or $env:SOURCE_REF -cne "v$($Matches[1])") { throw 'Release identity mismatch' }
-    python "$source/scripts/bundles/desktop.py" --tag $env:SOURCE_REF --variant light -- --dir
+git -C $source update-index --assume-unchanged -- scripts/build/desktop.mjs apps/desktop/scripts/bundle-electron-main.mjs
+try {
+    if ($env:PREVIEW -eq 'true') {
+        python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
+    } else {
+        if ($env:PACKAGE_VERSION -cnotmatch '^([0-9]+\.[0-9]+\.[0-9]+)-r[1-9][0-9]*$' -or $env:SOURCE_REF -cne "v$($Matches[1])") { throw 'Release identity mismatch' }
+        python "$source/scripts/bundles/desktop.py" --tag $env:SOURCE_REF --variant light -- --dir
+    }
+} finally {
+    Set-Content $rendererBuildPath -Value $rendererOriginal -Encoding utf8NoBOM -NoNewline
+    Set-Content $mainBundlePath -Value $mainOriginal -Encoding utf8NoBOM -NoNewline
+    git -C $source update-index --no-assume-unchanged -- scripts/build/desktop.mjs apps/desktop/scripts/bundle-electron-main.mjs
 }
 $pack = Join-Path $source 'apps/desktop/release/win-unpacked'
 if (!(Test-Path $pack)) { throw 'No unpacked Windows application was built' }
