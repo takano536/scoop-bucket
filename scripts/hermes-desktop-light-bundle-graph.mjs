@@ -12,6 +12,7 @@ if (!sourceArg || !outputArg) {
 const source = path.resolve(sourceArg)
 const output = path.resolve(outputArg)
 const app = path.join(source, 'apps', 'desktop')
+process.chdir(app)
 const renderer = path.join(output, 'renderer')
 const main = path.join(output, 'main')
 await rm(output, { recursive: true, force: true })
@@ -21,7 +22,9 @@ const appRequire = createRequire(path.join(app, 'package.json'))
 const vite = await import(pathToFileURL(appRequire.resolve('vite')).href)
 await vite.build({
   root: app,
-  configFile: path.join(app, 'vite.config.ts'),
+  publicDir: path.join(app, 'public'),
+  cacheDir: path.join(output, 'vite-cache'),
+  configLoader: 'runner',
   build: {
     outDir: renderer,
     emptyOutDir: true,
