@@ -1,0 +1,326 @@
+function Get-ScoopInstalledState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppName,
+        [Parameter(Mandatory = $false)]
+        [string]$BucketManifestPath
+    )
+
+    if (!$env:SCOOP) {
+        throw 'SCOOP is not set while reading installed state'
+    }
+    $appDirectory = Join-Path (Join-Path $env:SCOOP 'apps') $AppName
+    $currentLink = Join-Path $appDirectory 'current'
+    if (!(Test-Path -LiteralPath $currentLink)) {
+        throw "Scoop current link is missing: $currentLink"
+    }
+
+    $currentItem = Get-Item -LiteralPath $currentLink -Force
+    $rawTarget = [string]$currentItem.Target
+    if ($rawTarget) {
+        if ([IO.Path]::IsPathRooted($rawTarget)) {
+            $resolvedCurrent = [IO.Path]::GetFullPath($rawTarget)
+        } else {
+            $resolvedCurrent = [IO.Path]::GetFullPath((Join-Path $appDirectory $rawTarget))
+        }
+    } else {
+        $resolvedCurrent = (Resolve-Path -LiteralPath $currentLink).Path
+    }
+    $manifestPath = Join-Path $resolvedCurrent 'manifest.json'
+    $manifestSource = 'installed-current'
+    if (!(Test-Path -LiteralPath $manifestPath)) {
+        if (!$BucketManifestPath -or !(Test-Path -LiteralPath $BucketManifestPath)) {
+            throw "Installed manifest is missing and no bucket manifest was supplied: $manifestPath"
+        }
+        $manifestPath = (Resolve-Path -LiteralPath $BucketManifestPath).Path
+        $manifestSource = 'disposable-bucket'
+    }
+
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $manifestVersion = [string]$manifest.version
+    $installPath = Join-Path $appDirectory 'install.json'
+    if (!(Test-Path -LiteralPath $installPath)) {
+        $installPath = Join-Path $resolvedCurrent 'install.json'
+    }
+    $installSource = 'install-receipt'
+    $listOutput = ''
+    if (Test-Path -LiteralPath $installPath) {
+        $install = Get-Content -LiteralPath $installPath -Raw | ConvertFrom-Json
+        $installVersion = [string]$install.version
+    } else {
+        $installPath = $null
+        $installSource = 'scoop-list'
+        $listOutput = (& scoop list $AppName 2>&1 | Out-String)
+        $cleanList = [regex]::Replace($listOutput, "`e\[[0-9;]*m", '')
+        $listPattern = "(?im)^\s*$([regex]::Escape($AppName))\s+(\S+)\s+"
+        $listMatch = [regex]::Match($cleanList, $listPattern)
+        if (!$listMatch.Success) {
+            throw "Scoop install receipt is missing and scoop list did not report $AppName"
+        }
+        $installVersion = $listMatch.Groups[1].Value
+    }
+    if (!$manifestVersion -or !$installVersion) {
+        throw "Installed Scoop state has no manifest/list version: $resolvedCurrent"
+    }
+    if ($manifestVersion -ne $installVersion) {
+        throw "Installed manifest/list versions disagree: $manifestVersion vs $installVersion"
+    }
+
+    return [ordered]@{
+        version = $manifestVersion
+        manifestVersion = $manifestVersion
+        installVersion = $installVersion
+        currentLink = $currentLink
+        currentTargetRaw = $rawTarget
+        currentTargetResolved = $resolvedCurrent
+        manifestPath = $manifestPath
+        manifestSource = $manifestSource
+        installSource = $installSource
+        scoopList = $listOutput
+        installPath = $installPath
+    }
+}
+
+function Get-ShortcutState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (!(Test-Path -LiteralPath $Path)) {
+        throw "Shortcut is missing: $Path"
+    }
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($Path)
+    $targetPath = [string]$shortcut.TargetPath
+    $arguments = [string]$shortcut.Arguments
+    if (!$targetPath) {
+        throw "Shortcut has no target: $Path"
+    }
+    $fullTarget = [IO.Path]::GetFullPath($targetPath)
+    $resolvedTarget = $fullTarget
+    $targetDirectory = Split-Path -Parent $fullTarget
+    $targetItem = Get-Item -LiteralPath $targetDirectory -Force -ErrorAction SilentlyContinue
+    $directoryTarget = if ($targetItem) { [string]$targetItem.Target } else { $null }
+    if ($directoryTarget) {
+        if (![IO.Path]::IsPathRooted($directoryTarget)) {
+            $directoryTarget = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $targetDirectory) $directoryTarget))
+        }
+        $resolvedTarget = [IO.Path]::GetFullPath((Join-Path $directoryTarget (Split-Path -Leaf $fullTarget)))
+    } elseif (Test-Path -LiteralPath $fullTarget) {
+        $resolvedTarget = (Resolve-Path -LiteralPath $fullTarget).Path
+    }
+    return [ordered]@{
+        path = $Path
+        target = $fullTarget
+        resolvedTarget = $resolvedTarget
+        arguments = $arguments
+    }
+}
+
+function Assert-ScoopUpdateSwitch {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeShortcut,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterShortcut,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedVersion,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedCurrentTarget,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedShortcutTarget
+    )
+
+    $errors = @()
+    if (!$BeforeInstall.version -or !$AfterInstall.version) {
+        $errors += 'before/after installed version is missing'
+    } elseif ($BeforeInstall.version -eq $AfterInstall.version) {
+        $errors += "Scoop update was a no-op: before and after version are $($AfterInstall.version)"
+    }
+    if ($AfterInstall.version -ne $ExpectedVersion) {
+        $errors += "after installed version $($AfterInstall.version) does not equal expected $ExpectedVersion"
+    }
+    if (!$BeforeInstall.currentTargetResolved -or !$AfterInstall.currentTargetResolved) {
+        $errors += 'before/after resolved current target is missing'
+    } elseif ($BeforeInstall.currentTargetResolved -eq $AfterInstall.currentTargetResolved) {
+        $errors += 'Scoop current target did not change across update'
+    }
+    if ($AfterInstall.currentTargetResolved -ne $ExpectedCurrentTarget) {
+        $errors += "after resolved current target $($AfterInstall.currentTargetResolved) does not equal expected $ExpectedCurrentTarget"
+    }
+    $beforeShortcutResolved = if ($BeforeShortcut.resolvedTarget) { $BeforeShortcut.resolvedTarget } else { $BeforeShortcut.target }
+    $afterShortcutResolved = if ($AfterShortcut.resolvedTarget) { $AfterShortcut.resolvedTarget } else { $AfterShortcut.target }
+    if (!$BeforeShortcut.target -or !$AfterShortcut.target -or !$beforeShortcutResolved -or !$afterShortcutResolved) {
+        $errors += 'before/after shortcut target is missing'
+    } elseif ($beforeShortcutResolved -eq $afterShortcutResolved) {
+        $errors += 'shortcut resolved target did not change across update'
+    }
+    if ($afterShortcutResolved -ne $ExpectedShortcutTarget) {
+        $errors += "after resolved shortcut target $afterShortcutResolved does not equal expected $ExpectedShortcutTarget"
+    }
+    if ($errors.Count -gt 0) {
+        throw "Scoop update switch assertion failed:`n- $($errors -join "`n- ")"
+    }
+
+    return [ordered]@{
+        beforeVersion = $BeforeInstall.version
+        afterVersion = $AfterInstall.version
+        beforeCurrentTarget = $BeforeInstall.currentTargetResolved
+        afterCurrentTarget = $AfterInstall.currentTargetResolved
+        beforeShortcutTarget = $BeforeShortcut.target
+        afterShortcutTarget = $AfterShortcut.target
+        beforeShortcutResolvedTarget = $beforeShortcutResolved
+        afterShortcutResolvedTarget = $afterShortcutResolved
+        expectedVersion = $ExpectedVersion
+        expectedCurrentTarget = $ExpectedCurrentTarget
+        expectedShortcutTarget = $ExpectedShortcutTarget
+        noOpRejected = $true
+    }
+}
+
+function New-ScoopUpdateSummary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [System.Collections.IDictionary]$Assertion,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterInstall,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$BeforeShortcut,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$AfterShortcut
+    )
+
+    if ($null -eq $Assertion -or $Assertion.noOpRejected -ne $true) {
+        throw 'Scoop update summary requires a passed update assertion'
+    }
+    $observed = [ordered]@{
+        beforeVersion = $BeforeInstall.version
+        afterVersion = $AfterInstall.version
+        beforeCurrentTarget = $BeforeInstall.currentTargetResolved
+        afterCurrentTarget = $AfterInstall.currentTargetResolved
+        beforeShortcutTarget = $BeforeShortcut.target
+        afterShortcutTarget = $AfterShortcut.target
+        beforeShortcutResolvedTarget = if ($BeforeShortcut.resolvedTarget) { $BeforeShortcut.resolvedTarget } else { $BeforeShortcut.target }
+        afterShortcutResolvedTarget = if ($AfterShortcut.resolvedTarget) { $AfterShortcut.resolvedTarget } else { $AfterShortcut.target }
+    }
+    $errors = @()
+    foreach ($name in $observed.Keys) {
+        $observedValue = [string]$observed[$name]
+        $assertedValue = [string]$Assertion[$name]
+        if ([string]::IsNullOrWhiteSpace($observedValue) -or [string]::IsNullOrWhiteSpace($assertedValue)) {
+            $errors += "$name evidence is missing"
+        } elseif ($observedValue -ne $assertedValue) {
+            $errors += "$name assertion value $assertedValue does not match observed $observedValue"
+        }
+    }
+    foreach ($name in @('expectedVersion', 'expectedCurrentTarget', 'expectedShortcutTarget')) {
+        if ([string]::IsNullOrWhiteSpace([string]$Assertion[$name])) {
+            $errors += "$name evidence is missing"
+        }
+    }
+    if ($errors.Count -eq 0) {
+        if ($observed.beforeVersion -eq $observed.afterVersion) {
+            $errors += "Scoop update was a no-op: before and after version are $($observed.afterVersion)"
+        }
+        if ($observed.beforeCurrentTarget -eq $observed.afterCurrentTarget) {
+            $errors += 'Scoop current target did not change across update'
+        }
+        if ($observed.beforeShortcutResolvedTarget -eq $observed.afterShortcutResolvedTarget) {
+            $errors += 'shortcut resolved target did not change across update'
+        }
+        if ($observed.afterVersion -ne $Assertion.expectedVersion) {
+            $errors += "after version $($observed.afterVersion) does not equal expected $($Assertion.expectedVersion)"
+        }
+        if ($observed.afterCurrentTarget -ne $Assertion.expectedCurrentTarget) {
+            $errors += "after current target $($observed.afterCurrentTarget) does not equal expected $($Assertion.expectedCurrentTarget)"
+        }
+        if ($observed.afterShortcutResolvedTarget -ne $Assertion.expectedShortcutTarget) {
+            $errors += "after shortcut target $($observed.afterShortcutResolvedTarget) does not equal expected $($Assertion.expectedShortcutTarget)"
+        }
+    }
+    if ($errors.Count -gt 0) {
+        throw "Scoop update summary evidence invalid:`n- $($errors -join "`n- ")"
+    }
+
+    $summary = [ordered]@{}
+    foreach ($name in $observed.Keys) {
+        $summary[$name] = $observed[$name]
+    }
+    $summary.expectedVersion = $Assertion.expectedVersion
+    $summary.expectedCurrentTarget = $Assertion.expectedCurrentTarget
+    $summary.expectedShortcutTarget = $Assertion.expectedShortcutTarget
+    $summary.updateAssertion = 'passed'
+    return $summary
+}
+
+function Get-WindowsImportClassification {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ImportName,
+        [Parameter(Mandatory = $true)]
+        [string]$ResolutionKind,
+        [Parameter(Mandatory = $false)]
+        [bool]$ApiSetResolved = $false
+    )
+
+    $apiSet = $ImportName -match '^(?:api|ext)-ms-win-'
+    $osProvided = $ImportName -match '^(?:api|ext)-ms-win-' -or
+        $ImportName -ieq 'ucrtbase.dll'
+    $redistributable = $ImportName -match '^(?:vcruntime140(?:_\d+)?|msvcp140(?:_\d+)?|concrt140|vccorlib140|mfc\d+[ud]?|msvcr\d+)\.dll$'
+    if ($apiSet) {
+        if (!$ApiSetResolved) {
+            return [ordered]@{
+                kind = 'unresolved-api-set'
+                accepted = $false
+                osProvided = $true
+                redistributable = $false
+                reason = "$ImportName was not resolved by the host ApiSet loader"
+            }
+        }
+        return [ordered]@{
+            kind = 'system-api-set'
+            accepted = $true
+            osProvided = $true
+            redistributable = $false
+            reason = 'Windows 10+ ApiSet schema'
+        }
+    }
+    if ($ResolutionKind -eq 'unresolved') {
+        return [ordered]@{
+            kind = 'unresolved'
+            accepted = $false
+            osProvided = $osProvided
+            redistributable = $redistributable
+            reason = "$ImportName was not resolved in the app tree or supported Windows locations"
+        }
+    }
+    if ($redistributable -and $ResolutionKind -notin @('app-local', 'app-tree')) {
+        return [ordered]@{
+            kind = 'missing-redistributable'
+            accepted = $false
+            osProvided = $false
+            redistributable = $true
+            reason = "$ImportName is a VC++ redistributable and is not shipped next to the importer"
+        }
+    }
+    return [ordered]@{
+        kind = if ($osProvided) { 'os-provided' } else { $ResolutionKind }
+        accepted = $true
+        osProvided = $osProvided
+        redistributable = $redistributable
+        reason = if ($osProvided) { 'Windows 10+ system component' } else { 'Resolved dependency' }
+    }
+}
