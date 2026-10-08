@@ -22,7 +22,6 @@ const vite = await import(pathToFileURL(appRequire.resolve('vite')).href)
 await vite.build({
   root: app,
   configFile: path.join(app, 'vite.config.ts'),
-  configLoader: 'runner',
   build: {
     outDir: renderer,
     emptyOutDir: true,
