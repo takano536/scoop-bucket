@@ -212,6 +212,19 @@ exact npm tarballの `package/license` に完全なMIT本文とcopyrightがあ�
 そのtarball integrity/SHA256・file path・file SHA256を固定したoverrideで補う。
 同一versionの証拠が得られないpackageはoverrideを追加せずhard blockerとする。
 
+### CIで追加検出した未解消項目
+
+Hermes Desktop Lightの実CI（run `37744831557`）では、実際の`win-unpacked` inventory
+から次も検出された。`dbus-native@0.15.2` はexact npm tarball
+(`https://registry.npmjs.org/dbus-native/-/dbus-native-0.15.2.tgz`,
+SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)と、
+registryの`gitHead` `2126c95fd460c81d7b90e45a4588efdb23ba3f99`に対応するupstream
+`LICENSE`（固定URL
+`https://raw.githubusercontent.com/sidorares/dbus-native/2126c95fd460c81d7b90e45a4588efdb23ba3f99/LICENSE`,
+SHA256 `435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b`）を調査した。
+本文はMITの完全な条項だがpackage固有のcopyright holder行がなく、README/treeにも
+補足表示がないため、汎用行の追加や別versionの流用はせずfail-closedで残す。
+
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
 Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を
 「許可」とは扱わず、個別の許諾が必要だとも断定しない。第三者再配布での商標・
