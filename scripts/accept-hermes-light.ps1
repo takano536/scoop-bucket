@@ -719,7 +719,7 @@ try {
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'acceptance.json') -Value $summary
     $exitCode = 0
 } catch {
-    $failure = Redact $_.Exception.Message
+    $failure = Redact ("{0}`n{1}`n{2}" -f $_.Exception.Message, $_.InvocationInfo.PositionMessage, $_.ScriptStackTrace)
     $exitCode = 1
     Write-Error $failure
 } finally {
