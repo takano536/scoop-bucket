@@ -73,9 +73,11 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 - 同一upstream commit・同一build conditions fingerprint（bucketのbuild/verify workflowと
   scripts、upstream ref/variant/target、runner/Python、builder args、compression、signing、
   local payload、bundle環境ハッシュを含む）のschedule再実行は同じversion/tag/assetsを再利用し、
-  revisionを増やさない。条件が変わった同じcommitの配布修正は、明示的な`workflow_dispatch`
-  の`revision=2`以降だけ許可する（r2+をscheduleから生成しない）。異なるcommitはr1から開始する。
-  公開済みReleaseのassetを上書きせず、draft中の異なるbytesも拒否する。
+  revisionを増やさない。条件が変わった同じcommitの配布修正は、同じ`devSeq`の新しい
+  `r2`以降として、明示的な`workflow_dispatch`だけを許可する。既存の`r1` Release/assetを
+  上書きせず、pointerを低いrevisionへ戻さない（r2+をscheduleから生成しない）。異なるcommitはr1から開始する。
+- conditions fingerprintは`scripts/*hermes-desktop-light*`、`scripts/distribution.py`、
+  およびHermes workflowの全実ファイルを含み、必須入力が欠ける場合はskipせず失敗する。
 - scheduleはstable gateが有効で、upstream stableがLight identity、managed builder、annotated
   claim admissionを満たす場合だけstable buildを計画する。それ以外はdevelopmentを計画し、
   選択channelのgateが無効ならbuildをskipしてrunnerを起動しない。stable buildが失敗/skipして

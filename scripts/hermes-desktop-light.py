@@ -170,6 +170,11 @@ def api(endpoint):
     return json.loads(gh('api', endpoint))
 
 
+def _is_not_found_error(error):
+    stderr = error.stderr or ''
+    return '(HTTP 404)' in stderr or re.search(r'"status"\s*:\s*"?404"?', stderr) is not None
+
+
 def output(**values):
     for key, value in values.items():
         print(f'{key}={value}')
@@ -201,7 +206,7 @@ def supports_light(commit):
         try:
             record = api(f'repos/{UPSTREAM}/contents/{path}?ref={commit}')
         except subprocess.CalledProcessError as exc:
-            if '(HTTP 404)' not in (exc.stderr or ''):
+            if not _is_not_found_error(exc):
                 raise
             print(f'Skipping {commit}: no {path}')
             return False
@@ -250,20 +255,46 @@ def _canonical_json(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode('utf-8')
 
 
-def conditions_descriptor(commit):
+CONDITION_REQUIRED_INPUTS = (
+    'scripts/hermes-desktop-light.py',
+    'scripts/build-hermes-desktop-light.ps1',
+    'scripts/smoke-hermes-desktop-light.cjs',
+    'scripts/accept-hermes-desktop-light.ps1',
+    'scripts/hermes-desktop-light-notices.py',
+    'scripts/hermes-desktop-light-bundle-graph.mjs',
+    'scripts/hermes-desktop-light-license-overrides.json',
+    'scripts/distribution.py',
+    '.github/workflows/hermes-desktop-light.yml',
+)
+
+
+def _condition_input_paths(root):
+    root = Path(root)
+    required = [root / relative for relative in CONDITION_REQUIRED_INPUTS]
+    missing = [
+        path.relative_to(root).as_posix()
+        for path in required
+        if not path.is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            'Required development condition inputs are missing: ' + ', '.join(missing)
+        )
+    paths = set((root / 'scripts').glob('*hermes-desktop-light*'))
+    paths.update((root / relative for relative in CONDITION_REQUIRED_INPUTS[-2:]))
+    return sorted(
+        (path.relative_to(root).as_posix(), path)
+        for path in paths
+    )
+
+
+def conditions_descriptor(commit, root=None):
     """Hash stable, non-ephemeral inputs which affect a development build."""
-    root = Path(__file__).resolve().parents[1]
-    files = {}
-    for relative in (
-        'scripts/hermes-desktop-light.py',
-        'scripts/build-hermes-desktop-light.ps1',
-        'scripts/smoke-hermes-desktop-light.cjs',
-        'scripts/distribution.py',
-        '.github/workflows/hermes-desktop-light.yml',
-    ):
-        path = root / relative
-        if path.is_file():
-            files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
+    files = {
+        relative: hashlib.sha256(path.read_bytes()).hexdigest()
+        for relative, path in _condition_input_paths(root)
+    }
     bundle_env = os.environ.get('HERMES_BUNDLE_ENV_JSON', '')
     return {
         'schema': 1,
@@ -285,8 +316,8 @@ def conditions_descriptor(commit):
     }
 
 
-def conditions_fingerprint(commit):
-    return hashlib.sha256(_canonical_json(conditions_descriptor(commit))).hexdigest()
+def conditions_fingerprint(commit, root=None):
+    return hashlib.sha256(_canonical_json(conditions_descriptor(commit, root))).hexdigest()
 
 
 def _release_rows(repository):

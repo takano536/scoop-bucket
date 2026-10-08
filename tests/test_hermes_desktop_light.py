@@ -15,6 +15,50 @@ class ReleaseTests(unittest.TestCase):
         for value in ('a' * 39, 'a' * 41, 'A' * 40, 'g' * 40):
             with self.assertRaisesRegex(ValueError, 'Invalid upstream commit identity'):
                 light._commit(value)
+
+    def _load_light(self):
+        spec = importlib.util.spec_from_file_location('light', SCRIPT)
+        assert spec is not None and spec.loader is not None
+        light = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(light)
+        return light
+
+    def _condition_fixture(self, root, light):
+        for relative in light.CONDITION_REQUIRED_INPUTS:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(relative, encoding='utf-8')
+        extra = root / 'scripts/new-hermes-desktop-light-input.txt'
+        extra.write_text('new input', encoding='utf-8')
+
+    def test_conditions_fingerprint_covers_every_matching_script(self):
+        import tempfile
+        light = self._load_light()
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            self._condition_fixture(root, light)
+            baseline = light.conditions_fingerprint('a' * 40, root)
+            for path in sorted((root / 'scripts').glob('*hermes-desktop-light*')):
+                original = path.read_bytes()
+                path.write_bytes(original + b'\nchanged')
+                try:
+                    self.assertNotEqual(
+                        baseline,
+                        light.conditions_fingerprint('a' * 40, root),
+                        path.name,
+                    )
+                finally:
+                    path.write_bytes(original)
+
+    def test_conditions_fingerprint_rejects_missing_required_input(self):
+        import tempfile
+        light = self._load_light()
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            self._condition_fixture(root, light)
+            (root / 'scripts/hermes-desktop-light-notices.py').unlink()
+            with self.assertRaisesRegex(FileNotFoundError, 'hermes-desktop-light-notices.py'):
+                light.conditions_fingerprint('a' * 40, root)
     def test_only_published_stable_semver_is_admitted(self):
         self.assertTrue(SCRIPT.exists(), 'Desktop Light release helper is missing')
         spec = importlib.util.spec_from_file_location('light', SCRIPT)
@@ -339,6 +383,30 @@ class PlanTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'workflow_dispatch'):
             self.run_dev_plan(revision='2')
 
+
+    def test_changed_conditions_require_new_revision_without_downgrade(self):
+        pointer = {
+            'version': '0.0.0-alpha.dev.1-r1',
+            'commit': self.commit,
+            'conditionsFingerprint': 'c' * 64,
+        }
+        with self.assertRaisesRegex(ValueError, 'higher revision'):
+            self.run_dev_plan(pointer=pointer)
+        self.result.reset_mock()
+        self.run_dev_plan(pointer=pointer, revision='2', explicit='true')
+        self.result.assert_called_once_with(
+            build='true',
+            channel='development',
+            ref=self.commit,
+            version='0.0.0-alpha.dev.1-r2',
+            release_tag=f'hermes-desktop-light/dev/v0.0.0-alpha.dev.1-r2-{self.commit}',
+            artifact=f'hermes-desktop-light-dev-0.0.0-alpha.dev.1-r2-{self.commit}-windows-x64.zip',
+            short_sha='a' * 7,
+            dev_seq=1,
+            revision=2,
+            license_sha='e' * 64,
+            conditions_fingerprint='d' * 64,
+        )
     def test_development_plan_ends_after_published_stable_release(self):
         rows = [{'tag_name': 'hermes-desktop-light/v2026.9.24-r1',
                  'draft': False, 'prerelease': False}]
@@ -429,7 +497,7 @@ class PlanTests(unittest.TestCase):
 
     def test_missing_capability_file_skips_but_api_failure_does_not(self):
         import subprocess
-        for message in ('gh: Not Found (HTTP 404)', 'gh: API rate limit exceeded (HTTP 403)'):
+        for message in ('gh: Not Found (HTTP 404)', '{"status":"404"}', 'gh: API rate limit exceeded (HTTP 403)'):
             with self.subTest(message=message):
                 self.result.reset_mock()
                 def response(endpoint):
@@ -443,6 +511,48 @@ class PlanTests(unittest.TestCase):
                     with self.assertRaises(subprocess.CalledProcessError):
                         self.run_plan(response)
                     self.result.assert_not_called()
+
+    def test_unsupported_commit_skip_is_stateless_and_retried(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as scratch:
+            previous = Path.cwd()
+            try:
+                os.chdir(scratch)
+                values = {
+                    'CHANNEL': 'development',
+                    'GITHUB_EVENT_NAME': 'schedule',
+                    'DEV_RELEASE_ENABLED': 'true',
+                    'STABLE_RELEASE_ENABLED': '',
+                }
+                with patch.dict(os.environ, values), \
+                     patch.object(self.light, 'main_commit', return_value=self.commit), \
+                     patch.object(self.light, 'supports_light', side_effect=[False, True]), \
+                     patch.object(self.light, 'license_sha', return_value='e' * 64), \
+                     patch.object(self.light, '_release_rows', return_value=[]), \
+                     patch.object(self.light, 'conditions_fingerprint', return_value='d' * 64), \
+                     patch.object(self.light, 'output', self.result):
+                    self.light.plan()
+                    self.result.assert_called_once_with(build='false', channel='development')
+                    self.assertEqual(list(Path(scratch).iterdir()), [])
+                    self.result.reset_mock()
+                    self.light.plan()
+                self.result.assert_called_once_with(
+                    build='true',
+                    channel='development',
+                    ref=self.commit,
+                    version='0.0.0-alpha.dev.1-r1',
+                    release_tag=f'hermes-desktop-light/dev/v0.0.0-alpha.dev.1-r1-{self.commit}',
+                    artifact=f'hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-{self.commit}-windows-x64.zip',
+                    short_sha='a' * 7,
+                    dev_seq=1,
+                    revision=1,
+                    license_sha='e' * 64,
+                    conditions_fingerprint='d' * 64,
+                )
+            finally:
+                os.chdir(previous)
 
     def test_builder_without_light_contract_skips(self):
         import base64
