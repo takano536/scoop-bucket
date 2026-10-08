@@ -1,33 +1,23 @@
 # Hermes Desktop Light 検証
-共通の[配布ルール](distribution-policy.md)と[検証記録](distribution-validation.md)を前提に、
-Hermes Desktop Light固有の上流・Light・gateway契約と実行結果をこの文書へ記録する。
 
-## Hermes Desktop Light固有の上流・実行契約
+共通の[配布ルール](distribution-policy.md)と[検証記録](distribution-validation.md)を前提に、Hermes Desktop Light固有の上流・Light・gateway契約と、実行済みCIの結果を記録する。
 
-- 対象の安定タグは、上流の`STABLE_TAG_RE`と同じ`vX.Y.Z`形式のSemVerだけとする。
-  Draft・Prerelease・canary・`v2026.9.24`のような歴史的CalVerは対象外である。
-- 上流のstable-release toolingが先に作る`rc.N-vX.Y.Z` annotated claimと、公開時の
-  `vX.Y.Z` annotated tag本文に入る`claimTag`・`claimTagObject`付きJSON receiptを
-  検証する。Release状態、タグから解決したcommit、claimのversion/commit/
-  `claimTag`/`claimTagObject`が一致しないtagはadmissionしない。
-- sourceのLight identityと管理されたLight builderの対応ファイルを検査し、非対応や
-  必要ファイルのないcommitは理由を記録してskipする。API障害や権限エラーはskipと
-  混同せず失敗させる。
-- この配布物はリモート専用のLight構成で、既存のHermes gatewayへの接続を必要とする。
-  起動smokeだけではgateway接続、認証・接続設定の移行、Lightのローカル実行可否を
-  証明しない。これらはWindowsで別途受入確認する。
+## Hermes Desktop Light固有の契約
+
+- 安定版として扱う上流タグは、上流の`STABLE_TAG_RE`と同じ`vX.Y.Z`形式のSemVerだけとする。Draft・Prerelease・canary・歴史的CalVerは対象外である。
+- 上流のstable-release toolingが作るclaimと、公開時の安定タグ本文に入るreceiptを検証する。Release状態、タグから解決したcommit、claimのversion・commit・tag情報が一致しないものはadmissionしない。
+- sourceのLight identityと管理されたLight builderの対応ファイルを検査し、非対応や必要ファイルのないcommitは理由を記録してskipする。API障害や権限エラーはskipと混同せず失敗させる。
+- 配布物はリモート専用のLight構成で、既存のHermes gatewayへの接続を必要とする。起動smokeだけではgateway接続、認証・接続設定の移行、Lightのローカル実行可否を証明しない。これらはWindowsで別途受入確認する。
 
 ## 個別検証の入口
 
-共通のローカル手順は[検証手順](verification.md)から実行する。Hermes Desktop Light固有の
-Node.js smokeスクリプトは、次で構文を確認する。
+共通のローカル手順は[検証手順](verification.md)から実行する。Hermes Desktop Light固有のNode.js smokeスクリプトは、次で構文を確認する。
 
 ```bash
 node --check scripts/smoke-hermes-desktop-light.cjs
 ```
 
-PythonのHermes Desktop Light・配布契約テストは、共通の`unittest discover`に加えて、必要なら
-次のように個別実行できる。
+PythonのHermes Desktop Light・配布契約テストは、共通の`unittest discover`に加えて、必要なら次のように個別実行できる。
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_hermes_desktop_light*.py' -v
@@ -36,217 +26,81 @@ python3 -m unittest discover -s tests -p 'test_distribution.py' -v
 
 ## Hermes Desktop Light workflow
 
-[`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとのschedule、
-`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Requestで
-起動する。`plan`はUbuntuで個別テストと`hermes-desktop-light.py plan`をread-only実行し、
-Light対応と対象を決める。対象がある場合だけ`build`がWindows 2025でビルド・smokeを
-実行し、`hermes-desktop-light-windows-x64` artifact（保持14日）を作る。
+[`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとのschedule、`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Requestで起動する。`plan`はUbuntuで個別テストと`hermes-desktop-light.py plan`をread-only実行し、Light対応と対象を決める。対象がある場合だけ`build`がWindows runnerでビルド・smokeを実行し、`hermes-desktop-light-windows-x64` artifactを作る。
 
-`publish`は`vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'`、scheduleまたは
-`workflow_dispatch`、`refs/heads/main`、build対象のすべてを満たす場合だけ実行する。
-公開済みassetの再検証とRelease公開、manifest・READMEのmain書き戻しを行うpublishの
-詳細なゲートと未確認事項は、この文書の公開ゲート節に従う。Pull Requestではpublishを
-実行しない。
+`publish`はリポジトリ変数`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'`、scheduleまたは`workflow_dispatch`、`refs/heads/main`、build対象のすべてを満たす場合だけ実行する。Pull Requestではpublishを実行しない。公開済みassetの再検証とRelease公開、manifest・READMEのmain書き戻しのゲートは、未確認事項とともにこの文書へ記録する。
 
-## Hermes Desktop Lightの改訂
+### 改訂
 
-通常の安定版追従は`r1`。公開済みの同じ上流版を修正する場合、信頼済みmainの手動workflowの`revision`に`2`などを指定する。
-対象はその時点の最新対応安定版。過去上流版を指定してのバックポートビルドは現在の自動化の対象外。
-改訂番号は正の整数で、先頭ゼロを許可しない。既存manifest以上の版がなければskipし、定期実行が`r2`を`r1`へ戻すことはない。
-番号は承認済み修正のために管理者が指定するもので、CI再実行数から自動採番しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は引き続き既定で無効。
-Hermes Desktop Lightのgateway接続・認証移行などの既存阻害条件は、この改訂ルールで解消したとは扱わない。
+通常の安定版追従は`r1`。公開済みの同じ上流版を修正する場合、信頼済みmainの手動workflowの`revision`を増やす。対象はその時点の最新対応安定版であり、過去上流版を指定してのバックポートビルドは現在の自動化の対象外である。公開ゲートは既定で無効のままとする。gateway接続・認証移行などの阻害条件は、改訂番号を増やしただけでは解消したと扱わない。
 
-## 実Windows CI
+## 実Windows CI: run 37738844817
 
-- [ビルド・起動検証](https://github.com/takano536/scoop-bucket/actions/runs/37620186448)
-- 上流: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- 検証ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
-- SHA256: `b83ff46eaed9e30600f7dafcb2ed69c0521bb50ff7dc925e6b5362110d325ec9`
-- ZIP: 170,392,861 bytes / 1,191 entries。ダウンロード後のSHA256照合とZIP CRC検証に成功。
-- Packaged Electronの起動・再起動とlocalStorage保持を検証。`payload=light`、
-  `updateMechanism=external`、source commit一致、`resources/agent-payload` 非同梱を確認。
-- 設定先にはCIの一時ディレクトリを使用。実gatewayや認証情報を与えていない。
-- これはPR専用の検証成果物。安定版としての公開・manifest登録はしていない。
+[Hermes Desktop Light run 37738844817](https://github.com/takano536/scoop-bucket/actions/runs/37738844817)を、PR #8のhead `90b05923687d846397fbab287b91b51d9ab60f81`に対する`pull_request`イベントで実行した。`plan`・`build`・`acceptance`はsuccess、`publish`はskippedだった。
 
-![Windows CIでの初回起動画面](images/unformatted/hermes-desktop-light-preview.png)
+Actionsのcheckoutログで、ビルドjobが実際にcheckoutしたbucketのPR merge refは`3acdfc472b635fac6a382c51c1b5e03e6963dc10`（`90b05923687d846397fbab287b91b51d9ab60f81`を`1bccbc5ec3f093348c2e13b1fd09b32a8ecae91e`へmergeしたcommit）である。したがって、runのhead SHAと、PR検証用のmerge refを区別して記録する。上流checkoutは`NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`だった。
 
-画像はScoop標準のテキスト整形テストの対象外である `unformatted` 領域に置く。
+### 成果物とprovenance
 
-## 成果物の保存先とskip条件
+- build artifact [`hermes-desktop-light-windows-x64`](https://github.com/takano536/scoop-bucket/actions/runs/37738844817/artifacts/11533625401): **170,080,519 B**。
+- acceptance artifact [`hermes-desktop-light-windows-acceptance`](https://github.com/takano536/scoop-bucket/actions/runs/37738844817/artifacts/11532849103): **15,753 B**。
+- 上流: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`。
+- acceptanceのgateway preflightが報告した上流アプリversion: `0.21.5`。
+- provenanceの配布version: `preview-a3ed4a1`。acceptanceの`bucketPackageVersion`は`preview`であり、安定版versionではない。
+- ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`。
+- ZIP SHA256: `cd577d5789cbaefecf4750cf580ea940e86ff659bba0953470fb9d4779780c3c`。
+- `provenance.json`の`run`は上記run URL、`payload`は`light`、`updateMechanism`は`external`、実行ファイルは`hermes-light-a3ed4a1.exe`、署名は`unsigned unofficial build`である。provenanceのSHA256とacceptanceの`artifactSha256`は一致する。
+- provenanceのsmoke記録は、native launchを2回実行し、rendererのloadとlocalStorage保持を確認したものだった。これはPR用preview artifactであり、GitHub Releasesへの公開やmanifest登録は行っていない。
 
-- 対象ソースのLight identityと管理されたbuilderを検査し、非対応・必要ファイルなしは
-  正常なskipとする。API障害・権限エラーは非対応と混同せず失敗させる。
-- PRはLight対応を確認した固定commitのpreviewビルド。安定版の検出とは独立している。
-- Windows runner上では `upstream/apps/desktop/release/win-unpacked` を直接ZIP化し、
-  `output/` にZIP・provenance・smoke証拠を置く。ここでの `release/` は上流の
-  ローカルビルド出力ディレクトリであり、GitHub Releasesへの公開ではない。
-- CIからの保存先はActions Artifactsの `hermes-desktop-light-windows-x64`（保持14日）。
-  リポジトリへバイナリをcommitせず、PRからReleasesへも公開しない。
-- 将来のScoop配布用GitHub Releases公開は、mainかつ明示有効化されたpublisherのみ。
-  現在は無効のままで、マージや公開の有効化は今回の作業に含めない。
+### acceptance artifactの内容と実際に確認したこと
 
-## Windows受入ジョブ
+acceptance artifactには`acceptance.json`、`before.json`、`after.json`、`scoop-update-evidence.json`、`runtime-evidence.json`、gateway/HTTPログが含まれ、`acceptance.json`のstatusは`passed`だった。test-onlyの`hermes-desktop-light-acceptance.json`を使ったdisposable local bucketで、次を確認した。
 
-`.github/workflows/hermes-desktop-light.yml` の`acceptance` jobは、`build`の
-Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local bucketの
-test-only manifestで次を確認する。manifestはbucketの本番ツリーには追加しない。
+- Scoopのbefore versionは`0.0.0-test-before-a3ed4a1`、after versionは`0.0.1-test-after-a3ed4a1`。manifest/install version、resolved `current` target、Start Menu shortcutのresolved targetを読み戻し、版切替assertionとno-op拒否がpassedになった。afterの`current`とshortcutはafter versionの実行ファイルを指した。
+- Scoop update後にStart Menuの`.lnk`経由で起動し、アプリとshortcutをuninstallで削除した。`HERMES_HOME`/Desktop user-dataは残った。
+- before/afterともremote modeで、同じlocalhost gatewayへの接続設定とtokenSetを保持し、token自体はexportしなかった。after側ではpreload bridge経由のauthenticated `session.list` WebSocket RPCを実行した。別のdirect Node probeでは`/api/sessions?limit=1`の認証済みHTTPが200、誤secretが401だった。
+- gatewayは上流の同じsource commitで`hermes serve --host 127.0.0.1 --port <ephemeral> --skip-build`として起動し、provider credentialは与えなかった。job内で生成したdashboard session tokenはmaskされた。
+- Light ZIPに`resources/agent-payload`はなく、local backend probeは`bootstrap-needed`を返した。bootstrap/local agentは起動していない。画面にlocal-installのaffordanceがあっても、同梱local backendの実行を意味しない。
+- updaterは`external`、checkは`reason=commit-build`、applyはunsupportedとして拒否され、app treeは不変だった。
+- `runtime-evidence.json`はインストール済みapp treeの20ファイルを`dumpbin /DEPENDENTS`で検査した。runtime import 58件、API set probe 58件が記録され、58件はOS提供側に解決した。VC++ redistributable import、同梱runtime DLL、unparseable、unresolved、missing runtimeはいずれも0件で、`accepted`はtrueだった。
 
-`New-ScoopUpdateSummary` はassertionを実測したbefore/after version、resolved current
-target、shortcut target（resolved target）と突き合わせ、各値が空でなく一致し、
-before/afterがno-opでなく、afterが期待version・current target・shortcut target
-（`expectedVersion`・`expectedCurrentTarget`・`expectedShortcutTarget`）に一致する
-場合だけsummaryを生成する。このsummaryが`scoop-update-evidence.json`の`summary`と
-`acceptance.json`の`scoop`に書き込まれる。
+このrunのWindows runnerはGitHub-hosted環境であり、`runtime-evidence.json`の`runnerIsClean`はfalseである。runtime検査の受入結果は、クリーンなWindows consumer machineでのruntime独立性を保証しない。前提とする最小環境はElectronの対応最小環境であるWindows 10+であり、別途クリーン環境での確認が必要である。
 
-- Scoop install前後の`current/manifest.json`とScoopのinstall receipt（環境によっては
-  receiptが作られないため`Scoop list`の実測行）を読み戻し、`version`一致を確認する。
-  before/afterは`0.0.0-test-before-<commit>`と
-  `0.0.1-test-after-<commit>`という異なるtest-only versionであり、同じ版のno-op更新は
-  assertionの回帰テストを含めて失敗する。
-- before/afterのresolved `current` targetとStart Menu `.lnk` targetを読み戻し、
-  after versionが期待版、resolved current targetが変更、shortcut targetがafterの
-  installed executableを指すことを`Assert-ScoopUpdateSwitch`でassertする。実測値は
-  `scoop-update-evidence.json`と`acceptance.json`へ記録する。
-- Scoop install/update/uninstall、Start Menuの`.lnk`経由起動、アプリ本体と
-  shortcutの削除、`HERMES_HOME`/Desktop user-dataの残存。
-- インストール済みapp treeの全`*.dll`/`*.exe`/`*.node`を`dumpbin /DEPENDENTS`で
-  列挙・parseし、各importをapp tree（importing module directoryを優先）または
-  Windows 10+のKnownDLLs/System32へ解決する。`api-ms-win-*`/`ext-ms-win-*`
-  API setは`LoadLibraryEx` probeでhostのApiSet schema解決を実測し、`ucrtbase.dll`
-  はWindows 10+ OS提供コンポーネントとして扱う。
-- `vcruntime140*.dll`、`msvcp140*.dll`、`concrt140.dll`、`vccorlib140.dll`、
-  `mfc*`等のVC++ redistributable importがapp treeに同梱されない場合はacceptance
-  failure（publish blocker）とし、unparseable PE・unresolved importも同様に扱う。
-  診断だけで成功にせず、runtime evidenceには各file/import/resolution/API-set probeと
-  failureを記録する。Electronの対応最小環境と同じWindows 10+を前提とする。
-- GitHub-hosted Windows runnerはクリーンなWindowsではないため、runner上で解決・起動
-  してもクリーン環境のruntime独立性を証明しない。この制限は受入条件として維持する。
-- 上流checkoutと同じcommitの`hermes serve --skip-build`をlocalhostで起動し、
-  job内で生成した`HERMES_DASHBOARD_SESSION_TOKEN`をmaskして、Desktopの実HTTP+
-  WebSocket接続を確認する。接続設定はUIクリックではなく、CDPからアプリの
-  preload bridge IPC（`applyConnectionConfig`、`getConnectionConfig`、
-  `getGatewayWsUrl`）を呼ぶ。Scoop update後は、保存済みsecretからbridgeがmintした
-  WS URLだけをrendererへ渡し、renderer自身が`session.list` JSON-RPCを送り、返却された
-  `result.sessions`を検証する。別にNodeから`/api/sessions`を呼ぶ結果はdirect gateway
-  probeと明示する。provider/LLM credentialは渡さない。
-- `resources/agent-payload`なし、local backend probeが`bootstrap-needed`で
-  bootstrapを実行しないこと、remote接続設定、Scoop更新後の設定・認証・
-  authenticated round-trip保持、in-app updaterの`external`/unsupported拒否と
-  app tree不変を確認する。
+### 何を更新検証したか
 
-以下のrunはこの強化前の実装による履歴であり、新しい版切替assertionおよび全PE import受入の成功証拠として扱わない。最新runでは版切替と全PE検査を実行し、未同梱VC++ redistributableが見つかったため公開blockerとして失敗した。
-最新の実Windows受入run: [37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)。実測evidenceは`hermes-desktop-light-windows-acceptance` artifactへ保存した。
+before/afterは異なるtest-only versionを付けて**同じZIP（同じ名前・同じSHA256）を再インストール**したものだった。これはScoopのupdate path、`current`/shortcut切替、設定・認証保持、uninstallを検証するテストである。異なるupstream commitや異なるバイナリ間のmigrationを行ったものではなく、migrationの成功を主張しない。
 
-- run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)
-- acceptance job: [112983466324](https://github.com/takano536/scoop-bucket/actions/runs/37673954715/job/112983466324)
-- upstream: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- このrunのbucket commit: `371b9a0`
-- build ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
-- ZIP SHA256: `72f30c28b60e43c31f344681a425818f8400a7515378e04ee7f09044783f7648`
-- acceptance artifact: `hermes-desktop-light-windows-acceptance`（保持14日）
-- Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
-  user-data残存を確認。preload bridge IPCを通じたアプリ側の認証済み`session.list`
-  WebSocket RPC、同一gatewayへのdirect Node `/api/sessions` probeの`200`、誤secretの
-  `401`、Scoop update後の設定・tokenSet保持を確認。
-- 異なるLight対応upstream commitの同一runビルドはまだないため、before/afterは
-  同じZIPを異なるtest-only versionとして使った。これはScoop更新時の設定保持を
-  検証するが、異なるバイナリ間のmigrationは証明しない。
-- 旧runのPE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
-  `false`であり、クリーンなWindowsへのruntime独立性は未証明。最新runではWindows 10+
-  API-set probeを実施し、OS提供API set/UCRTとVC++ redistributableを区別して記録した。
-- previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
-  applyを拒否しapp tree不変だった。local-install表示は残るが、probeは
-  `bootstrap-needed`で、ローカルagentの起動は行われなかった。
-- pinned upstream protocol basis: `apps/desktop/electron/preload.ts:49-52,276-279`
-  exposes the URL/config bridge IPC; `apps/desktop/electron/gateway-ws-probe.ts:4-13`
-  documents the renderer `/api/ws` handshake; `apps/shared/src/json-rpc-channel.ts:12-18,248-325`
-  defines JSON-RPC frames/requests; and
-  `apps/shared/src/gateway-contract.openrpc.json:3394-3410,31168-31182`
-  defines `session.list` and its `{sessions}` result.
-- updater source is also pinned: `apps/desktop/electron/updater/external.ts:20-35`
-  returns `reason=commit-build` only for `source=commit-build`, otherwise
-  `reason=bundled-not-appinstaller`; its non-commit branch returns
-  `{ok:true, manual:true, bundled:true, mechanism:'external'}`. This is
-  source-grounded, but stable behavior remains unexecuted because no stable
-  Light artifact exists.
+## 失敗runの履歴
 
-受入artifactの`acceptance.json`、`before.json`、`after.json`、runtime evidenceと
-gateway/httpログをrun artifactから取得できる。将来の別runでは、そのrunのURLと
-SHA256を追記し、未実行のrunを検証済みとは扱わない。
+[run 37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)は、旧`Hermes Light` workflowの`pull_request` runで、headは`be274390408caa73f1f79d89b96285b2c5662e9b`だった。`plan`と`build`はsuccess、`acceptance`はfailure（`Run Scoop and remote-gateway acceptance` step）、`publish`はskippedだった。このrunは履歴として保持するが、上記の成功runやruntime受入の証拠とは混同しない。
+
+## PR #8 merge後のmain
+
+PR #8のmerge commitは`2c4f4298160912f53faefd7b40cdc97f42a133f6`。このcommitの後に、workflow `Hermes Desktop Light`をbranch `main`で検索した結果は0件であり、merge後にmain上でHermes Desktop Light workflowが実行されたことは確認できなかった。
+
+一方、同じmain commitに対して次のread-only workflowは成功した。
+
+- [CI run 37740115916](https://github.com/takano536/scoop-bucket/actions/runs/37740115916): `Test (pwsh)`、`Test (powershell)`ともsuccess。
+- [Autoupdate validation run 37740115767](https://github.com/takano536/scoop-bucket/actions/runs/37740115767): `validate`がsuccess。
+
+現時点の`main`はstable channelのみを含む。開発channelは別PRのままmainへ未マージのため、この文書ではその機能や挙動を検証済みとは扱わない。
 
 ## 未確認事項と配布開始条件
 
-最新の公開安定版 `v2026.9.24` にはLightのビルド機構がない。初回manifestは、
-Light対応の安定版を実際にビルド・検証・公開できた後に生成する。
-main由来のコードを過去の安定版の名前で配布しない。
+今回のrunはPR用previewであり、次は未確認である。
 
-上の画面には「Install Hermes locally」も表示される。今回の受入runでは、Light ZIPに
-`resources/agent-payload`がなく、restricted PATH下のlocal backend probeが
-`bootstrap-needed`を返し、bootstrap/local agentを起動しないことを確認した。
-同じrunで、同一upstream commitのgatewayへの認証、誤secret拒否、Scoop update後の
-接続設定保持も確認済みである。ただしこのrunnerはクリーンなWindowsではなく、
-安定版の実アップグレードや配布を証明するものではない。
+- 対応安定版でのtag/claim admission、安定版の実ビルド、安定版のScoop version。
+- 異なるバイナリ間の実migration。今回確認したのは同じpreview ZIPのtest-only version bumpだけである。
+- GitHub Releases公開、manifest/READMEのmain書き戻し、安定版の実アップグレード。
+- クリーンなWindows consumer machineでのruntime独立性。
+- provider/LLM credentialを使う実運用。
 
-- [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37673954715）。
-- [x] gateway接続、認証・接続設定の移行、Lightのローカル動作制約（同run）。
-- [ ] 対応安定版でのtag/claim admissionと実ビルド。
-- [ ] マージ後のReleases公開・manifest/READMEのmain書き戻し。
-- [ ] 安定版での実アップグレードとクリーンなWindowsでのruntime独立性。
-- [ ] 既存draftに異なるビルドの部分成果物が残った場合の管理者確認。
+初回manifestは、Light対応の安定版を実際にビルド・受入確認・公開できた後に生成する。main由来のコードを過去安定版の名前で配布しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は有効化せず、PRからReleasesへ公開しない。
 
-上記の未確認項目は、Light対応安定版と明示的な公開許可がないため実行しない。
+## 公開ゲート
 
-## 公開ゲートと自動化の追加検証
-
-公開ジョブはリポジトリ変数 `HERMES_DESKTOP_LIGHT_RELEASE_ENABLED` が `true` の場合だけ実行する。
-変数は未設定で、今回の作業では有効化しない。対応安定版が出ても、受け入れ確認と
-管理者の明示的な許可が終わるまでReleases公開とmain書き戻しを停止する。
-検出・read-onlyビルドは公開ゲートと分離している。
-
-publisher自身もActionsのschedule/workflow_dispatchかつmainと明示有効化を要求する。
-ローカル開発checkoutやPRで誤って実行しても、API操作やhard resetの前に停止する。
-成果物取得に必要な `actions: read` を公開ジョブへ明示した。
-`GITHUB_TOKEN` によるpush後の検証は、Desktop Light成功後の `workflow_run` で
-Scoop標準CIとAutoupdate validationを起動する。元runが同一リポジトリのmainで
-成功した場合だけ、read-onlyで最新mainをcheckoutし、元runの成果物は実行しない。
-README生成・検証はpublisher内で完了させる。このmain連携の実運転はマージ前には未検証。
-
-公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。
-初回Draft作成から公開URL照合後のmanifest/README更新、公開済みアセットの再利用と
-冪等再実行、異なる部分Draftの拒否、タグ移動、ハッシュ不一致、downgrade、push失敗、
-README書き戻しのreadback不一致、公開ゲートを検証する。本番公開の証明ではない。
-
-Windows smokeには、ビルド用Python/Node/Gitを含まないPATHでの起動と、実preloadからの
-updater check/applyを追加した。結果は `native-checks.json` と `provenance.json` に残す。
-これは初期起動とexternal updaterの確認であり、リモートgateway接続、PATH以外の
-インストール済みランタイムからの独立性、安定版の実アップグレードを保証しない。
-実CI結果はPRに記録する。
+公開jobは`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`、scheduleまたは`workflow_dispatch`、`main`、build対象のすべてを満たす場合だけ実行する。公開前に、対象tagと同梱物のライセンス・著作権表示・第三者通知、名称と非公式配布表示、Windows実行・必要runtime・更新移行・外部サービス接続を再検証する。公開済みassetを上書きせず、manifest・READMEは公開URLからSHA256を再検証した後に書き戻す。
 
 ## 配布契約の検証記録
 
-対象commit `3c4b424d8dd16cd77d14842d0e9867d1d9739ed4`について、次の検証を記録する。
-
-| 検証 | 結果 |
-| --- | --- |
-| Python回帰テスト | 27件成功。Hermes固有のtag/admission、改訂指定、r2/r10の数値順、downgrade拒否、他アプリRelease混在、ページ分割、過去版manifest添付を含む |
-| ローカル静的検証 | README生成チェック、Node構文、actionlint、git diff --check成功 |
-| [Windows標準CI](https://github.com/takano536/scoop-bucket/actions/runs/37641749710) | Windows PowerShell / PowerShell 7とも成功。Scoop Compare-Versionでr1 < r2 < r10、次の上流版、同版比較を確認 |
-| [Autoupdate](https://github.com/takano536/scoop-bucket/actions/runs/37641749687) | 成功 |
-| [README](https://github.com/takano536/scoop-bucket/actions/runs/37641749731) | 成功 |
-| [Windows Desktop Lightビルド・起動smoke](https://github.com/takano536/scoop-bucket/actions/runs/37641749685) | 成功。公開jobは実行しない |
-
-### 成果物と上流commit
-
-- [Actions artifact](https://github.com/takano536/scoop-bucket/actions/runs/37641749685/artifacts/11492702573)は一時検証用、保持14日。正式配布先ではない。
-- 上流commit: `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
-- SHA256: `8ab03e5adc3ce4288d53f04d1382e231f928619b912e2516f9cd296007d2879d`
-- 170,392,869 bytes / 1,191 entries。ダウンロード後にCRC・hash・Light/external
-  stamp・commit一致・agent非同梱を再確認した。
-- 二回の実updater IPCはexternal、check supported=false、apply ok=false / commit-build。
-
-これは固定commitのpreviewであり、対応安定版の更新所有・gateway接続・認証移行の
-証明ではない。対象安定版、ライセンス通知の同梱、実gateway接続、実更新時の設定保持、
-過去版のScoop導入/固定は未確認である。公開実運転はマージと明示的承認後にのみ確認
-可能で、公開ゲート未設定、マージ・実Release作成なし。
-差分レビューはHermes自身で実施、独立モデルレビューは未実施。
+この文書に記録したrunは、PR headとActions checkoutのmerge ref、上流commit、provenance、ZIP SHA256、受入artifactを対応付けている。Actions artifactは一時検証用であり、Scoopの恒久的な配布先ではない。今回のrunではRelease作成、manifest登録、mainへの書き戻しを行っていない。
