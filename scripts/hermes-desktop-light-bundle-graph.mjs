@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { readFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
@@ -24,6 +24,40 @@ await mkdir(output, { recursive: true })
 const appRequire = createRequire(path.join(app, 'package.json'))
 const cssSources = new Set()
 const assetSources = new Map()
+const appAssetOrigin = (fileName) => {
+  const relative = fileName.replaceAll(path.sep, '/').replace(/^\/+/, '')
+  const candidates = [
+    path.join(app, 'public', relative),
+    path.join(app, 'src', relative),
+    path.join(app, 'electron', relative),
+    path.join(app, 'scripts', relative),
+    path.join(app, relative),
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  if (relative.startsWith('native/')) return path.join(app, 'electron', 'native')
+  if (relative === 'hermes-product' || relative === 'hermes-build.json') {
+    return path.join(app, 'scripts', 'build', 'freshness.mjs')
+  }
+  if (relative === 'renderer-manifest.json') return path.join(app, 'vite.config.ts')
+  return null
+}
+const emojibasePackage = (() => {
+  try {
+    return path.dirname(appRequire.resolve('emojibase-data/package.json'))
+  } catch {
+    return null
+  }
+})()
+const assetOrigin = (fileName) => {
+  const normalized = fileName.replaceAll(path.sep, '/')
+  if (normalized.startsWith('emojibase/') && emojibasePackage) {
+    const candidate = path.join(emojibasePackage, normalized.slice('emojibase/'.length))
+    if (existsSync(candidate)) return candidate
+  }
+  return appAssetOrigin(fileName)
+}
 const cssSourceTracker = {
   name: 'hermes-track-css-sources',
   transform(_code, id) {
@@ -40,6 +74,10 @@ const cssSourceTracker = {
       ]
         .filter((file) => typeof file === 'string' && file.length > 0)
       if (fileName.endsWith('.css') && originals.length === 0) originals.push(...cssSources)
+      if (originals.length === 0) {
+        const origin = assetOrigin(fileName)
+        if (origin) originals.push(origin)
+      }
       if (originals.length > 0) assetSources.set(fileName, [...new Set(originals)].sort())
     }
   },
@@ -148,20 +186,31 @@ function stripSourceMapLine(bytes) {
   return text.slice(0, index + 1)
 }
 
-function outputFiles(root) {
+function outputFiles(root, includeAssets = false) {
   const result = new Map()
   const visit = async (directory, prefix = '') => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const relative = `${prefix}${entry.name}`
       const file = path.join(directory, entry.name)
       if (entry.isDirectory()) await visit(file, `${relative}/`)
-      else if (/\.(?:js|mjs|cjs)$/.test(entry.name)) result.set(relative.replaceAll(path.sep, '/'), readFileSync(file))
+      else if (includeAssets || /\.(?:js|mjs|cjs)$/.test(entry.name)) {
+        result.set(relative.replaceAll(path.sep, '/'), readFileSync(file))
+      }
     }
   }
   return visit(root).then(() => result)
 }
-
 const shipped = asarFiles(path.join(pack, 'resources', 'app.asar'))
+
+const addAssetOrigin = (name) => {
+  const normalized = name.replaceAll(path.sep, '/').replace(/^dist\//, '')
+  if (normalized.includes('node_modules/') || /\.(?:js|mjs|cjs|map)$/.test(normalized)) return
+  if (assetSources.has(normalized)) return
+  const origin = assetOrigin(normalized)
+  if (origin) assetSources.set(normalized, [origin])
+}
+for (const name of shipped.keys()) addAssetOrigin(name)
+
 const shippedJs = new Map()
 const normalizedScripts = (files) => {
   const result = new Map()
@@ -179,7 +228,9 @@ const addShippedScripts = (files) => {
 addShippedScripts(shipped)
 const unpackedDist = path.join(pack, 'resources', 'app.asar.unpacked', 'dist')
 try {
-  addShippedScripts(await outputFiles(unpackedDist))
+  const unpackedFiles = await outputFiles(unpackedDist, true)
+  for (const name of unpackedFiles.keys()) addAssetOrigin(name)
+  addShippedScripts(unpackedFiles)
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error
 }
