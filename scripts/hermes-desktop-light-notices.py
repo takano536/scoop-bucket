@@ -778,7 +778,7 @@ def collect_packages(
         details = "\n".join(f"- {failure}" for failure in license_failures)
         origin_details = "; ".join(
             f"{name}={','.join(sorted(origins.get(name, set())) or ['not-in-inventory'])}"
-            for name in ("@novnc/novnc",)
+            for name in ("@novnc/novnc", "dbus-native", "dijkstrajs", "@pkgjs/parseargs")
         )
         counts = (
             f"Inventory source counts (unique package names): "
