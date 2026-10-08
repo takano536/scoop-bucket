@@ -632,6 +632,20 @@ def asset_source_records(source: Path, roots: list[Path]) -> dict[str, list[Path
         records[output_name] = sorted(set(origins), key=lambda item: str(item).lower())
     return records
 
+def graph_emitter_script_outputs(roots: list[Path]) -> set[str]:
+    outputs: set[str] = set()
+    for manifest in graph_emitter_manifests(roots):
+        values = read_json(manifest).get("scriptOutputs")
+        if values is None:
+            continue
+        if not isinstance(values, list):
+            raise RuntimeError(f"Bundle graph emitter has an invalid script output list: {manifest}")
+        for value in values:
+            if not isinstance(value, str) or not is_script_name(value):
+                raise RuntimeError(f"Bundle graph emitter has an invalid script output: {manifest}")
+            outputs.add(normalize_graph_output_name(value))
+    return outputs
+
 
 def app_owned_source(source: Path, path: Path) -> bool:
     roots = (source / "apps" / "desktop", source / "scripts")
@@ -748,9 +762,10 @@ def validate_shipped_dist_attribution(
     map_files: list[Path],
     metafile_files: list[Path],
     asset_records: dict[str, list[Path]],
+    emitter_script_outputs: set[str],
 ) -> set[str]:
     shipped = shipped_dist_files(pack)
-    script_outputs = graph_script_outputs(map_files, metafile_files)
+    script_outputs = graph_script_outputs(map_files, metafile_files) | emitter_script_outputs
     unattributed: list[str] = []
     for relative in sorted(shipped):
         parts = Path(relative).parts
@@ -808,6 +823,7 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         raise RuntimeError("Cannot obtain CSS bundle graph: no graph emitter manifest")
     css_files = css_source_files(source, roots)
     asset_records = asset_source_records(source, roots)
+    emitter_script_outputs = graph_emitter_script_outputs(roots)
     packages: dict[tuple[str, Path], dict] = {}
     module_count = 0
     for map_file in map_files:
@@ -874,7 +890,7 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         module_count += 1
     if pack is not None:
         shipped_files = validate_shipped_dist_attribution(
-            source, pack, map_files, metafile_files, asset_records
+            source, pack, map_files, metafile_files, asset_records, emitter_script_outputs
         )
     else:
         shipped_files = set()

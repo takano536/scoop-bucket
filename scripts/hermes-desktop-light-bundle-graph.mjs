@@ -209,6 +209,9 @@ const addAssetOrigin = (name) => {
   if (origin) assetSources.set(normalized, [origin])
 }
 for (const name of shipped.keys()) addAssetOrigin(name)
+if (existsSync(path.join(source, 'scripts', 'build', 'freshness.mjs'))) {
+  assetSources.set('hermes-product', [path.join(source, 'scripts', 'build', 'freshness.mjs')])
+}
 
 const shippedJs = new Map()
 const normalizedScripts = (files) => {
@@ -259,6 +262,7 @@ const manifest = {
   cssSources: [...cssSources]
     .sort()
     .map((file) => path.relative(source, file).replaceAll(path.sep, '/')),
+  scriptOutputs: shippedNames,
   assetSources: Object.fromEntries(
     [...assetSources]
       .sort(([left], [right]) => left.localeCompare(right))
