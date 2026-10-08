@@ -37,10 +37,11 @@
 - 開発版は upstream `main`をworkflow開始時に解決した完全なcommit SHAへpinし、
   そのSHAにidentityとmanaged builderのLight contractがある場合だけbuildする。
   exact commitのMIT LICENSE本文を検査し、SHA256を`provenance.json`とRelease bodyに記録する。
-- versionは`0.0.0-alpha.dev.<devSeq>-r<revision>`、tagは
-  `hermes-desktop-light/dev/v<version>-<40桁SHA>`、ZIPは
-  `hermes-desktop-light-dev-<version>-<40桁SHA>-windows-x64.zip`とする。
-  Scoopの`Compare-Version`でdevSeq・revisionは数値順になり、全dev versionは
+- versionは`0.0.0-alpha.dev.<devSeq>-r<revision>`。開発tagは`<app>/dev/v<version>-<40桁SHA>`（Hermesでは
+  `hermes-desktop-light/dev/v<version>-<40桁SHA>`）、ZIPは
+  `hermes-desktop-light-dev-<version>-<40桁SHA>-windows-x64.zip`とする。これは安定版の
+  `<app>/v<ver>-rN`ルールとは別namespaceであり、同じアプリのdev prereleaseとstable Releaseを
+  同時に保持できる。Scoopの`Compare-Version`でdevSeq・revisionは数値順になり、全dev versionは
   `0.0.0-r1`および将来のstable versionより小さい。`devSeq`は公開済みの
   `hermes-desktop-light/dev/` Releaseから最大値+1として算出する（mutableな外部counterは持たない）。
   Scoopのnamed capture placeholderは実装の`ToTitleCase`に合わせ、camel-caseの`shortSha`を

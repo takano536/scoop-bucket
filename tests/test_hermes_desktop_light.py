@@ -6,6 +6,16 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-desktop-light.py'
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_commit_identity_requires_exact_lowercase_sha(self):
+        spec = importlib.util.spec_from_file_location('light', SCRIPT)
+        assert spec is not None and spec.loader is not None
+        light = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(light)
+        self.assertEqual(light._commit('a' * 40), 'a' * 40)
+        for value in ('a' * 39, 'a' * 41, 'A' * 40, 'g' * 40):
+            with self.assertRaisesRegex(ValueError, 'Invalid upstream commit identity'):
+                light._commit(value)
+
     def test_only_published_stable_semver_is_admitted(self):
         self.assertTrue(SCRIPT.exists(), 'Desktop Light release helper is missing')
         spec = importlib.util.spec_from_file_location('light', SCRIPT)
@@ -93,6 +103,9 @@ class ReleaseTests(unittest.TestCase):
         for change in ({'commit': 'c' * 40}, {'version': '0.21.0'}, {'claimTag': 'main'}, {'claimTagObject': 'bad'}):
             with self.assertRaises(ValueError):
                 light.release_claim({**record, **change}, '0.22.0', 'a' * 40)
+        for invalid in ('a' * 39, 'a' * 41, 'A' * 40):
+            with self.assertRaisesRegex(ValueError, 'Invalid upstream commit identity'):
+                light.release_claim(record, '0.22.0', invalid)
 
 
     def test_receipt_rejects_preview_and_tampered_artifact(self):

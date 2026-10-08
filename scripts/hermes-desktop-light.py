@@ -142,9 +142,11 @@ def dev_pointer(version, repository, digest, commit, conditions_fingerprint, lic
 
 
 def release_claim(record, version, commit):
+    commit = _commit(commit)
+    record_commit = _commit(record.get('commit', ''))
     claim = record.get('claimTag', '')
     obj = record.get('claimTagObject', '')
-    if record.get('version') != version or record.get('commit') != commit or not re.fullmatch(r'rc\.[1-9]\d*-v' + re.escape(version), claim) or not re.fullmatch(r'[a-f0-9]{40}', obj):
+    if record.get('version') != version or record_commit != commit or not re.fullmatch(r'rc\.[1-9]\d*-v' + re.escape(version), claim) or not re.fullmatch(r'[a-f0-9]{40}', obj):
         raise ValueError('Release has no valid immutable build claim')
     return claim, obj
 
@@ -168,6 +170,7 @@ def output(**values):
 
 def supports_light(commit):
     """Preflight the exact managed builder contract without executing upstream."""
+    commit = _commit(commit)
     contract = {
         'apps/desktop/product-identity.cjs': (
             'hermes-light',
@@ -209,6 +212,7 @@ def supports_light(commit):
 
 def license_sha(commit):
     """Require MIT at the exact admitted commit and return its content hash."""
+    commit = _commit(commit)
     record = api(f'repos/{UPSTREAM}/license?ref={commit}')
     if record.get('license', {}).get('spdx_id') != 'MIT':
         raise ValueError('Upstream exact commit is not MIT licensed')
@@ -474,6 +478,7 @@ def verify_artifact(root, record, version, source_ref, channel='stable', expecte
     if channel == 'development' or record.get('development') is True:
         dev_version_key(version)
         commit = _commit(record.get('commit', ''))
+        source_ref = _commit(source_ref)
         if source_ref != commit or record.get('sourceRef') != source_ref:
             raise ValueError('Development source identity mismatch')
         expected_name = dev_artifact_name(APP, version, commit)
@@ -488,6 +493,7 @@ def verify_artifact(root, record, version, source_ref, channel='stable', expecte
         if expected_conditions is not None and record.get('conditionsFingerprint') != expected_conditions:
             raise ValueError('Build conditions fingerprint mismatch')
     else:
+        _commit(record.get('commit', ''))
         key = version_key(version)
         if source_ref != 'v' + '.'.join(map(str, key[:3])):
             raise ValueError('Distribution version does not match upstream source tag')
@@ -583,7 +589,8 @@ def _writeback(data, version, channel, repository, pointer=None, transition=None
 def _publish_development():
     import tempfile
     import urllib.request
-    version, source_ref = os.environ['PACKAGE_VERSION'], os.environ['SOURCE_REF']
+    version = os.environ['PACKAGE_VERSION']
+    source_ref = _commit(os.environ['SOURCE_REF'])
     repository = _repository(os.environ['GITHUB_REPOSITORY'])
     fingerprint = os.environ['CONDITIONS_FINGERPRINT']
     license_digest = os.environ['LICENSE_SHA256']
@@ -655,7 +662,8 @@ def _publish_development():
 def _publish_stable():
     import tempfile
     import urllib.request
-    version, source_ref = os.environ['PACKAGE_VERSION'], os.environ['SOURCE_REF']
+    version = os.environ['PACKAGE_VERSION']
+    source_ref = _commit(os.environ['SOURCE_REF'])
     repository = _repository(os.environ['GITHUB_REPOSITORY'])
     root = Path('output')
     upstream_tag = os.environ.get('UPSTREAM_TAG', 'v' + '.'.join(map(str, version_key(version)[:3])))

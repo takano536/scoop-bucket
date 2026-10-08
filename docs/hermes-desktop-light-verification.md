@@ -2,20 +2,17 @@
 
 ## 実Windows CI
 
-- [ビルド・起動検証](https://github.com/takano536/scoop-bucket/actions/runs/37620186448)
-- 上流: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- 検証ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`（旧PR runの履歴artifact）
-- SHA256: `b83ff46eaed9e30600f7dafcb2ed69c0521bb50ff7dc925e6b5362110d325ec9`
-- ZIP: 170,392,861 bytes / 1,191 entries。ダウンロード後のSHA256照合とZIP CRC検証に成功。
-- Packaged Electronの起動・再起動とlocalStorage保持を検証。`payload=light`、
-  `updateMechanism=external`、source commit一致、`resources/agent-payload` 非同梱を確認。
-- 設定先にはCIの一時ディレクトリを使用。実gatewayや認証情報を与えていない。
-- これは旧PR runの履歴検証成果物。現在のPRはpreview固定SHAではなく、pinしたmain commitの
-  development buildをWindowsで検証し、安定版としての公開・manifest登録はしていない。
-
-![Windows CIでの初回起動画面](images/unformatted/hermes-desktop-light-preview.png)
-
-画像はScoop標準のテキスト整形テストの対象外である `unformatted` 領域に置く。
+- [ピン留めdevelopment build・起動検証 run 37723915669](https://github.com/takano536/scoop-bucket/actions/runs/37723915669) は成功。
+- 上流: `NousResearch/hermes-agent@08165d58931841cee713468ae89032af7c57060a`（40桁SHA）。
+- version: `0.0.0-alpha.dev.1-r1`。Release tag/公開用ZIP名はこの完全SHAに結び付く。
+- exact MIT LICENSE SHA256: `821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6`。
+- conditions fingerprint: `8fdbc5039c369cd7fda60b6eece7506f7d9a5f790c128b8bdfa971bf4c22d1f9`。
+- ZIP SHA256: `1443bf86c8afbb60fb71e3f239352388c2a5fb2eb0b36d1ae3086e1393215d5b`。
+- provenanceのsourceRef/commit、install-stampのcommit、artifact名はいずれもこの40桁SHAに一致。
+- ZIPは1,193 entriesで、`resources/install-stamp.json`、`LICENSE.electron.txt`、
+  `LICENSES.chromium.html`を含み、`resources/agent-payload`は含まない。native smoke
+  （2回起動・renderer読込・再起動後localStorage保持・external updater）に成功した。
+- PR実行のためpublishはskipされ、GitHub Release・manifest・READMEの書き戻しは行っていない。
 
 ## 成果物の保存先とskip条件
 
@@ -46,13 +43,6 @@ upstream commit、SHA256を記録する。そのstable Releaseまたはmarkerが
 hard-refuseする。manifestは自動切替せず、Scoop version順（全dev < stable）によりbounceしない。
 stable公開・manifest書き戻しは、stable gateの明示許可後だけ行う。
 
-この文書7〜13行のpreview名artifactは旧runの履歴であり、Scoop Release公開・manifest登録を
-証明するものではない。main開発版の実Windows build/smoke結果は、最初の有効なCI run後に
-commit hash、LICENSE hash、conditions fingerprint、ZIP SHA256とともに追記する。
-
-上の画面には「Install Hermes locally」も表示される。Lightとしての非同梱構成と
-起動は確認済みだが、リモート専用のUI/実行制約、gateway接続、接続/認証設定の
-実アップグレード移行は確認できていない。表示だけからローカル動作の可否を断定しない。
 
 - Light対応stableのtag/claim admissionと実ビルド。
 - Windows上のScoop実インストール・更新・ショートカット起動。
@@ -61,7 +51,6 @@ commit hash、LICENSE hash、conditions fingerprint、ZIP SHA256とともに追�
 - 既存draftに異なるビルドの部分成果物が残った場合、上書きせず停止する。
   管理者がdraftを確認する必要がある。公開済みReleaseは書き戻し再試行時に再利用する。
 
-これらを実行済みとみなさず、PRはDraftで保持する。
 
 ## 公開ゲートと自動化の追加検証
 
@@ -79,9 +68,15 @@ publisher自身もActionsのschedule/workflow_dispatchかつmainと、channel固
 公開URLのSHA256を検証してからpointer、manifest、READMEをcommitする。既存assetを上書きしない。
 Scoop checkver/autoupdateは、このappの公開済みpointer/releaseだけを参照する。
 
-`GITHUB_TOKEN`によるpush後の検証は、Desktop Light成功後の`workflow_run`でScoop標準CIと
-Autoupdate validationを起動する。元runが同一リポジトリのmainで成功した場合だけ、read-onlyで
-最新mainをcheckoutし、元runの成果物は実行しない。README生成・検証はpublisher内で完了させる。
+`workflow_run`は、指定したschedule/workflow_dispatch実行が完了したというGitHubの完了イベントで
+発火する。publisherが`GITHUB_TOKEN`でmanifest/READMEを書き戻しても、そのpushは通常のpush
+workflowを再帰発火させないため、書き戻し後の検証経路としてこの完了イベントを使う。
+publisher成功時はpush後の`git rev-parse HEAD`を`written-back-sha.txt`にしてActions Artifactへ
+保存する。CIとAutoupdate validationの`resolve-target` jobはその小さなArtifactだけを読み、
+SHAが`^[0-9a-f]{40}$`であることを検証して、書き戻された正確なcommit SHAをcheckoutする。
+publishがskipされてArtifactがない場合は、元`workflow_run.head_sha`を同じ形式で検証して使う。
+したがってmutableな「最新main」や元runの成果物を実行せず、checkoutしたcommit上のScoop標準
+CI・checkver/autoupdate検証をread-onlyで行う。
 このmain連携と実GitHub Releaseの実運転はマージ前には未検証。
 
 公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。

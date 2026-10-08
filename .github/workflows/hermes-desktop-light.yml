@@ -139,3 +139,11 @@ jobs:
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
           LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
         run: python3 scripts/hermes-desktop-light.py publish
+      - name: Record exact written-back commit
+        run: git rev-parse HEAD > written-back-sha.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hermes-desktop-light-written-back-sha
+          path: written-back-sha.txt
+          if-no-files-found: error
+          retention-days: 14
