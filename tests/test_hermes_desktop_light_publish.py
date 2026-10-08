@@ -55,6 +55,7 @@ class PublishTests(unittest.TestCase):
                            artifact=self.name, executable='Hermes Light.exe',
                            smoke='two native launches; renderer loaded; localStorage retained',
                            notices=self.notice_record(),
+                           audit={'status': 'complete', 'limitations': []},
                            sha256=hashlib.sha256(self.published).hexdigest())
         rebuilt = self.package('different rebuilt fixture')
         (self.output / self.name).write_bytes(rebuilt)

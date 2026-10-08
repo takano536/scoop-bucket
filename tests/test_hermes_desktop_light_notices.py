@@ -211,6 +211,8 @@ class NoticeTests(unittest.TestCase):
                 metadata['thirdParty']['inventory']['unusedOverrides'],
                 ['fixture-package@1.0.0'],
             )
+            self.assertEqual(metadata['audit'], {'status': 'complete', 'limitations': []})
+            self.assertEqual(metadata['thirdParty']['inventory']['auditLimitations'], [])
             notice_text = (pack / 'THIRD-PARTY-NOTICES.txt').read_text(encoding='utf-8')
             self.assertIn('fixture-package@1.0.0', notice_text)
 
@@ -386,7 +388,7 @@ class NoticeTests(unittest.TestCase):
                 [('@nous-research/ui', '0.18.2')],
             )
 
-    def test_unattributed_shipped_asset_fails_closed(self):
+    def test_unattributed_shipped_asset_is_recorded_as_audit_limitation(self):
         with tempfile.TemporaryDirectory() as scratch, patch.object(
             notices, 'shipped_dist_files', return_value={'assets/unattributed.bin'}
         ):
@@ -403,17 +405,21 @@ class NoticeTests(unittest.TestCase):
                 json.dumps({'schema': 1, 'cssSources': [], 'assetSources': {}}),
                 encoding='utf-8',
             )
-            with self.assertRaisesRegex(
-                RuntimeError, r'Unattributed packaged app dist files:\s+- assets/unattributed.bin'
-            ):
-                notices.bundle_module_graph(source, Path(scratch) / 'pack')
+            graph = notices.bundle_module_graph(source, Path(scratch) / 'pack')
+            self.assertIn(
+                'Shipped files lacked source-map/metafile or asset-origin attribution: assets/unattributed.bin',
+                graph['auditLimitations'],
+            )
 
-    def test_bundle_module_graph_missing_fails_closed(self):
+    def test_bundle_module_graph_records_missing_evidence(self):
         with tempfile.TemporaryDirectory() as scratch:
             source = Path(scratch) / 'source'
             (source / 'apps' / 'desktop' / 'dist').mkdir(parents=True)
-            with self.assertRaisesRegex(RuntimeError, 'Cannot obtain bundled module graph'):
-                notices.bundle_module_graph(source)
+            graph = notices.bundle_module_graph(source)
+            self.assertIn(
+                'No source maps or esbuild metafiles were available',
+                graph['auditLimitations'],
+            )
 
     def test_unpacked_node_modules_reports_resources_packages(self):
         with tempfile.TemporaryDirectory() as scratch:

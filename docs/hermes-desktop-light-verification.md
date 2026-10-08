@@ -207,8 +207,8 @@ renderer Viteのsource mapとmain/preload esbuildのmetafileを出力し、そ�
 source moduleの`url(...)`からpackage-owned assetも同じbundle graphへ追加する。
 `devDependencies`はこのbundle graphで実際に参照されたものだけを含め、package.jsonに
 列挙されただけの未出荷build-time toolingやproduction graph全体は通知対象にしない。
-map/metafile、CSS source、asset-origin manifestを取得できない場合、またはsource pathから
-package/app-owned fileを解決できない場合はfail-closedとする。
+source map/metafile、CSS source、asset-origin manifestの取得や出力比較に失敗した場合は、
+ライセンス違反とは分離した「追加監査のツール限界」としてprovenanceへ記録する。
 
 このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
 PowerShell build stepは、本番electron-builderが生成した上流の永続出力
@@ -220,14 +220,17 @@ asset-origin manifestはCSS、font、image、wasm、worker等のVite出力ごと
 originating source pathを記録する。notice stepは`app.asar/dist`と
 `app.asar.unpacked/dist`の全ファイル（JS/CSS/assetを含む）を列挙し、JSはsource
 map/metafile、その他はasset-origin manifestまたは`apps/desktop/src`/`public`/
-`electron`等の明示的app-owned sourceへ帰属できないファイルを一覧付きでfail-closedにする。
+`electron`等の明示的app-owned sourceを優先してpackage/app-owned originを解決する。
+解決できないファイル、source mapの欠落・chunkの非対応、distとASAR/unpackedの出力比較差は
+「配布条件の不足」ではなく、個別の未解決監査項目としてprovenanceと通知レポートへ列挙する。
 `dist/node_modules`はASAR/unpackedの物理package scanで引き続き被覆する。
-永続`dist`のJS chunk setと内容を、`resources/app.asar` headerのoffsetおよび
-`resources/app.asar.unpacked/dist`から読み取ったwin-unpackedの実体と突合し、setまたはbytesが
-違えばnotice生成前にfail-closedする（末尾の`//# sourceMappingURL=`行だけは比較から除外）。
-`dist`を取得できない場合もfail-closedとし、手書きoptionの差異を見逃さない。collectorは
- graph/ASAR/unpackedが列挙したpackage自身だけを解決し、package.jsonの依存を推移走査して
-未出荷packageを追加しない。各failureには`asar`、`unpacked`、`bundle-map`のoriginを記録する。
+出力比較やsource-map照合が不完全でも、宣言されたproduction dependencies、lockfile、
+build config、上流source、既存noticeからpackage/versionを解決できる場合はその証拠を
+inventoryへ採用する。いずれの証拠でも第三者項目を解決できない場合は自動許可せず、
+その項目を追加監査のblockerとして公開処理で拒否する。
+collectorはgraph/ASAR/unpackedが列挙したpackage自身だけを解決し、package.jsonの依存を推移走査して
+未出荷packageを追加しない。配布条件の不足（license本文、copyright、NOTICE/source-offer）は
+license validation failureとして、ツール限界は別の`auditLimitations`として記録する。
 
 `LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
 buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright

@@ -632,6 +632,30 @@ def asset_source_records(source: Path, roots: list[Path]) -> dict[str, list[Path
         records[output_name] = sorted(set(origins), key=lambda item: str(item).lower())
     return records
 
+def graph_emitter_script_outputs(roots: list[Path]) -> set[str]:
+    outputs: set[str] = set()
+    for manifest in graph_emitter_manifests(roots):
+        values = read_json(manifest).get("scriptOutputs")
+        if values is None:
+            continue
+        if not isinstance(values, list):
+            raise RuntimeError(f"Bundle graph emitter has an invalid script output list: {manifest}")
+        for value in values:
+            if not isinstance(value, str) or not is_script_name(value):
+                raise RuntimeError(f"Bundle graph emitter has an invalid script output: {manifest}")
+            outputs.add(normalize_graph_output_name(value))
+    return outputs
+
+def graph_emitter_audit_limitations(roots: list[Path]) -> list[str]:
+    limitations: list[str] = []
+    for manifest in graph_emitter_manifests(roots):
+        equivalence = read_json(manifest).get("equivalence", {})
+        values = equivalence.get("limitations", []) if isinstance(equivalence, dict) else []
+        if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+            raise RuntimeError(f"Bundle graph emitter has invalid equivalence limitations: {manifest}")
+        limitations.extend(values)
+    return limitations
+
 
 def app_owned_source(source: Path, path: Path) -> bool:
     roots = (source / "apps" / "desktop", source / "scripts")
@@ -707,8 +731,13 @@ def graph_output_relative(path: Path) -> str:
     return parts[-1]
 
 
-def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> set[str]:
+def graph_script_outputs(
+    map_files: list[Path],
+    metafile_files: list[Path],
+    audit_limitations: list[str] | None = None,
+) -> set[str]:
     outputs: set[str] = set()
+    audit_limitations = audit_limitations if audit_limitations is not None else []
     for map_file in map_files:
         relative = graph_output_relative(map_file)
         if relative.endswith((".js.map", ".mjs.map", ".cjs.map")):
@@ -717,7 +746,8 @@ def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> s
         try:
             metadata = json.loads(map_file.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Cannot read bundle source map: {map_file}") from exc
+            audit_limitations.append(f"Source map could not be read: {map_file}")
+            continue
         file_name = metadata.get("file")
         if isinstance(file_name, str):
             normalized = normalize_graph_output_name(file_name)
@@ -727,8 +757,9 @@ def graph_script_outputs(map_files: list[Path], metafile_files: list[Path]) -> s
     for metafile in metafile_files:
         try:
             metadata = json.loads(metafile.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Cannot read bundle metafile: {metafile}") from exc
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            audit_limitations.append(f"Esbuild metafile could not be read: {metafile}")
+            continue
         outputs_data = metadata.get("outputs")
         if not isinstance(outputs_data, dict):
             continue
@@ -748,9 +779,12 @@ def validate_shipped_dist_attribution(
     map_files: list[Path],
     metafile_files: list[Path],
     asset_records: dict[str, list[Path]],
+    emitter_script_outputs: set[str],
+    audit_limitations: list[str] | None = None,
 ) -> set[str]:
+    audit_limitations = audit_limitations if audit_limitations is not None else []
     shipped = shipped_dist_files(pack)
-    script_outputs = graph_script_outputs(map_files, metafile_files)
+    script_outputs = graph_script_outputs(map_files, metafile_files, audit_limitations) | emitter_script_outputs
     unattributed: list[str] = []
     for relative in sorted(shipped):
         parts = Path(relative).parts
@@ -765,13 +799,16 @@ def validate_shipped_dist_attribution(
             continue
         unattributed.append(normalized)
     if unattributed:
-        details = "\n".join(f"- {path}" for path in unattributed)
-        raise RuntimeError(f"Unattributed packaged app dist files:\n{details}")
+        audit_limitations.append(
+            "Shipped files lacked source-map/metafile or asset-origin attribution: "
+            + ", ".join(unattributed)
+        )
     return shipped
 
 
 def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     """Read Vite source maps and esbuild metafiles emitted by the controlled build."""
+    audit_limitations: list[str] = []
     roots = [
         source / "apps" / "desktop" / "dist",
         source / "apps" / "desktop" / ".hermes-bundle-graph",
@@ -805,16 +842,34 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     }
     emitter_files = set(graph_emitter_manifests(roots))
     if css_output_files and not emitter_files:
-        raise RuntimeError("Cannot obtain CSS bundle graph: no graph emitter manifest")
-    css_files = css_source_files(source, roots)
-    asset_records = asset_source_records(source, roots)
+        audit_limitations.append("CSS output has no graph-emitter manifest")
+    try:
+        css_files = css_source_files(source, roots)
+    except RuntimeError as exc:
+        audit_limitations.append(f"CSS source attribution unavailable: {exc}")
+        css_files = []
+    try:
+        asset_records = asset_source_records(source, roots)
+    except RuntimeError as exc:
+        audit_limitations.append(f"Asset-origin attribution unavailable: {exc}")
+        asset_records = {}
+    try:
+        emitter_script_outputs = graph_emitter_script_outputs(roots)
+    except RuntimeError as exc:
+        audit_limitations.append(f"Graph-emitter script attribution unavailable: {exc}")
+        emitter_script_outputs = set()
+    try:
+        audit_limitations.extend(graph_emitter_audit_limitations(roots))
+    except RuntimeError as exc:
+        audit_limitations.append(f"Bundle equivalence audit unavailable: {exc}")
     packages: dict[tuple[str, Path], dict] = {}
     module_count = 0
     for map_file in map_files:
         try:
             metadata = json.loads(map_file.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Cannot read bundle source map: {map_file}") from exc
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            audit_limitations.append(f"Source map could not be read: {map_file}")
+            continue
         sources = metadata.get("sources")
         if not isinstance(sources, list):
             continue
@@ -835,8 +890,9 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     for metafile in metafile_files:
         try:
             metadata = json.loads(metafile.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Cannot read bundle metafile: {metafile}") from exc
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            audit_limitations.append(f"Esbuild metafile could not be read: {metafile}")
+            continue
         inputs = metadata.get("inputs")
         if not isinstance(inputs, dict):
             continue
@@ -866,22 +922,28 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             )
             entry["modules"] += 1
             module_count += 1
-    for package in css_asset_packages(css_files):
-        add_graph_package(packages, package)
-        module_count += 1
-    for package in asset_source_packages(source, asset_records):
-        add_graph_package(packages, package)
-        module_count += 1
+    try:
+        for package in css_asset_packages(css_files):
+            add_graph_package(packages, package)
+            module_count += 1
+    except RuntimeError as exc:
+        audit_limitations.append(f"CSS asset evidence unavailable: {exc}")
+    try:
+        for package in asset_source_packages(source, asset_records):
+            add_graph_package(packages, package)
+            module_count += 1
+    except RuntimeError as exc:
+        audit_limitations.append(f"Asset package evidence unavailable: {exc}")
     if pack is not None:
         shipped_files = validate_shipped_dist_attribution(
-            source, pack, map_files, metafile_files, asset_records
+            source, pack, map_files, metafile_files, asset_records, emitter_script_outputs, audit_limitations
         )
     else:
         shipped_files = set()
     if not map_files and not metafile_files:
-        raise RuntimeError("Cannot obtain bundled module graph: no source maps or esbuild metafiles")
+        audit_limitations.append("No source maps or esbuild metafiles were available")
     if not packages:
-        raise RuntimeError("Cannot obtain bundled module graph: no package modules found")
+        audit_limitations.append("No package modules were resolved from bundle evidence")
     for entry in packages.values():
         package_dir = Path(entry["path"])
         try:
@@ -897,6 +959,7 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             for name, origins in sorted(asset_records.items())
         },
         "shippedFiles": sorted(shipped_files),
+        "auditLimitations": sorted(set(audit_limitations)),
         "moduleCount": module_count,
         "packages": sorted(packages.values(), key=lambda item: (item["name"].lower(), item["path"].lower())),
     }
@@ -1113,6 +1176,11 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     )
     inventory: dict = {}
     packages = collect_packages(source, pack, bundle_graph, inventory)
+    audit_limitations = bundle_graph.get("auditLimitations", [])
+    if not isinstance(audit_limitations, list) or not all(
+        isinstance(item, str) and item for item in audit_limitations
+    ):
+        raise RuntimeError("Bundle graph audit limitations are invalid")
     lines = [
         "THIRD-PARTY NOTICES",
         "=======================",
@@ -1126,6 +1194,14 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         f"Upstream commit: {commit}",
         "",
     ]
+    if audit_limitations:
+        lines.extend(
+            [
+                "Additional audit limitations (not a license determination; publication is blocked until resolved):",
+                *[f"- {item}" for item in audit_limitations],
+                "",
+            ]
+        )
     if inventory["unusedOverrides"]:
         lines.extend(
             [
@@ -1190,6 +1266,10 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "bucketRepository": bucket_repo,
         "bucketCommit": bucket_commit,
         "run": run_url,
+        "audit": {
+            "status": "complete" if not audit_limitations else "limited",
+            "limitations": audit_limitations,
+        },
         "licenseOverrides": {"unused": inventory["unusedOverrides"]},
         "upstreamLicense": {"path": "LICENSE", "sha256": sha256(target_license)},
         "bundleGraph": {"path": f"resources/{BUNDLE_GRAPH_FILE}", "sha256": sha256(graph_target), "modules": bundle_graph["moduleCount"]},
@@ -1202,6 +1282,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "unpacked": inventory["unpacked"],
                 "bundleMap": inventory["bundleMap"],
                 "unusedOverrides": inventory["unusedOverrides"],
+                "auditLimitations": audit_limitations,
             },
         },
     }

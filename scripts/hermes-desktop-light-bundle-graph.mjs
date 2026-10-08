@@ -209,6 +209,9 @@ const addAssetOrigin = (name) => {
   if (origin) assetSources.set(normalized, [origin])
 }
 for (const name of shipped.keys()) addAssetOrigin(name)
+if (existsSync(path.join(source, 'scripts', 'build', 'freshness.mjs'))) {
+  assetSources.set('hermes-product', [path.join(source, 'scripts', 'build', 'freshness.mjs')])
+}
 
 const shippedJs = new Map()
 const normalizedScripts = (files) => {
@@ -237,18 +240,20 @@ const shippedNames = [...shippedJs.keys()].sort()
 const exactProduct = path.join(app, 'dist')
 const reconstructed = normalizedScripts(await outputFiles(exactProduct))
 const reconstructedNames = [...reconstructed.keys()].sort()
+const equivalenceLimitations = []
 if (JSON.stringify(shippedNames) !== JSON.stringify(reconstructedNames)) {
   const reconstructedSet = new Set(reconstructedNames)
   const shippedSet = new Set(shippedNames)
   const missing = shippedNames.filter((name) => !reconstructedSet.has(name)).slice(0, 12)
   const extra = reconstructedNames.filter((name) => !shippedSet.has(name)).slice(0, 12)
-  throw new Error(
-    `Upstream desktop output set differs from shipped scripts: shipped=${shippedNames.length} reconstructed=${reconstructedNames.length} missing=${missing.join(',')} extra=${extra.join(',')}`,
+  equivalenceLimitations.push(
+    `Shipped/product script sets differ: shipped=${shippedNames.length} reconstructed=${reconstructedNames.length} missing=${missing.join(',')} extra=${extra.join(',')}`,
   )
 }
 for (const name of shippedNames) {
+  if (!reconstructed.has(name)) continue
   if (stripSourceMapLine(shippedJs.get(name)) !== stripSourceMapLine(reconstructed.get(name))) {
-    throw new Error(`Bundle graph output differs from shipped product file: dist/${name}`)
+    equivalenceLimitations.push(`Shipped/product script bytes differ: dist/${name}`)
   }
 }
 
@@ -259,6 +264,7 @@ const manifest = {
   cssSources: [...cssSources]
     .sort()
     .map((file) => path.relative(source, file).replaceAll(path.sep, '/')),
+  scriptOutputs: shippedNames,
   assetSources: Object.fromEntries(
     [...assetSources]
       .sort(([left], [right]) => left.localeCompare(right))
@@ -276,6 +282,7 @@ const manifest = {
     unpacked: 'resources/app.asar.unpacked/dist',
     product: exactProduct,
     shippedJs: shippedNames,
+    limitations: equivalenceLimitations,
     comparedAfter: 'stripping trailing //# sourceMappingURL= line',
   },
 }
