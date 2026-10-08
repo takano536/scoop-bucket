@@ -634,14 +634,18 @@ def asset_source_records(source: Path, roots: list[Path]) -> dict[str, list[Path
 
 
 def app_owned_source(source: Path, path: Path) -> bool:
-    desktop = source / "apps" / "desktop"
-    try:
-        relative = path.relative_to(desktop)
-    except ValueError:
-        return False
-    if not relative.parts or "node_modules" in relative.parts:
-        return False
-    return relative.parts[0] not in {"dist", "build", ".hermes-bundle-graph"}
+    roots = (source / "apps" / "desktop", source / "scripts")
+    for root in roots:
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        if not relative.parts or "node_modules" in relative.parts:
+            return False
+        if root == source / "apps" / "desktop" and relative.parts[0] in {"dist", "build", ".hermes-bundle-graph"}:
+            return False
+        return True
+    return False
 
 
 def asset_source_packages(source: Path, records: dict[str, list[Path]]) -> list[tuple[str, Path]]:
