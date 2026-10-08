@@ -98,12 +98,11 @@ main上のpush・手動実行・workflow完了だけで行う。
 
 手動実行と、UTCの4時間ごとのcron（`20 */4 * * *`）で起動する。Windows runnerで
 Scoopの自動更新処理を実行し、必要な書き戻し権限を持つ。
-### Hermes Desktop Light ([../.github/workflows/hermes-desktop-light.yml](../.github/workflows/hermes-desktop-light.yml))
+### bucket-built distribution
 
-Hermes Desktop Lightのbuild、smoke、bucket-built distributionとしての受入条件、公開ゲート、
-成果物対応、実行済み・未確認事項は
-[Hermes Desktop Light検証](hermes-desktop-light-verification.md)にまとめる。この共通手順では、
-Hermes固有のトリガーや一時的な検証状態を重複して記載しない。
+bucket-built distributionのbuild、smoke、受入条件、公開ゲート、成果物対応、実行済み・
+未確認事項は各アプリ固有の検証文書にまとめる。この共通手順では、個別アプリのトリガーや
+一時的な検証状態を重複して記載しない。
 
 ### その他の自動化
 
@@ -137,5 +136,4 @@ Windows上のScoop実インストール、実Release公開、外部サービス�
 ## 関連リンク
 
 - [配布ルール](distribution-policy.md)
-- [Hermes Desktop Light検証](hermes-desktop-light-verification.md)
 - [AGENTS.md](../AGENTS.md)

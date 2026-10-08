@@ -1,4 +1,21 @@
 # Hermes Desktop Light 検証
+共通の[配布ルール](distribution-policy.md)と[検証記録](distribution-validation.md)を前提に、
+Hermes Desktop Light固有の上流・Light・gateway契約と実行結果をこの文書へ記録する。
+
+## Hermes Desktop Light固有の上流・実行契約
+
+- 対象の安定タグは、上流の`STABLE_TAG_RE`と同じ`vX.Y.Z`形式のSemVerだけとする。
+  Draft・Prerelease・canary・`v2026.9.24`のような歴史的CalVerは対象外である。
+- 上流のstable-release toolingが先に作る`rc.N-vX.Y.Z` annotated claimと、公開時の
+  `vX.Y.Z` annotated tag本文に入る`claimTag`・`claimTagObject`付きJSON receiptを
+  検証する。Release状態、タグから解決したcommit、claimのversion/commit/
+  `claimTag`/`claimTagObject`が一致しないtagはadmissionしない。
+- sourceのLight identityと管理されたLight builderの対応ファイルを検査し、非対応や
+  必要ファイルのないcommitは理由を記録してskipする。API障害や権限エラーはskipと
+  混同せず失敗させる。
+- この配布物はリモート専用のLight構成で、既存のHermes gatewayへの接続を必要とする。
+  起動smokeだけではgateway接続、認証・接続設定の移行、Lightのローカル実行可否を
+  証明しない。これらはWindowsで別途受入確認する。
 
 ## 個別検証の入口
 
@@ -31,6 +48,13 @@ Light対応と対象を決める。対象がある場合だけ`build`がWindows 
 詳細なゲートと未確認事項は、この文書の公開ゲート節に従う。Pull Requestではpublishを
 実行しない。
 
+## Hermes Desktop Lightの改訂
+
+通常の安定版追従は`r1`。公開済みの同じ上流版を修正する場合、信頼済みmainの手動workflowの`revision`に`2`などを指定する。
+対象はその時点の最新対応安定版。過去上流版を指定してのバックポートビルドは現在の自動化の対象外。
+改訂番号は正の整数で、先頭ゼロを許可しない。既存manifest以上の版がなければskipし、定期実行が`r2`を`r1`へ戻すことはない。
+番号は承認済み修正のために管理者が指定するもので、CI再実行数から自動採番しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は引き続き既定で無効。
+Hermes Desktop Lightのgateway接続・認証移行などの既存阻害条件は、この改訂ルールで解消したとは扱わない。
 
 ## 実Windows CI
 
@@ -105,3 +129,32 @@ updater check/applyを追加した。結果は `native-checks.json` と `provena
 これは初期起動とexternal updaterの確認であり、リモートgateway接続、PATH以外の
 インストール済みランタイムからの独立性、安定版の実アップグレードを保証しない。
 実CI結果はPRに記録する。
+
+## 配布契約の検証記録
+
+対象commit `3c4b424d8dd16cd77d14842d0e9867d1d9739ed4`について、次の検証を記録する。
+
+| 検証 | 結果 |
+| --- | --- |
+| Python回帰テスト | 27件成功。Hermes固有のtag/admission、改訂指定、r2/r10の数値順、downgrade拒否、他アプリRelease混在、ページ分割、過去版manifest添付を含む |
+| ローカル静的検証 | README生成チェック、Node構文、actionlint、git diff --check成功 |
+| [Windows標準CI](https://github.com/takano536/scoop-bucket/actions/runs/37641749710) | Windows PowerShell / PowerShell 7とも成功。Scoop Compare-Versionでr1 < r2 < r10、次の上流版、同版比較を確認 |
+| [Autoupdate](https://github.com/takano536/scoop-bucket/actions/runs/37641749687) | 成功 |
+| [README](https://github.com/takano536/scoop-bucket/actions/runs/37641749731) | 成功 |
+| [Windows Desktop Lightビルド・起動smoke](https://github.com/takano536/scoop-bucket/actions/runs/37641749685) | 成功。公開jobは実行しない |
+
+### 成果物と上流commit
+
+- [Actions artifact](https://github.com/takano536/scoop-bucket/actions/runs/37641749685/artifacts/11492702573)は一時検証用、保持14日。正式配布先ではない。
+- 上流commit: `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
+- ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
+- SHA256: `8ab03e5adc3ce4288d53f04d1382e231f928619b912e2516f9cd296007d2879d`
+- 170,392,869 bytes / 1,191 entries。ダウンロード後にCRC・hash・Light/external
+  stamp・commit一致・agent非同梱を再確認した。
+- 二回の実updater IPCはexternal、check supported=false、apply ok=false / commit-build。
+
+これは固定commitのpreviewであり、対応安定版の更新所有・gateway接続・認証移行の
+証明ではない。対象安定版、ライセンス通知の同梱、実gateway接続、実更新時の設定保持、
+過去版のScoop導入/固定は未確認である。公開実運転はマージと明示的承認後にのみ確認
+可能で、公開ゲート未設定、マージ・実Release作成なし。
+差分レビューはHermes自身で実施、独立モデルレビューは未実施。

@@ -53,8 +53,7 @@
   `<upstream-version>-r<revision>`、ZIP名は
   `<app>-<upstream-version>-r<revision>-windows-<arch>.zip`とする。
 - 改訂番号、同じ上流版の修正版、再実行、ライセンス・通知確認の扱いは、共通ルールと
-  アプリ固有文書の両方を確認する。Hermes Desktop Light固有の条件は
-  [Hermes Desktop Light検証](docs/hermes-desktop-light-verification.md)に記載する。
+  アプリ固有文書の両方を確認する。アプリ固有の条件は、各アプリの検証文書に記載する。
 
 ## CIの安全規則
 
