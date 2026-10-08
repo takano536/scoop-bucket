@@ -202,10 +202,15 @@ def load_license_overrides() -> dict[str, dict]:
     return data
 
 
-def validate_unused_overrides(overrides: dict[str, dict], used: set[str]) -> None:
-    unused = sorted(set(overrides) - used)
-    if unused:
-        raise RuntimeError(f"Unused license override entries: {', '.join(unused)}")
+def validate_unused_overrides(overrides: dict[str, dict], used: set[str]) -> list[str]:
+    """Return reviewed overrides absent from this commit's shipped inventory.
+
+    Override entries remain strictly validated by ``load_license_overrides`` and
+    an entry is consumed only for its exact ``name@version`` package.  A
+    different upstream commit may legitimately ship a different dependency
+    set, so unused entries are recorded rather than making that build fail.
+    """
+    return sorted(set(overrides) - used)
 
 
 def override_license_text(
@@ -770,10 +775,9 @@ def collect_packages(
                 license_failures.append(f"{package_name}@{metadata['version']} [origin={origin_label}]: {exc}")
             else:
                 packages.append((package_name, metadata["version"], license_name, text, package_dir))
-    try:
-        validate_unused_overrides(overrides, used_overrides)
-    except RuntimeError as exc:
-        license_failures.append(str(exc))
+    unused_overrides = validate_unused_overrides(overrides, used_overrides)
+    if inventory is not None:
+        inventory["unusedOverrides"] = unused_overrides
     if license_failures:
         details = "\n".join(f"- {failure}" for failure in license_failures)
         origin_details = "; ".join(
@@ -822,6 +826,14 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         f"Upstream commit: {commit}",
         "",
     ]
+    if inventory["unusedOverrides"]:
+        lines.extend(
+            [
+                "License override entries not used by this commit's shipped inventory:",
+                *[f"- {key}" for key in inventory["unusedOverrides"]],
+                "",
+            ]
+        )
     for index, (name, version, license_name, text, package_dir) in enumerate(packages, 1):
         metadata = read_json(package_dir / "package.json")
         author = metadata.get("author")
@@ -878,6 +890,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "bucketRepository": bucket_repo,
         "bucketCommit": bucket_commit,
         "run": run_url,
+        "licenseOverrides": {"unused": inventory["unusedOverrides"]},
         "upstreamLicense": {"path": "LICENSE", "sha256": sha256(target_license)},
         "bundleGraph": {"path": f"resources/{BUNDLE_GRAPH_FILE}", "sha256": sha256(graph_target), "modules": bundle_graph["moduleCount"]},
         "thirdParty": {
@@ -888,6 +901,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "asar": inventory["asar"],
                 "unpacked": inventory["unpacked"],
                 "bundleMap": inventory["bundleMap"],
+                "unusedOverrides": inventory["unusedOverrides"],
             },
         },
     }
