@@ -193,8 +193,13 @@ bundle graphで実際に参照されたものだけを含め、package.jsonに�
 このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
 PowerShell build stepが本番win-unpacked生成後に、上流のrenderer設定とmain/preload entryを
 一時出力先へ再実行し、source map/metafileだけを
-`apps/desktop/.hermes-bundle-graph`へ保存する。上流checkoutのtracked bytesや本番成果物は
-書き換えず、生成したgraphをnotice作成の入力として検証する。
+`apps/desktop/.hermes-bundle-graph`へ保存する。生成したrenderer/main/preloadのJS chunk setと
+内容を、`resources/app.asar` headerのoffsetから読み取った実際の`dist/` bytes（末尾の
+`//# sourceMappingURL=`行だけ除外）と突合し、setまたはbytesが違えばnotice生成前にfail-closed
+する。上流checkoutのtracked bytesや本番成果物は書き換えず、生成したgraphをnotice作成の
+入力として検証する。collectorはgraph/ASAR/unpackedが列挙したpackage自身だけを解決し、
+package.jsonの依存を推移走査して未出荷packageを追加しない。各failureには`asar`、
+`unpacked`、`bundle-map`のoriginを記録する。
 
 `LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
 buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright

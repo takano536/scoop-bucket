@@ -22,7 +22,7 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
 $bucket = Join-Path $root 'bucket'
 $prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
-& $prepared.node "$bucket/scripts/hermes-desktop-light-bundle-graph.mjs" $source $bundleGraphDir
+& $prepared.node "$bucket/scripts/hermes-desktop-light-bundle-graph.mjs" $source $bundleGraphDir $pack
 $repository = $env:GITHUB_REPOSITORY
 $runUrl = "https://github.com/$repository/actions/runs/$env:GITHUB_RUN_ID"
 $bucketCommit = (git -C $bucket rev-parse HEAD).Trim()

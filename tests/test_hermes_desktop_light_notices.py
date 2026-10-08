@@ -268,7 +268,14 @@ class NoticeTests(unittest.TestCase):
                 encoding='utf-8',
             )
             (package / 'package.json').write_text(
-                json.dumps({'name': 'bundled-only', 'version': '1.0.0', 'license': 'MIT'}),
+                json.dumps(
+                    {
+                        'name': 'bundled-only',
+                        'version': '1.0.0',
+                        'license': 'MIT',
+                        'dependencies': {'transitive-not-shipped': '1.0.0'},
+                    }
+                ),
                 encoding='utf-8',
             )
             (package / 'LICENSE').write_text(mit, encoding='utf-8')

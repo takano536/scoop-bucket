@@ -96,40 +96,6 @@ def is_workspace_package(source: Path, package_dir: Path) -> bool:
     return bool(relative.parts and relative.parts[0] in {"apps", "ui-tui", "web", "tests-js"})
 
 
-def optional_package_names(source: Path) -> set[str]:
-    """Return package names marked optional by the exact npm lockfile."""
-    names: set[str] = set()
-    for lockfile in (source / "package-lock.json", source / "apps" / "desktop" / "package-lock.json"):
-        if not lockfile.is_file():
-            continue
-        metadata = read_json(lockfile)
-        packages = metadata.get("packages", {})
-        if not isinstance(packages, dict):
-            continue
-        for key, package in packages.items():
-            if not isinstance(package, dict) or not package.get("optional"):
-                continue
-            parts = str(key).split("/node_modules/")
-            name = parts[-1]
-            if name.startswith("@"):
-                name = "/".join(name.split("/")[:2])
-            else:
-                name = name.split("/", 1)[0]
-            if name:
-                names.add(name)
-    return names
-
-
-PLATFORM_PACKAGE_TOKEN = re.compile(
-    r"(?:^|[-/])(aix|android|arm64|darwin|freebsd|ia32|linux|netbsd|openbsd|openharmony|ppc64|riscv64|s390x|sunos|wasm32|win32|x64)(?:[-/]|$)",
-    re.I,
-)
-
-
-def is_platform_package(name: str) -> bool:
-    return bool(PLATFORM_PACKAGE_TOKEN.search(name))
-
-
 def declared_license(metadata: dict) -> str:
     value = metadata.get("license")
     if isinstance(value, str) and value.strip():
@@ -738,22 +704,20 @@ def collect_packages(
     read_json(desktop / "package.json")
     overrides = load_license_overrides()
     used_overrides: set[str] = set()
-    optional_names = optional_package_names(source)
     asar_names = asar_node_modules(pack)
     unpacked_names = unpacked_node_modules(pack)
     bundle_graph = bundle_graph or {"packages": []}
-    queue: list[tuple[Path, str, bool, Path | None, str | None]] = []
+    queue: list[tuple[Path, str, Path | None, str]] = []
     origins: dict[str, set[str]] = {}
 
-    def enqueue(parent: Path, name: str, optional: bool, hint: Path | None, origin: str | None) -> None:
-        queue.append((parent, name, optional, hint, origin))
-        if origin is not None:
-            origins.setdefault(name, set()).add(origin)
+    def enqueue(parent: Path, name: str, hint: Path | None, origin: str) -> None:
+        queue.append((parent, name, hint, origin))
+        origins.setdefault(name, set()).add(origin)
 
     for name in sorted(asar_names):
-        enqueue(desktop, name, False, None, "asar")
+        enqueue(desktop, name, None, "asar")
     for name in sorted(unpacked_names):
-        enqueue(desktop, name, False, None, "unpacked")
+        enqueue(desktop, name, None, "unpacked")
     bundle_names: set[str] = set()
     for entry in bundle_graph.get("packages", []):
         if not isinstance(entry, dict):
@@ -766,7 +730,7 @@ def collect_packages(
         if not (package_hint / "package.json").is_file():
             raise RuntimeError(f"Bundle module graph package is missing: {relative}")
         bundle_names.add(name)
-        enqueue(desktop, name, False, package_hint, "bundle-map")
+        enqueue(desktop, name, package_hint, "bundle-map")
     if inventory is not None:
         inventory.clear()
         inventory.update(
@@ -781,12 +745,10 @@ def collect_packages(
     packages = []
     license_failures: list[str] = []
     while queue:
-        parent, name, optional, hint, origin = queue.pop(0)
+        parent, name, hint, origin = queue.pop(0)
         package_dir = hint if hint is not None else resolve_package(parent, name)
         if package_dir is None:
-            if optional:
-                continue
-            raise RuntimeError(f"Installed dependency is missing: {name}")
+            raise RuntimeError(f"Installed inventoried package is missing: {name} (origin={origin})")
         if package_dir in visited:
             continue
         visited.add(package_dir)
@@ -804,16 +766,10 @@ def collect_packages(
                     package_origins,
                 )
             except RuntimeError as exc:
-                license_failures.append(f"{package_name}@{metadata['version']}: {exc}")
+                origin_label = ",".join(sorted(package_origins)) or origin
+                license_failures.append(f"{package_name}@{metadata['version']} [origin={origin_label}]: {exc}")
             else:
                 packages.append((package_name, metadata["version"], license_name, text, package_dir))
-        fields = (("dependencies", False), ("optionalDependencies", True))
-        for field, is_optional in fields:
-            values = metadata.get(field, {})
-            if isinstance(values, dict):
-                dependency_optional = is_optional or package_name in optional_names or is_platform_package(package_name)
-                for child in sorted(values):
-                    enqueue(package_dir, child, dependency_optional, None, None)
     try:
         validate_unused_overrides(overrides, used_overrides)
     except RuntimeError as exc:
