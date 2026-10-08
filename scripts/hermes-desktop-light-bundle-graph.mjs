@@ -141,8 +141,9 @@ function outputFiles(root) {
 const shipped = asarFiles(path.join(pack, 'resources', 'app.asar'))
 const shippedJs = new Map()
 for (const [name, bytes] of shipped) {
-  if (!name.startsWith('dist/') || name.includes('/node_modules/')) continue
-  const relative = name.slice('dist/'.length)
+  const dist = name === 'dist' ? 0 : name.indexOf('dist/')
+  if (dist < 0 || name.includes('/node_modules/')) continue
+  const relative = name.slice(dist + 'dist/'.length)
   if (/\.(?:js|mjs)$/.test(relative)) shippedJs.set(relative, bytes)
 }
 const reconstructed = new Map(await outputFiles(renderer))
