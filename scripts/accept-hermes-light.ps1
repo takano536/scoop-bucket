@@ -368,7 +368,7 @@ function Get-PEImportEvidence {
             $resolution = $null
             $apiSetProbe = $null
             if ($import -match '^(?:api|ext)-ms-win-') {
-                if (!$apiSetProbeCache.ContainsKey($import)) {
+                if ($null -eq $apiSetProbeCache[$import]) {
                     $apiSetProbeCache[$import] = Test-WindowsApiSetResolution -Name $import
                     $apiSetProbes += $apiSetProbeCache[$import]
                 }
