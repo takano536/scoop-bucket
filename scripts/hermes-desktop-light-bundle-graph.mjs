@@ -140,11 +140,20 @@ function outputFiles(root) {
 
 const shipped = asarFiles(path.join(pack, 'resources', 'app.asar'))
 const shippedJs = new Map()
-for (const [name, bytes] of shipped) {
-  if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
-  const dist = name.indexOf('dist/')
-  const relative = dist >= 0 ? name.slice(dist + 'dist/'.length) : name
-  if (/\.(?:js|mjs)$/.test(relative)) shippedJs.set(relative, bytes)
+const addShippedScripts = (files) => {
+  for (const [name, bytes] of files) {
+    if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
+    const dist = name.indexOf('dist/')
+    const relative = dist >= 0 ? name.slice(dist + 'dist/'.length) : name
+    if (/\.(?:js|mjs)$/.test(relative)) shippedJs.set(relative, bytes)
+  }
+}
+addShippedScripts(shipped)
+const unpackedDist = path.join(pack, 'resources', 'app.asar.unpacked', 'dist')
+try {
+  addShippedScripts(await outputFiles(unpackedDist))
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
 }
 const reconstructed = new Map(await outputFiles(renderer))
 for (const [name, bytes] of await outputFiles(main)) {
@@ -169,6 +178,7 @@ const manifest = {
   mainMetafiles: main,
   equivalence: {
     asar: 'resources/app.asar/dist',
+    unpacked: 'resources/app.asar.unpacked/dist',
     shippedJs: shippedNames,
     comparedAfter: 'stripping trailing //# sourceMappingURL= line',
   },
