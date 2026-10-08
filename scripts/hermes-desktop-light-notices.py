@@ -623,7 +623,19 @@ def bundle_module_graph(source: Path) -> dict:
         for input_name in inputs:
             if not isinstance(input_name, str):
                 continue
-            package = package_at_path(source_map_path(metafile, input_name))
+            input_path = Path(unquote(input_name))
+            candidates = (
+                ((source / "apps" / "desktop") / input_path).resolve(),
+                source_map_path(metafile, input_name),
+            )
+            package = next(
+                (
+                    candidate
+                    for candidate in (package_at_path(path) for path in candidates)
+                    if candidate is not None
+                ),
+                None,
+            )
             if package is None:
                 continue
             package_name, package_dir = package
@@ -653,13 +665,6 @@ def bundle_module_graph(source: Path) -> dict:
     }
 
 
-def bundle_package_origins(bundle_graph: dict) -> dict[str, set[str]]:
-    origins: dict[str, set[str]] = {}
-    for entry in bundle_graph.get("packages", []):
-        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
-            continue
-        origins.setdefault(entry["name"], set()).add("bundle-map")
-    return origins
 def asar_node_modules(pack: Path) -> set[str]:
     """Read package paths from the ASAR header without extracting payload bytes."""
     asar = pack / "resources" / "app.asar"
