@@ -2,7 +2,9 @@ function Get-ScoopInstalledState {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$AppName
+        [string]$AppName,
+        [Parameter(Mandatory = $false)]
+        [string]$ManifestPath
     )
 
     if (!$env:SCOOP) {
@@ -18,10 +20,15 @@ function Get-ScoopInstalledState {
     $resolvedCurrent = (Resolve-Path -LiteralPath $currentLink).Path
     $rawTarget = [string]$currentItem.Target
     $manifestPath = Join-Path $resolvedCurrent 'manifest.json'
-    $installPath = Join-Path $resolvedCurrent 'install.json'
+    $manifestSource = 'installed-current'
     if (!(Test-Path -LiteralPath $manifestPath)) {
-        throw "Installed manifest is missing: $manifestPath"
+        if (!$ManifestPath -or !(Test-Path -LiteralPath $ManifestPath)) {
+            throw "Installed manifest is missing and no bucket manifest was supplied: $manifestPath"
+        }
+        $manifestPath = (Resolve-Path -LiteralPath $ManifestPath).Path
+        $manifestSource = 'disposable-bucket'
     }
+    $installPath = Join-Path $resolvedCurrent 'install.json'
     if (!(Test-Path -LiteralPath $installPath)) {
         throw "Scoop install receipt is missing: $installPath"
     }
@@ -45,6 +52,7 @@ function Get-ScoopInstalledState {
         currentTargetRaw = $rawTarget
         currentTargetResolved = $resolvedCurrent
         manifestPath = $manifestPath
+        manifestSource = $manifestSource
         installPath = $installPath
     }
 }

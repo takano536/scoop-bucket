@@ -485,7 +485,7 @@ try {
     Write-EvidenceJson -Path $manifestPath -Value $manifest
     Invoke-Scoop -Arguments @('install', $appName)
     $installedRoot = Get-AppRoot
-    $beforeInstall = Get-ScoopInstalledState -AppName $appName
+    $beforeInstall = Get-ScoopInstalledState -AppName $appName -ManifestPath $bucketManifestPath
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
     $beforeShortcut = Get-ShortcutState -Path $shortcutPath
@@ -523,7 +523,7 @@ try {
     Write-EvidenceJson -Path $manifestPath -Value $manifest
     Invoke-Scoop -Arguments @('update', $appName)
     $installedRoot = Get-AppRoot
-    $afterInstall = Get-ScoopInstalledState -AppName $appName
+    $afterInstall = Get-ScoopInstalledState -AppName $appName -ManifestPath $bucketManifestPath
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
     $afterShortcut = Get-ShortcutState -Path $shortcutPath
