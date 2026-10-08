@@ -196,6 +196,10 @@ def verify_artifact(root, record, version, source_ref):
                 raise ValueError('Notice digest mismatch')
         if not isinstance(notices['thirdParty'].get('packages'), int) or notices['thirdParty']['packages'] < 1:
             raise ValueError('Third-party notice package count is invalid')
+        audit = record.get('audit')
+        if (not isinstance(audit, dict) or audit.get('status') != 'complete' or
+                audit.get('limitations') != []):
+            raise ValueError('Audit limitations block publication')
         stamp = json.loads(archive.read('resources/install-stamp.json'))
         if any(stamp.get(key) != record[key] for key in ('commit', 'payload', 'updateMechanism')):
             raise ValueError('Packaged provenance mismatch')
