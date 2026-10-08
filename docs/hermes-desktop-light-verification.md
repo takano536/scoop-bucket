@@ -203,13 +203,13 @@ originating source pathを記録する。notice stepは`app.asar/dist`と
 `app.asar.unpacked/dist`の全ファイル（JS/CSS/assetを含む）を列挙し、JSはsource
 map/metafile、その他はasset-origin manifestまたは`apps/desktop/src`/`public`/
 `electron`等の明示的app-owned sourceを優先してpackage/app-owned originを解決する。
-解決できないファイル、source mapの欠落・chunkの非対応、distとASAR/unpackedの出力比較差は
-「配布条件の不足」ではなく、個別の未解決監査項目としてprovenanceと通知レポートへ列挙する。
-`dist/node_modules`はASAR/unpackedの物理package scanで引き続き被覆する。
-出力比較やsource-map照合が不完全でも、宣言されたproduction dependencies、lockfile、
-build config、上流source、既存noticeからpackage/versionを解決できる場合はその証拠を
-inventoryへ採用する。いずれの証拠でも第三者項目を解決できない場合は自動許可せず、
-その項目を追加監査のblockerとして公開処理で拒否する。
+source mapの欠落・chunkの非対応、distとASAR/unpackedの出力比較差は、まず
+`auditLimitations`として記録する。宣言されたproduction dependencies、lockfile、
+build config、上流source、既存noticeで対象package/versionが解決できた場合は、この
+fallback evidenceで監査対象を決定し、limitationsだけではpublishを拒否しない。
+いずれの証拠でも個別の第三者出荷物を解決できない場合だけ、そのpath/packageを
+`unresolved`へ列挙し、配布処理を拒否する。`dist/node_modules`はASAR/unpackedの
+物理package scanで引き続き被覆する。
 collectorはgraph/ASAR/unpackedが列挙したpackage自身だけを解決し、package.jsonの依存を推移走査して
 未出荷packageを追加しない。配布条件の不足（license本文、copyright、NOTICE/source-offer）は
 license validation failureとして、ツール限界は別の`auditLimitations`として記録する。
@@ -224,7 +224,7 @@ placeholderは拒否する。bucketで再構成するMIT本文には固定source
 `scripts/hermes-desktop-light-license-overrides.json` のexact name/versionに
 レビュー済み登録されたものだけで、package宣言とSPDXの一致、固定40文字commit URL、
 取得元、license file/sourceのSHA256、copyright line（再構成時）を検証する。未使用
-override entryも失敗させる。
+override entryはfailureにはせず、対象commitで未使用だったkeyとしてprovenance/notice metadataへ記録する。
 
 MPL-2.0の実行形式を配布する場合は、通知にSource Code Formの取得方法を明記する。
 noVNCについては、inventory graphが実際の実行形式の位置を分類し、同梱npm tarballと
@@ -286,6 +286,44 @@ Formは固定したnpm tarballとupstream commitから取得できる」とい�
 `use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに対応する完全な
 license本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
 fail-closedのままとする。
+
+### 最新Windows出力のfont/image/native確認（run 37795454669）
+
+license gate到達前に出力されたbuild log（upstream `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、
+head `a677db9ffda7af15c560a2ad9efdcf2c281061fc`）のasset一覧とsigning対象を一度確認した。
+最終ZIPはgateで生成されていないため、ここでいう「出荷」は`win-unpacked`へpackされる
+対象としての確認であり、通知生成の5件failureは別に列挙している。
+
+- **Font**: `Collapse-Bold-*.woff2` はCSSのsource pathが
+  `@nous-research/ui@0.18.2`を指す。宣言MITだがexact tarballに完全本文/copyright
+  evidenceがなく、下記5件の不足に含まれる。`KaTeX_*`（Main/AMS/Math/Size/
+  Caligraphic/Fraktur/Script/SansSerif/Typewriter、woff/woff2/ttf）は
+  `katex@0.16.47`のpackage-supplied MIT本文を通知へ収録する対象で、generatorの
+  package noticeに含まれる。`codicon-D*.ttf` は`@vscode/codicons@0.0.45`
+  のCC-BY-4.0 package notice/attribution（同packageのlicense text）を収録する。
+  `JetBrainsMono-{Regular,Bold,Italic}.woff2` は上流
+  `apps/desktop/src/fonts`のapp-owned copied fontで、`styles.css`がApache-2.0と
+  明記する。個別のApache本文/source pointerは配布noticeにまだなく、追加の実配布条件不足である。
+- **Image/icon**: `feature-{memory,automation,connect,sandbox}-*.webp`、
+  `apps/desktop/assets`のicon/icon-dark（PNG/ICO/AppX各サイズ）、`apps/desktop/public`
+  の`apple-touch-icon.png`/`nous-girl{,-dark}.png`等は対象commitのapp-owned source
+  （`apps/desktop/src/assets`/`assets`/`public`）に対応する。第三者package由来の表示は
+  asset graphでpackageとして扱い、上流root `LICENSE`のコピーと既存package noticeを
+  適用する。別のcanonical third-party notice/source-offerはlogから確認できず、
+  rights-holderの行は補っていない。
+- **Auxiliary executable**: Electron自身（`electron.exe`）は既存
+  `LICENSE.electron.txt`/`LICENSES.chromium.html`で被覆する。それ以外にsigning対象として
+  `node-pty@1.1.0`の`winpty-agent.exe`、`conpty/OpenConsole.exe`（prebuildと
+  build/Releaseの2経路）、上流`apps/desktop/electron/native`から生成する
+  `native/win32-x64/hud-modifier-monitor.exe`がある。前二者はnode-pty package-supplied
+  MIT notice、後者は対象commitの上流sourceとroot Hermes MIT `LICENSE`を根拠とする。
+  logにはこれ以外の出荷`.dll`はなかった。stagingされた`get-windows@9.3.0`のJS packageは
+  package-supplied MIT noticeの対象（単独native binaryなし）、build環境の
+  `pywinpty==3.0.5`は出力へpackされないbuild-only dependencyとして分離する。
+  なお、gate停止のため最終ZIP内のnotice同梱をWindows acceptanceで再確認する作業は未実施である。
+
+上記のうち完全本文/evidenceが確認できないものは配布条件不足として扱い、tool limitationや
+権利者の義務免除とは表現しない。
 
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
 Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を

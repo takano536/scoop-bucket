@@ -211,8 +211,9 @@ class NoticeTests(unittest.TestCase):
                 metadata['thirdParty']['inventory']['unusedOverrides'],
                 ['fixture-package@1.0.0'],
             )
-            self.assertEqual(metadata['audit'], {'status': 'complete', 'limitations': []})
+            self.assertEqual(metadata['audit'], {'status': 'complete', 'limitations': [], 'unresolved': []})
             self.assertEqual(metadata['thirdParty']['inventory']['auditLimitations'], [])
+            self.assertEqual(metadata['thirdParty']['inventory']['unresolved'], [])
             notice_text = (pack / 'THIRD-PARTY-NOTICES.txt').read_text(encoding='utf-8')
             self.assertIn('fixture-package@1.0.0', notice_text)
 
@@ -422,6 +423,7 @@ class NoticeTests(unittest.TestCase):
             )
             graph = notices.bundle_module_graph(source)
             self.assertIn('No source maps or esbuild metafiles were available', graph['auditLimitations'])
+            self.assertEqual(graph['unresolvedItems'], [])
             self.assertEqual(graph['packages'][0]['name'], 'fallback-package')
             self.assertEqual(graph['packages'][0]['evidence'], 'fallback-production-source')
 
@@ -448,6 +450,7 @@ class NoticeTests(unittest.TestCase):
                 'Shipped files lacked source-map/metafile or asset-origin attribution: assets/unattributed.bin',
                 graph['auditLimitations'],
             )
+            self.assertEqual(graph['unresolvedItems'], ['Unresolved shipped item: assets/unattributed.bin'])
 
     def test_bundle_module_graph_records_missing_evidence(self):
         with tempfile.TemporaryDirectory() as scratch:
