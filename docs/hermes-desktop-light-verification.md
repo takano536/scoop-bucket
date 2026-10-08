@@ -190,6 +190,11 @@ bundle graphで実際に参照されたものだけを含め、package.jsonに�
 未出荷build-time toolingやproduction graph全体は通知対象にしない。map/metafileを
 取得できない場合、またはsource pathからpackageを解決できない場合はfail-closedとする。
 
+このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
+PowerShell build stepがCI runner上のrenderer/main bundle entryを一時的にinstrumentし、
+metafile/source mapを生成した後、元の固定commitのbytesへ復元してからnotice生成と
+provenance作成を続ける。上流のclean-checkを迂回したまま残さない。
+
 `LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
 buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright
 行がなくても改変せず収録するが、`<copyright holders>`/`[year] [fullname]`などの
