@@ -247,12 +247,12 @@ function Test-WindowsApiSetResolution {
         [string]$Name
     )
 
-    if ($null -eq ('HermesLightNativeMethods' -as [type])) {
+    if ($null -eq ('HermesLightNativeMethodsV2' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class HermesLightNativeMethods
+public static class HermesLightNativeMethodsV2
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
@@ -260,10 +260,9 @@ public static class HermesLightNativeMethods
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool FreeLibrary(IntPtr hModule);
 
-    public static bool Probe(string name, uint flags, out int errorCode)
+    public static bool Probe(string name, uint flags)
     {
         var handle = LoadLibraryEx(name, IntPtr.Zero, flags);
-        errorCode = Marshal.GetLastWin32Error();
         if (handle == IntPtr.Zero)
             return false;
         FreeLibrary(handle);
@@ -273,8 +272,7 @@ public static class HermesLightNativeMethods
 '@
     }
 
-    $dataFileError = 0
-    if ([HermesLightNativeMethods]::Probe($Name, 0x00000002, [ref]$dataFileError)) {
+    if ([HermesLightNativeMethodsV2]::Probe($Name, 0x00000002)) {
         return [ordered]@{
             name = $Name
             resolved = $true
@@ -283,8 +281,7 @@ public static class HermesLightNativeMethods
             minimumWindows = 'Windows 10'
         }
     }
-    $loaderError = 0
-    if ([HermesLightNativeMethods]::Probe($Name, 0, [ref]$loaderError)) {
+    if ([HermesLightNativeMethodsV2]::Probe($Name, 0)) {
         return [ordered]@{
             name = $Name
             resolved = $true
@@ -297,8 +294,6 @@ public static class HermesLightNativeMethods
         name = $Name
         resolved = $false
         mechanism = 'LoadLibraryEx(LOAD_LIBRARY_AS_DATAFILE) and LoadLibraryEx'
-        error = $loaderError
-        dataFileError = $dataFileError
         minimumWindows = 'Windows 10'
     }
 }
