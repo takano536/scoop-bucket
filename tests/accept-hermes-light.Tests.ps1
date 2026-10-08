@@ -12,8 +12,14 @@ Describe 'Hermes Light Scoop update assertions' {
             version = '0.0.0-test-before'
             currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before'
         }
-        $beforeShortcut = [ordered]@{ target = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe' }
-        $afterShortcut = [ordered]@{ target = $beforeShortcut.target }
+        $beforeShortcut = [ordered]@{
+            target = 'C:\scoop\apps\hermes-agent-light-acceptance\current\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe'
+        }
+        $afterShortcut = [ordered]@{
+            target = $beforeShortcut.target
+            resolvedTarget = $beforeShortcut.resolvedTarget
+        }
 
         {
             Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
@@ -33,8 +39,14 @@ Describe 'Hermes Light Scoop update assertions' {
             version = '0.0.1-test-after'
             currentTargetResolved = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after'
         }
-        $beforeShortcut = [ordered]@{ target = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe' }
-        $afterShortcut = [ordered]@{ target = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after\Hermes Light.exe' }
+        $beforeShortcut = [ordered]@{
+            target = 'C:\scoop\apps\hermes-agent-light-acceptance\current\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.0-test-before\Hermes Light.exe'
+        }
+        $afterShortcut = [ordered]@{
+            target = $beforeShortcut.target
+            resolvedTarget = 'C:\scoop\apps\hermes-agent-light-acceptance\0.0.1-test-after\Hermes Light.exe'
+        }
 
         $result = Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
             -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut `

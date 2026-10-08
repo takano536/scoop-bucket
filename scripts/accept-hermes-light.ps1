@@ -489,9 +489,8 @@ try {
     $shortcutPath = Get-ShortcutPath
     Wait-Path -Path $shortcutPath
     $beforeShortcut = Get-ShortcutState -Path $shortcutPath
-    $expectedBeforeShortcut = [IO.Path]::GetFullPath((Join-Path $beforeInstall.currentTargetResolved $executableName))
-    if ($beforeShortcut.target -ne $expectedBeforeShortcut) {
-        throw "Scoop start-menu shortcut target $($beforeShortcut.target) does not match installed executable $expectedBeforeShortcut"
+    if ($beforeShortcut.resolvedTarget -ne $expectedBeforeShortcut) {
+        throw "Scoop start-menu shortcut resolved target $($beforeShortcut.resolvedTarget) does not match installed executable $expectedBeforeShortcut"
     }
     if ($beforeInstall.version -ne $runtimeVersion) {
         throw "Scoop installed unexpected initial version: $($beforeInstall.version)"

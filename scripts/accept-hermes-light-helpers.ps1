@@ -99,9 +99,23 @@ function Get-ShortcutState {
     if (!$targetPath) {
         throw "Shortcut has no target: $Path"
     }
+    $fullTarget = [IO.Path]::GetFullPath($targetPath)
+    $resolvedTarget = $fullTarget
+    $targetDirectory = Split-Path -Parent $fullTarget
+    $targetItem = Get-Item -LiteralPath $targetDirectory -Force -ErrorAction SilentlyContinue
+    $directoryTarget = if ($targetItem) { [string]$targetItem.Target } else { $null }
+    if ($directoryTarget) {
+        if (![IO.Path]::IsPathRooted($directoryTarget)) {
+            $directoryTarget = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $targetDirectory) $directoryTarget))
+        }
+        $resolvedTarget = [IO.Path]::GetFullPath((Join-Path $directoryTarget (Split-Path -Leaf $fullTarget)))
+    } elseif (Test-Path -LiteralPath $fullTarget) {
+        $resolvedTarget = (Resolve-Path -LiteralPath $fullTarget).Path
+    }
     return [ordered]@{
         path = $Path
-        target = [IO.Path]::GetFullPath($targetPath)
+        target = $fullTarget
+        resolvedTarget = $resolvedTarget
         arguments = $arguments
     }
 }
@@ -142,11 +156,15 @@ function Assert-ScoopUpdateSwitch {
     if ($AfterInstall.currentTargetResolved -ne $ExpectedCurrentTarget) {
         $errors += "after resolved current target $($AfterInstall.currentTargetResolved) does not equal expected $ExpectedCurrentTarget"
     }
-    if (!$BeforeShortcut.target -or !$AfterShortcut.target) {
+    $beforeShortcutResolved = if ($BeforeShortcut.resolvedTarget) { $BeforeShortcut.resolvedTarget } else { $BeforeShortcut.target }
+    $afterShortcutResolved = if ($AfterShortcut.resolvedTarget) { $AfterShortcut.resolvedTarget } else { $AfterShortcut.target }
+    if (!$BeforeShortcut.target -or !$AfterShortcut.target -or !$beforeShortcutResolved -or !$afterShortcutResolved) {
         $errors += 'before/after shortcut target is missing'
+    } elseif ($beforeShortcutResolved -eq $afterShortcutResolved) {
+        $errors += 'shortcut resolved target did not change across update'
     }
-    if ($AfterShortcut.target -ne $ExpectedShortcutTarget) {
-        $errors += "after shortcut target $($AfterShortcut.target) does not equal expected $ExpectedShortcutTarget"
+    if ($afterShortcutResolved -ne $ExpectedShortcutTarget) {
+        $errors += "after resolved shortcut target $afterShortcutResolved does not equal expected $ExpectedShortcutTarget"
     }
     if ($errors.Count -gt 0) {
         throw "Scoop update switch assertion failed:`n- $($errors -join "`n- ")"
@@ -159,6 +177,8 @@ function Assert-ScoopUpdateSwitch {
         afterCurrentTarget = $AfterInstall.currentTargetResolved
         beforeShortcutTarget = $BeforeShortcut.target
         afterShortcutTarget = $AfterShortcut.target
+        beforeShortcutResolvedTarget = $beforeShortcutResolved
+        afterShortcutResolvedTarget = $afterShortcutResolved
         expectedVersion = $ExpectedVersion
         expectedCurrentTarget = $ExpectedCurrentTarget
         expectedShortcutTarget = $ExpectedShortcutTarget

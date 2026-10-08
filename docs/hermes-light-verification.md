@@ -35,8 +35,9 @@
 Actions ArtifactをWindows runnerへ渡し、実行時だけ作るdisposable local bucketの
 test-only manifestで次を確認する。manifestはbucketの本番ツリーには追加しない。
 
-- Scoop install前後の`apps/<app>/current/manifest.json`と`install.json`を読み戻し、
-  `version`一致を確認する。before/afterは`0.0.0-test-before-<commit>`と
+- Scoop install前後の`current/manifest.json`とScoopのinstall receipt（環境によっては
+  receiptが作られないため`Scoop list`の実測行）を読み戻し、`version`一致を確認する。
+  before/afterは`0.0.0-test-before-<commit>`と
   `0.0.1-test-after-<commit>`という異なるtest-only versionであり、同じ版のno-op更新は
   assertionの回帰テストを含めて失敗する。
 - before/afterのresolved `current` targetとStart Menu `.lnk` targetを読み戻し、
