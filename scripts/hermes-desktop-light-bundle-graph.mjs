@@ -161,17 +161,7 @@ try {
   if (error?.code !== 'ENOENT') throw error
 }
 const shippedNames = [...shippedJs.keys()].sort()
-const prepared = JSON.parse(readFileSync(path.join(source, '.build', 'desktop-job', 'prepared.json'), 'utf8'))
-const exactProduct = path.resolve(source, '..', '.hermes-upstream-product')
-const upstreamDesktop = await import(pathToFileURL(path.join(source, 'scripts', 'build', 'desktop.mjs')).href)
-await upstreamDesktop.buildDesktop({
-  source,
-  out: exactProduct,
-  icons: path.join(source, 'apps', 'desktop', 'build', 'products', 'icons'),
-  stamp: stampPath,
-  nativeDeps: prepared.native,
-  platform: 'win32',
-})
+const exactProduct = path.join(app, 'dist')
 const reconstructed = normalizedScripts(await outputFiles(exactProduct))
 const reconstructedNames = [...reconstructed.keys()].sort()
 if (JSON.stringify(shippedNames) !== JSON.stringify(reconstructedNames)) {
