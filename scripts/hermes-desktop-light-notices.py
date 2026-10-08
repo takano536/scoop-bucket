@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the license and provenance files shipped in Hermes Light."""
+"""Generate the license and provenance files shipped in Hermes Desktop Light."""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +8,7 @@ import json
 import re
 import shutil
 import struct
+import urllib.request
 from pathlib import Path
 
 UPSTREAM = "NousResearch/hermes-agent"
@@ -18,7 +19,7 @@ UNOFFICIAL_FILE = "UNOFFICIAL-BUILD.txt"
 # separate: a NOTICE file contains attribution text, not the license terms.
 LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying)(?:[._ -].*)?$", re.I)
 NOTICE_FILE = re.compile(r"^notice(?:[._ -].*)?$", re.I)
-OVERRIDES_FILE = Path(__file__).with_name("hermes-light-license-overrides.json")
+OVERRIDES_FILE = Path(__file__).with_name("hermes-desktop-light-license-overrides.json")
 
 MIT_LICENSE_TEXT = """MIT License
 
@@ -50,6 +51,18 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def fetch_evidence(url: str) -> bytes:
+    """Fetch one reviewed immutable evidence file for an explicit override."""
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            return response.read()
+    except OSError as exc:
+        raise RuntimeError(f"Cannot fetch license evidence: {url}") from exc
 
 
 def read_json(path: Path) -> dict:
@@ -168,14 +181,19 @@ def load_license_overrides() -> dict[str, dict]:
         note = entry.get("note")
         if not isinstance(spdx, str) or not spdx:
             raise RuntimeError(f"License override has no SPDX id: {key}")
-        if not isinstance(copyright_line, str) or not re.fullmatch(
-            r"Copyright \(c\) \S.*", copyright_line
+        if not isinstance(copyright_line, str) or not re.search(
+            r"(?i)\bcopyright\b", copyright_line
         ):
             raise RuntimeError(f"License override has invalid copyright line: {key}")
         if not isinstance(evidence, dict):
             raise RuntimeError(f"License override has no evidence object: {key}")
+        kind = evidence.get("kind")
+        if kind not in {"attribution", "license"}:
+            raise RuntimeError(f"License override evidence kind is invalid: {key}")
         url = evidence.get("url")
         digest = evidence.get("sha256")
+        path = evidence.get("path")
+        retrieval = evidence.get("retrieval")
         if not isinstance(url, str) or not re.fullmatch(
             r"https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/.+",
             url,
@@ -183,6 +201,28 @@ def load_license_overrides() -> dict[str, dict]:
             raise RuntimeError(f"License override evidence URL is not immutable: {key}")
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise RuntimeError(f"License override evidence SHA256 is invalid: {key}")
+        if not isinstance(path, str) or not path.strip():
+            raise RuntimeError(f"License override evidence path is missing: {key}")
+        if not isinstance(retrieval, str) or not retrieval.strip():
+            raise RuntimeError(f"License override evidence retrieval is missing: {key}")
+        tarball = evidence.get("tarball")
+        if tarball is not None:
+            if not isinstance(tarball, dict):
+                raise RuntimeError(f"License override tarball evidence is invalid: {key}")
+            if not isinstance(tarball.get("url"), str) or not tarball["url"].startswith(
+                "https://registry.npmjs.org/"
+            ):
+                raise RuntimeError(f"License override tarball URL is invalid: {key}")
+            if not isinstance(tarball.get("integrity"), str) or not tarball["integrity"].startswith(
+                "sha512-"
+            ):
+                raise RuntimeError(f"License override tarball integrity is invalid: {key}")
+            if not isinstance(tarball.get("sha256"), str) or not re.fullmatch(
+                r"[0-9a-f]{64}", tarball["sha256"]
+            ):
+                raise RuntimeError(f"License override tarball SHA256 is invalid: {key}")
+            if not isinstance(tarball.get("path"), str) or not tarball["path"].strip():
+                raise RuntimeError(f"License override tarball path is missing: {key}")
         if not isinstance(note, str) or not note.strip():
             raise RuntimeError(f"License override has no note: {key}")
     return data
@@ -195,7 +235,7 @@ def validate_unused_overrides(overrides: dict[str, dict], used: set[str]) -> Non
 
 
 def override_license_text(
-    declaration: str,
+    declaration: str | None,
     name: str,
     version: str,
     overrides: dict[str, dict],
@@ -205,29 +245,49 @@ def override_license_text(
     entry = overrides.get(key)
     if entry is None:
         return None
-    if entry["spdx"] != declaration:
+    expected = entry["spdx"]
+    if declaration and expected != declaration:
         raise RuntimeError(
             f"License override SPDX mismatch for shipped package {key}: "
-            f"{entry['spdx']} != {declaration}"
+            f"{expected} != {declaration}"
         )
-    if entry["spdx"] != "MIT":
-        raise RuntimeError(f"Unsupported license override SPDX id for shipped package {key}: {entry['spdx']}")
+    if expected != "MIT":
+        raise RuntimeError(f"Unsupported license override SPDX id for shipped package {key}: {expected}")
+    evidence = entry["evidence"]
+    evidence_bytes = fetch_evidence(evidence["url"])
+    actual_digest = sha256_bytes(evidence_bytes)
+    if actual_digest != evidence["sha256"]:
+        raise RuntimeError(
+            f"License override evidence SHA256 mismatch for shipped package {key}: "
+            f"{actual_digest} != {evidence['sha256']}"
+        )
     if used is not None:
         used.add(key)
-    evidence = entry["evidence"]
-    copyright_line = entry["copyright"]
-    terms = MIT_LICENSE_TEXT.replace(
-        "MIT License\n\n",
-        f"MIT License\n\n{copyright_line}\n\n",
-        1,
-    )
+    if evidence["kind"] == "license":
+        try:
+            terms = evidence_bytes.decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(f"License override evidence is not UTF-8 for shipped package {key}") from exc
+        if not terms:
+            raise RuntimeError(f"License override evidence is empty for shipped package {key}")
+        description = "License text reproduced from the cited immutable license source."
+    else:
+        copyright_line = entry["copyright"]
+        terms = MIT_LICENSE_TEXT.replace(
+            "MIT License\n\n",
+            f"MIT License\n\n{copyright_line}\n\n",
+            1,
+        )
+        description = "License text reconstructed from the declared SPDX license and the cited copyright source."
     return "\n".join(
         [
-            "License text reconstructed from the declared SPDX license and the cited copyright source.",
-            f"Declared SPDX license: {declaration}",
-            f"Copyright evidence: {copyright_line}",
+            description,
+            f"Declared SPDX license: {expected}",
+            f"Copyright evidence: {entry['copyright']}",
             f"Evidence source: {evidence['url']}",
+            f"Evidence path: {evidence['path']}",
             f"Evidence SHA256: {evidence['sha256']}",
+            f"Evidence retrieval: {evidence['retrieval']}",
             "",
             terms,
         ]
@@ -282,14 +342,51 @@ MPL_REQUIRED_MARKERS = (
 )
 
 
+def has_package_copyright(text: str) -> bool:
+    """Find a rights-holder line without accepting MIT boilerplate wording."""
+    for line in text.splitlines():
+        candidate = line.strip()
+        lowered = candidate.lower()
+        if "permission is hereby granted" in lowered:
+            break
+        if "copyright" not in lowered:
+            continue
+        if any(
+            phrase in lowered
+            for phrase in (
+                "above copyright notice",
+                "copyright notice and this permission",
+                "copyright holders be liable",
+                "copyright holder(s)",
+            )
+        ):
+            continue
+        return True
+    return False
+
+
 def validate_license_text(declaration: str, text: str, name: str) -> None:
     identifiers = spdx_identifiers(declaration) or []
     if "MPL-2.0" in identifiers:
         missing = [marker for marker in MPL_REQUIRED_MARKERS if marker not in text]
         if missing:
             raise RuntimeError(f"Incomplete MPL-2.0 license text for shipped package {name}")
-    if "MIT" in identifiers and not re.search(r"(?im)^\s*copyright(?:\s|\(|$)", text):
+    if "MIT" in identifiers and not has_package_copyright(text):
         raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
+
+
+MPL_SOURCE_AVAILABILITY = {
+    "@novnc/novnc@1.7.0": (
+        "MPL-2.0 Source Code Form availability: the unmodified source for this "
+        "package is available from the exact npm tarball "
+        "https://registry.npmjs.org/@novnc/novnc/-/novnc-1.7.0.tgz "
+        "(SHA256 32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903) "
+        "and upstream noVNC commit "
+        "https://github.com/novnc/noVNC/tree/63107bd06d9e1f6136ff21aeda8cd62cbf0d433e. "
+        "The executable form may contain minified/modified bundles; these locations "
+        "provide the corresponding Source Code Form."
+    ),
+}
 
 
 def license_text(
@@ -299,14 +396,18 @@ def license_text(
     overrides: dict[str, dict] | None = None,
     used_overrides: set[str] | None = None,
 ) -> tuple[str, str]:
-    declaration = declared_license(metadata)
-    if not declaration:
-        raise RuntimeError(f"Cannot determine a license text for shipped package {name} (no declaration)")
     if overrides is None:
         overrides = load_license_overrides()
     version = metadata.get("version")
     if not isinstance(version, str) or not version:
         raise RuntimeError(f"Shipped package has incomplete package.json: {package_dir}")
+    key = f"{name}@{version}"
+    override = overrides.get(key)
+    declaration = declared_license(metadata)
+    if not declaration and override is not None:
+        declaration = override["spdx"]
+    if not declaration:
+        raise RuntimeError(f"Cannot determine a license text for shipped package {name} (no declaration)")
     files = license_files(package_dir)
     notices = notice_files(package_dir)
     license_pieces = []
@@ -325,6 +426,29 @@ def license_text(
             raise RuntimeError(f"Cannot read NOTICE for shipped package {name}: {path}") from exc
         if text:
             notice_pieces.append(f"[{path.name}]\n{text}")
+
+    if override is not None and override["evidence"]["kind"] == "license":
+        reconstructed = override_license_text(
+            declaration,
+            name,
+            version,
+            overrides,
+            used_overrides,
+        )
+        expected_digest = override["evidence"]["sha256"]
+        local_digests = {
+            sha256_bytes(path.read_bytes())
+            for path in files
+            if path.is_file()
+        }
+        if files and expected_digest not in local_digests:
+            raise RuntimeError(
+                f"License override does not match the shipped license file for {key}"
+            )
+        text = "\n\n".join([reconstructed, *notice_pieces])
+        validate_license_text(declaration, text, name)
+        return declaration, text
+
     if not license_pieces:
         if not files:
             reconstructed = override_license_text(
@@ -342,12 +466,14 @@ def license_text(
             raise RuntimeError(f"Found NOTICE without a LICENSE text for shipped package {name}")
         raise RuntimeError(f"Cannot determine a license text for shipped package {name} ({declaration or 'no declaration'})")
     text = "\n\n".join(license_pieces + notice_pieces)
+    if key in MPL_SOURCE_AVAILABILITY:
+        text = f"{text}\n\n{MPL_SOURCE_AVAILABILITY[key]}"
     validate_license_text(declaration, text, name)
     return declaration or "See included license file", text
 
 
 def asar_node_modules(pack: Path) -> set[str]:
-    """Read only the ASAR header; no application payload is extracted."""
+    """Read package paths from the ASAR header without extracting payload bytes."""
     asar = pack / "resources" / "app.asar"
     try:
         with asar.open("rb") as stream:
@@ -366,8 +492,8 @@ def asar_node_modules(pack: Path) -> set[str]:
             path = prefix + child
             if isinstance(value, dict) and "files" in value:
                 stack.append((path + "/", value["files"]))
-            elif path.startswith("dist/node_modules/"):
-                relative = path[len("dist/node_modules/") :]
+            elif "node_modules/" in path:
+                relative = path.split("node_modules/", 1)[1]
                 parts = relative.split("/")
                 if len(parts) >= 2 and parts[0].startswith("@") and len(parts) >= 3:
                     found.add("/".join(parts[:2]))
@@ -479,8 +605,8 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "THIRD-PARTY NOTICES",
         "=======================",
         "",
-        "These notices cover code present in the Hermes Agent Light win-unpacked payload.",
-        "The set comes from the app.asar header plus physical node_modules under resources/app.asar.unpacked and resources; production dependencies are followed only to resolve bundled package licenses, never devDependencies.",
+        "These notices cover code present in the Hermes Desktop Light win-unpacked payload.",
+        "The set comes from the app.asar header, bundled production dependency graph, and physical node_modules under resources/app.asar.unpacked and resources; devDependencies and unshipped build tooling are excluded.",
         f"Upstream repository: {UPSTREAM}",
         f"Upstream source ref: {source_ref}",
         f"Upstream commit: {commit}",
@@ -512,7 +638,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     unofficial.write_text(
         "\n".join(
             [
-                "Hermes Agent Light — unofficial distribution",
+                "Hermes Desktop Light — unofficial distribution",
                 "",
                 "This is an unofficial, unsigned build. It is not produced, distributed, or endorsed by Nous Research.",
                 "",

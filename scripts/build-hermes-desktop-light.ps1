@@ -22,7 +22,7 @@ $bucket = Join-Path $root 'bucket'
 $repository = $env:GITHUB_REPOSITORY
 $runUrl = "https://github.com/$repository/actions/runs/$env:GITHUB_RUN_ID"
 $bucketCommit = (git -C $bucket rev-parse HEAD).Trim()
-$noticeMetadata = & python "$bucket/scripts/hermes-light-notices.py" `
+$noticeMetadata = & python "$bucket/scripts/hermes-desktop-light-notices.py" `
     --source $source `
     --pack $pack `
     --source-ref $env:SOURCE_REF `
