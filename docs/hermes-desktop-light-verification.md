@@ -191,9 +191,10 @@ bundle graphで実際に参照されたものだけを含め、package.jsonに�
 取得できない場合、またはsource pathからpackageを解決できない場合はfail-closedとする。
 
 このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
-PowerShell build stepがCI runner上のrenderer/main bundle entryを一時的にinstrumentし、
-metafile/source mapを生成した後、元の固定commitのbytesへ復元してからnotice生成と
-provenance作成を続ける。上流のclean-checkを迂回したまま残さない。
+PowerShell build stepが本番win-unpacked生成後に、上流のrenderer設定とmain/preload entryを
+一時出力先へ再実行し、source map/metafileだけを
+`apps/desktop/.hermes-bundle-graph`へ保存する。上流checkoutのtracked bytesや本番成果物は
+書き換えず、生成したgraphをnotice作成の入力として検証する。
 
 `LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
 buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright
