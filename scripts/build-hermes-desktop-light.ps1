@@ -35,10 +35,10 @@ if ($env:PREVIEW -eq 'true') { $exeName = "hermes-light-$($commit.Substring(0, 7
 $exe = Get-Item (Join-Path $pack $exeName)
 # Use the exact managed Node admitted by upstream preparation.
 $prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
-& $prepared.node "$root/bucket/scripts/smoke-hermes-light.cjs" $source $exe.FullName $out
+& $prepared.node "$root/bucket/scripts/smoke-hermes-desktop-light.cjs" $source $exe.FullName $out
 $version = $env:PACKAGE_VERSION
 if ($env:PREVIEW -eq 'true') { $version = "preview-$($commit.Substring(0, 7))" }
-$name = "hermes-agent-light-$version-windows-x64.zip"
+$name = "hermes-desktop-light-$version-windows-x64.zip"
 Compress-Archive -Path "$pack/*" -DestinationPath "$out/$name" -CompressionLevel Optimal
 $receipt = @{
     schema = 1
