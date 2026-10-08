@@ -36,9 +36,8 @@ const appAssetOrigin = (fileName) => {
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate
   }
-  if (relative.startsWith('native/')) return path.join(app, 'electron', 'native')
   if (relative === 'hermes-product' || relative === 'hermes-build.json') {
-    return path.join(app, 'scripts', 'build', 'freshness.mjs')
+    return path.join(source, 'scripts', 'build', 'freshness.mjs')
   }
   if (relative === 'renderer-manifest.json') return path.join(app, 'vite.config.ts')
   return null
