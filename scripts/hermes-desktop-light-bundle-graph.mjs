@@ -175,8 +175,12 @@ await upstreamDesktop.buildDesktop({
 const reconstructed = normalizedScripts(await outputFiles(exactProduct))
 const reconstructedNames = [...reconstructed.keys()].sort()
 if (JSON.stringify(shippedNames) !== JSON.stringify(reconstructedNames)) {
+  const reconstructedSet = new Set(reconstructedNames)
+  const shippedSet = new Set(shippedNames)
+  const missing = shippedNames.filter((name) => !reconstructedSet.has(name)).slice(0, 12)
+  const extra = reconstructedNames.filter((name) => !shippedSet.has(name)).slice(0, 12)
   throw new Error(
-    `Upstream desktop output set differs from shipped scripts: shipped=${shippedNames.length} reconstructed=${reconstructedNames.length}`,
+    `Upstream desktop output set differs from shipped scripts: shipped=${shippedNames.length} reconstructed=${reconstructedNames.length} missing=${missing.join(',')} extra=${extra.join(',')}`,
   )
 }
 for (const name of shippedNames) {
