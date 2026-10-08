@@ -24,8 +24,8 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}), '0.22.0')
         for tag in ('v0.22.0-rc.1', 'v0.22.0+canary.20261007T000000Z', 'main', 'v00.22.0'):
             self.assertIsNone(light.stable_version({'tag_name': tag, 'draft': False, 'prerelease': False}))
-        self.assertEqual(light.stable_version({'tag_name': 'v2026.9.24', 'draft': False, 'prerelease': False}), '2026.9.24')
-        self.assertEqual(light.stable_version({'tag_name': 'v2026.10.1', 'draft': False, 'prerelease': False}), '2026.10.1')
+        for tag in ('v2026.9.24', 'v2026.10.1'):
+            self.assertIsNone(light.stable_version({'tag_name': tag, 'draft': False, 'prerelease': False}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': True, 'prerelease': False}))
 
@@ -385,6 +385,17 @@ class PlanTests(unittest.TestCase):
         self.run_plan(self.response)
         self.result.assert_called_once_with(build='false')
         self.assertFalse(any('/git/' in call for call in self.calls))
+
+    def test_historical_calver_is_explicitly_skipped(self):
+        from unittest.mock import patch
+        def response(endpoint):
+            if endpoint.endswith('/releases/latest'):
+                return {'tag_name': 'v2026.9.24', 'draft': False, 'prerelease': False}
+            return self.response(endpoint)
+        with patch('builtins.print') as printed:
+            self.run_plan(response)
+        self.result.assert_called_once_with(build='false')
+        self.assertIn('historical CalVer', printed.call_args.args[0])
 
     def test_explicit_revision_preserves_upstream_claim(self):
         import os

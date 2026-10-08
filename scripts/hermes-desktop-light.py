@@ -18,7 +18,7 @@ from distribution import (dev_artifact_name, dev_package_version, dev_release_ta
 
 UPSTREAM = 'NousResearch/hermes-agent'
 APP = 'hermes-desktop-light'
-VERSION = re.compile(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
+VERSION = re.compile(r'v(0|[1-9]\d{0,2})\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
 DEV_TAG = re.compile(
     rf'^{re.escape(APP)}/dev/v0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)-([a-f0-9]{{40}})$')
 STABLE_TAG = re.compile(rf'^{re.escape(APP)}/v(.+)$')
@@ -376,7 +376,11 @@ def _plan_stable():
     release = api(f'repos/{UPSTREAM}/releases/latest')
     version = stable_version(release)
     if version is None:
-        print(f"Waiting for a published stable SemVer release with Light support; latest: {release['tag_name']}")
+        tag = release.get('tag_name', '')
+        if re.fullmatch(r'v20\d{2}\.[0-9]+\.[0-9]+(?:\.[0-9]+)?', tag):
+            print(f'Skipping {tag}: historical CalVer tags are outside the upstream SemVer release contract')
+        else:
+            print(f"Waiting for a published stable SemVer release with Light support; latest: {tag}")
         output(build='false')
         return
     upstream_version = version
