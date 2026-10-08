@@ -482,6 +482,10 @@ def _plan_development():
                     return
                 raise ValueError('Same development build conditions require the existing revision')
             if requested <= previous_revision:
+                if event == 'schedule':
+                    print('Development conditions changed; scheduled run is a no-op until workflow_dispatch revision is approved')
+                    output(build='false', channel='development')
+                    return
                 raise ValueError('Development conditions changed; workflow_dispatch with a higher revision is required')
         elif same_commit:
             sequence = max(item[0] for item in same_commit)

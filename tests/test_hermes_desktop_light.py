@@ -407,6 +407,15 @@ class PlanTests(unittest.TestCase):
             license_sha='e' * 64,
             conditions_fingerprint='d' * 64,
         )
+
+    def test_scheduled_changed_conditions_is_noop_until_dispatch(self):
+        pointer = {
+            'version': '0.0.0-alpha.dev.1-r1',
+            'commit': self.commit,
+            'conditionsFingerprint': 'c' * 64,
+        }
+        self.run_dev_plan(pointer=pointer, event='schedule')
+        self.result.assert_called_once_with(build='false', channel='development')
     def test_development_plan_ends_after_published_stable_release(self):
         rows = [{'tag_name': 'hermes-desktop-light/v2026.9.24-r1',
                  'draft': False, 'prerelease': False}]
