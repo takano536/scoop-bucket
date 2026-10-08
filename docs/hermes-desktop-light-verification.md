@@ -48,6 +48,14 @@ Light対応と対象を決める。対象がある場合だけ`build`がWindows 
 詳細なゲートと未確認事項は、この文書の公開ゲート節に従う。Pull Requestではpublishを
 実行しない。
 
+## Hermes Desktop Lightの改訂
+
+通常の安定版追従は`r1`。公開済みの同じ上流版を修正する場合、信頼済みmainの手動workflowの`revision`に`2`などを指定する。
+対象はその時点の最新対応安定版。過去上流版を指定してのバックポートビルドは現在の自動化の対象外。
+改訂番号は正の整数で、先頭ゼロを許可しない。既存manifest以上の版がなければskipし、定期実行が`r2`を`r1`へ戻すことはない。
+番号は承認済み修正のために管理者が指定するもので、CI再実行数から自動採番しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は引き続き既定で無効。
+Hermes Desktop Lightのgateway接続・認証移行などの既存阻害条件は、この改訂ルールで解消したとは扱わない。
+
 ## 実Windows CI
 
 - [ビルド・起動検証](https://github.com/takano536/scoop-bucket/actions/runs/37620186448)
@@ -149,3 +157,4 @@ updater check/applyを追加した。結果は `native-checks.json` と `provena
 証明ではない。対象安定版、ライセンス通知の同梱、実gateway接続、実更新時の設定保持、
 過去版のScoop導入/固定は未確認である。公開実運転はマージと明示的承認後にのみ確認
 可能で、公開ゲート未設定、マージ・実Release作成なし。
+差分レビューはHermes自身で実施、独立モデルレビューは未実施。
