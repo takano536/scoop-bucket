@@ -78,10 +78,10 @@ channelのlicense/notice gateを通過した成果物の証拠ではない。
 
 ## Development channelの現在の計画結果
 
-- [Hermes Desktop Light run 37777599679](https://github.com/takano536/scoop-bucket/actions/runs/37777599679)では、
-  planが`development`を選び、上流`NousResearch/hermes-agent@cbe5e53e2826b949e4ab33dbd6d045e339fa162b`
+- [Hermes Desktop Light run 37779700289](https://github.com/takano536/scoop-bucket/actions/runs/37779700289)では、
+  planが`development`を選び、上流`NousResearch/hermes-agent@25a71a744cb9ef06950a91638e6229b4f808d461`
   を完全な40桁SHAへ解決した。versionは`0.0.0-alpha.dev.1-r1`、conditions fingerprintは
-  `d515a5d3522e4c045569573f5abbf724f355f12961a11aebc7b79e59478c8caa`である。
+  `9223aa09872794c9b7ceac52d7c871c0fbbfaeaceddad19a1ce20908f3801309`である。
 - buildはPR #6のstrict license/notice gateで停止した。未解決は
   `lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、`unicode-animations@1.0.3`、
   `use-composed-ref@1.4.0`で、acceptanceとpublishは実行されなかった。このrunから
@@ -153,7 +153,7 @@ before/afterがno-opでなく、afterが期待version・current target・shortcu
   app tree不変を確認する。
 
 この受入run記録は過去のPR #8実装による履歴であり、現在のdevelopment buildの受入成功証拠ではない。
-現行コードの最新development runは37777599679で、license gateによりbuildが停止し、acceptanceはskipされた。
+現行コードの最新development runは37779700289で、license gateによりbuildが停止し、acceptanceはskipされた。
 
 - run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)
 - acceptance job: [112983466324](https://github.com/takano536/scoop-bucket/actions/runs/37673954715/job/112983466324)
@@ -319,7 +319,7 @@ main由来のコードを過去の安定版の名前で配布しない。
 restricted PATH下のlocal backend probeが`bootstrap-needed`を返し、bootstrap/local agentを
 起動しないこと、同一upstream commitのgatewayへの認証、誤secret拒否、Scoop update後の
 接続設定保持を確認した。ただしrunnerはクリーンなWindowsではなく、安定版の実アップグレード
-や配布を証明しない。現行development run 37777599679はlicense gateでacceptance未実行である。
+や配布を証明しない。現行development run 37779700289はlicense gateでacceptance未実行である。
 
 - [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37673954715）。
 - [x] gateway接続、認証・接続設定の移行、Lightのローカル動作制約（同run）。
@@ -363,21 +363,21 @@ updater check/applyを追加した。結果は `native-checks.json` と `provena
 
 ## 配布契約の検証記録
 
-対象PR #10 head `2081b7d8917f6c0e01e75fb975453fa74dcd893d`について、次の検証を記録する。
+対象PR #10 head `b99383e8ed48f4301bf8542a6ba651692de337e1`について、次の検証を記録する。
 
 | 検証 | 結果 |
 | --- | --- |
 | Python回帰テスト | 74件成功。Hermesのexact commit/Light contract、conditions fingerprint、revision no-op、license/notice admission、publish/acceptance gateを含む |
 | ローカル静的検証 | README生成チェック、Node構文、git diff --check、legacy-name guard成功 |
-| [CI](https://github.com/takano536/scoop-bucket/actions/runs/37777599884) | 成功。Windows PowerShell / PowerShell 7、Scoop Compare-Versionのpin検証を含む |
-| [Autoupdate](https://github.com/takano536/scoop-bucket/actions/runs/37777600028) | 成功 |
-| [README](https://github.com/takano536/scoop-bucket/actions/runs/37777599734) | 成功 |
-| [Hermes Desktop Light](https://github.com/takano536/scoop-bucket/actions/runs/37777599679) | plan成功。上流`cbe5e53e2826b949e4ab33dbd6d045e339fa162b`を解決したが、buildは4 packageのlicense gateで失敗し、acceptance/publishはskip |
+| [CI](https://github.com/takano536/scoop-bucket/actions/runs/37779700306) | 成功。Windows PowerShell / PowerShell 7、Scoop Compare-Versionのpin検証を含む |
+| [Autoupdate](https://github.com/takano536/scoop-bucket/actions/runs/37779700250) | 成功 |
+| [README](https://github.com/takano536/scoop-bucket/actions/runs/37779700251) | 成功 |
+| [Hermes Desktop Light](https://github.com/takano536/scoop-bucket/actions/runs/37779700289) | plan成功。上流`25a71a744cb9ef06950a91638e6229b4f808d461`を解決したが、buildは4 packageのlicense gateで失敗し、acceptance/publishはskip |
 
 ### 成果物と上流commit
 
-- planが解決した上流commit: `NousResearch/hermes-agent@cbe5e53e2826b949e4ab33dbd6d045e339fa162b`。
-- version: `0.0.0-alpha.dev.1-r1`。条件fingerprint: `d515a5d3522e4c045569573f5abbf724f355f12961a11aebc7b79e59478c8caa`。
+- planが解決した上流commit: `NousResearch/hermes-agent@25a71a744cb9ef06950a91638e6229b4f808d461`。
+- version: `0.0.0-alpha.dev.1-r1`。条件fingerprint: `9223aa09872794c9b7ceac52d7c871c0fbbfaeaceddad19a1ce20908f3801309`。
 - license gateでbuildが完了しなかったため、公開ZIP、acceptance artifact、Release、manifest/README書き戻しはない。
 - license gateの未解決packageは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
   `unicode-animations@1.0.3`、`use-composed-ref@1.4.0`である。
