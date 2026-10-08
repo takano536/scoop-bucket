@@ -892,13 +892,11 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         css_files = css_source_files(source, roots)
     except RuntimeError as exc:
         audit_limitations.append(f"CSS source attribution unavailable: {exc}")
-        unresolved_items.append(f"Unresolved asset evidence: {exc}")
         css_files = []
     try:
         asset_records = asset_source_records(source, roots)
     except RuntimeError as exc:
         audit_limitations.append(f"Asset-origin attribution unavailable: {exc}")
-        unresolved_items.append(f"Unresolved asset evidence: {exc}")
         asset_records = {}
     try:
         emitter_script_outputs = graph_emitter_script_outputs(roots)
@@ -986,7 +984,6 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             module_count += 1
     except RuntimeError as exc:
         audit_limitations.append(f"CSS asset evidence unavailable: {exc}")
-        unresolved_items.append(f"Unresolved asset evidence: {exc}")
     try:
         for package in asset_source_packages(source, asset_records):
             add_graph_package(packages, package)
