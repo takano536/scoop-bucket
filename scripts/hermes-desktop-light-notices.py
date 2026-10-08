@@ -539,6 +539,72 @@ def source_map_path(map_file: Path, source_name: str) -> Path:
     return (map_file.parent / source_name).resolve()
 
 
+CSS_URL = re.compile(r"""url\(\s*(?P<quote>['"]?)(?P<url>.*?)(?P=quote)\s*\)""", re.I)
+
+
+def css_source_files(source: Path, roots: list[Path]) -> list[Path]:
+    """Read CSS modules recorded by the controlled Vite graph emitter."""
+    manifests = sorted(
+        {
+            path.resolve()
+            for root in roots
+            if root.is_dir()
+            for path in root.rglob("graph-emitter.json")
+            if path.is_file()
+        },
+        key=lambda item: str(item).lower(),
+    )
+    css_files: set[Path] = set()
+    for manifest in manifests:
+        metadata = read_json(manifest)
+        sources = metadata.get("cssSources")
+        if not isinstance(sources, list):
+            raise RuntimeError(f"Bundle graph emitter has no CSS source list: {manifest}")
+        for relative in sources:
+            if not isinstance(relative, str) or not relative:
+                raise RuntimeError(f"Bundle graph emitter has an invalid CSS source: {manifest}")
+            css_file = (source / relative).resolve()
+            try:
+                css_file.relative_to(source)
+            except ValueError as exc:
+                raise RuntimeError(f"Bundle graph CSS source escapes source checkout: {relative}") from exc
+            if not css_file.is_file():
+                raise RuntimeError(f"Bundle graph CSS source is missing: {relative}")
+            css_files.add(css_file)
+    return sorted(css_files, key=lambda item: str(item).lower())
+
+
+def css_asset_packages(css_files: list[Path]) -> list[tuple[str, Path]]:
+    """Resolve package-owned assets referenced by emitted CSS source modules."""
+    found: set[tuple[str, Path]] = set()
+    for css_file in css_files:
+        try:
+            text = css_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RuntimeError(f"Cannot read bundled CSS source: {css_file}") from exc
+        for match in CSS_URL.finditer(text):
+            asset = unquote(match.group("url").strip())
+            if not asset or asset.startswith(("data:", "#", "/", "//")):
+                continue
+            parsed = urlparse(asset)
+            if parsed.scheme or parsed.netloc:
+                continue
+            package = package_at_path((css_file.parent / parsed.path).resolve())
+            if package is not None:
+                found.add(package)
+    return sorted(found, key=lambda item: (item[0].lower(), str(item[1]).lower()))
+
+
+def add_graph_package(packages: dict[tuple[str, Path], dict], package: tuple[str, Path]) -> None:
+    package_name, package_dir = package
+    key = (package_name, package_dir)
+    entry = packages.setdefault(
+        key,
+        {"name": package_name, "path": str(package_dir), "modules": 0},
+    )
+    entry["modules"] += 1
+
+
 def bundle_module_graph(source: Path) -> dict:
     """Read Vite source maps and esbuild metafiles emitted by the controlled build."""
     roots = [
@@ -565,6 +631,23 @@ def bundle_module_graph(source: Path) -> dict:
         },
         key=lambda item: str(item).lower(),
     )
+    css_output_files = {
+        path.resolve()
+        for root in roots
+        if root.is_dir()
+        for path in root.rglob("*.css")
+        if path.is_file()
+    }
+    emitter_files = {
+        path.resolve()
+        for root in roots
+        if root.is_dir()
+        for path in root.rglob("graph-emitter.json")
+        if path.is_file()
+    }
+    if css_output_files and not emitter_files:
+        raise RuntimeError("Cannot obtain CSS bundle graph: no graph emitter manifest")
+    css_files = css_source_files(source, roots)
     packages: dict[tuple[str, Path], dict] = {}
     module_count = 0
     for map_file in map_files:
@@ -623,6 +706,9 @@ def bundle_module_graph(source: Path) -> dict:
             )
             entry["modules"] += 1
             module_count += 1
+    for package in css_asset_packages(css_files):
+        add_graph_package(packages, package)
+        module_count += 1
     if not map_files and not metafile_files:
         raise RuntimeError("Cannot obtain bundled module graph: no source maps or esbuild metafiles")
     if not packages:
@@ -818,7 +904,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "=======================",
         "",
         "These notices cover code present in the Hermes Desktop Light win-unpacked payload.",
-        "The inventory is the union of package paths in the app.asar header, physical node_modules under resources/app.asar.unpacked/resources, and package modules identified in the emitted Vite source maps and esbuild metafiles.",
+        "The inventory is the union of package paths in the app.asar header, physical node_modules under resources/app.asar.unpacked/resources, and package modules or CSS asset references identified by the emitted Vite source maps, CSS sources, and esbuild metafiles.",
         "DevDependencies and build tooling are included only when the bundle graph proves that their modules shipped; packages listed only in package.json are not included.",
         f"Inventory source counts (unique package names): asar={inventory['asar']}; unpacked={inventory['unpacked']}; bundle-map={inventory['bundleMap']}.",
         f"Upstream repository: {UPSTREAM}",
