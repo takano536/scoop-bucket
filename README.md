@@ -36,9 +36,9 @@ scoop install takano536/<アプリ名>
 | [Autoupdate validation](.github/workflows/autoupdate.yml) | PR・push・毎日・手動・Excavator 終了後に、版の検出・更新生成・成果物を Windows で検証 |
 | [README](.github/workflows/readme.yml) | PR で生成処理を検証し、`main` の変更・Excavator 終了後・手動実行でアプリ一覧を自動更新 |
 
-Excavator と Hermes Light の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
+Excavator と Hermes Desktop Light の `GITHUB_TOKEN` による push は、通常の push workflow を起動しません。
 更新検証は両workflowの成功後に `workflow_run` でも起動し、信頼済みの `main` を読み直します。
-Light公開後はScoop標準CIも起動します。READMEはExcavator後のworkflowとLight publisher自身で
+Desktop Light公開後はScoop標準CIも起動します。READMEはExcavator後のworkflowとDesktop Light publisher自身で
 更新し、検証してからcommitします。
 README の自動 commit は生成結果に差分がある場合だけ行います。PR や fork のコードを
 書き込み権限付きで実行することはありません。
@@ -90,18 +90,18 @@ Latest Releaseや他アプリの公開順には依存しません。
 過去版への固定・ダウングレードは通常の最新版インストールとは別の操作です。
 詳細は[配布ルール](docs/distribution-policy.md)を参照してください。
 
-## Hermes Agent Light
+## Hermes Desktop Light
 
-[Hermes Light](.github/workflows/hermes-light.yml) は4時間ごとに公式
+[Hermes Desktop Light](.github/workflows/hermes-desktop-light.yml) は4時間ごとに公式
 `NousResearch/hermes-agent` の安定リリースを確認し、Windows x64 のリモート専用クライアントを
 CIでビルドします。展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、
-Lightの構成・更新所有者・SHA256を検証してから、このbucketのReleasesへ公開します。
-公開URLの再検証後に `bucket/hermes-agent-light.json` とアプリ一覧を `main` へ直接更新します。
+Desktop Lightの構成・更新所有者・SHA256を検証してから、このbucketのReleasesへ公開します。
+公開URLの再検証後に `bucket/hermes-desktop-light.json` とアプリ一覧を `main` へ直接更新します。
 既存の公開成果物は上書きせず、ビルドや検証の失敗時には既存manifestを維持します。
 
 公開は初期状態では無効です。Light対応安定版でのWindows受け入れ確認を終え、
 管理者が明示的に配布を許可した後にだけ、リポジトリ変数
-`HERMES_LIGHT_RELEASE_ENABLED=true` で公開を有効化します。このPRでは変数を設定しません。
+`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true` で公開を有効化します。このPRでは変数を設定しません。
 有効化後、対応安定版のビルド・検証・公開が成功したときだけ初回manifestを生成します。
 現在の最新安定版 `v2026.9.24` はLight非対応のため、まだインストールできません。
 PRでは固定した上流コミットの検証ビルドだけを実行し、配布・manifest更新は行いません。
@@ -112,9 +112,9 @@ PRでは固定した上流コミットの検証ビルドだけを実行し、配
 ユーザーデータ領域に残します。gateway接続、必要なランタイム、接続・認証情報の
 実アップグレード移行は、公開を有効化する前にWindowsで受け入れ確認が必要です。
 初回公開後は既存Excavatorも、このbucketで検証済みの
-Lightリリースだけを追従できます。
+Desktop Lightリリースだけを追従できます。
 
-[実Windows CIの検証結果と画面](docs/hermes-light-verification.md)を記録しています。
+[実Windows CIの検証結果と画面](docs/hermes-desktop-light-verification.md)を記録しています。
 起動検証はgateway接続や認証移行の証明ではありません。検証版の初回画面にはローカル
 インストールの選択肢も表示されるため、LightのUI/実行制約は安定版での追加確認が必要です。
 

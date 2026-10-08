@@ -15,7 +15,7 @@
 
 - [Actions artifact](https://github.com/takano536/scoop-bucket/actions/runs/37641749685/artifacts/11492702573)は一時検証用、保持14日。正式配布先ではない。
 - 上流commit: `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
-- ZIP: `hermes-agent-light-preview-a3ed4a1-windows-x64.zip`
+- ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
 - SHA256: `8ab03e5adc3ce4288d53f04d1382e231f928619b912e2516f9cd296007d2879d`
 - 170,392,869 bytes / 1,191 entries。
 - ダウンロード後にCRC・hash・Light/external stamp・commit一致・agent非同梱を再確認。
