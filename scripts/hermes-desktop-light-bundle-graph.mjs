@@ -162,7 +162,6 @@ for (const entry of await readdir(app, { withFileTypes: true })) {
   const product = path.join(app, entry.name, 'product')
   try {
     const files = new Map()
-    addShippedScripts(await outputFiles(product))
     for (const [name, bytes] of await outputFiles(product)) {
       if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
       if (/\.(?:js|mjs)$/.test(name)) files.set(name, bytes)
