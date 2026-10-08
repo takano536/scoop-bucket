@@ -1,38 +1,38 @@
 BeforeAll {
     . (Join-Path $PSScriptRoot '../scripts/accept-hermes-desktop-light-helpers.ps1')
+    function New-TestScoopUpdateFixtures {
+        $beforeInstall = [ordered]@{
+            version = '0.0.0-test-before'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before'
+        }
+        $afterInstall = [ordered]@{
+            version = '0.0.1-test-after'
+            currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after'
+        }
+        $beforeShortcut = [ordered]@{
+            target = 'C:\scoop\apps\hermes-desktop-light-acceptance\current\Hermes Light.exe'
+            resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before\Hermes Light.exe'
+        }
+        $afterShortcut = [ordered]@{
+            target = $beforeShortcut.target
+            resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after\Hermes Light.exe'
+        }
+        $assertion = Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
+            -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut `
+            -ExpectedVersion $afterInstall.version `
+            -ExpectedCurrentTarget $afterInstall.currentTargetResolved `
+            -ExpectedShortcutTarget $afterShortcut.resolvedTarget
+
+        return [ordered]@{
+            BeforeInstall = $beforeInstall
+            AfterInstall = $afterInstall
+            BeforeShortcut = $beforeShortcut
+            AfterShortcut = $afterShortcut
+            Assertion = $assertion
+        }
+    }
 }
 
-function New-TestScoopUpdateFixtures {
-    $beforeInstall = [ordered]@{
-        version = '0.0.0-test-before'
-        currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before'
-    }
-    $afterInstall = [ordered]@{
-        version = '0.0.1-test-after'
-        currentTargetResolved = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after'
-    }
-    $beforeShortcut = [ordered]@{
-        target = 'C:\scoop\apps\hermes-desktop-light-acceptance\current\Hermes Light.exe'
-        resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.0-test-before\Hermes Light.exe'
-    }
-    $afterShortcut = [ordered]@{
-        target = $beforeShortcut.target
-        resolvedTarget = 'C:\scoop\apps\hermes-desktop-light-acceptance\0.0.1-test-after\Hermes Light.exe'
-    }
-    $assertion = Assert-ScoopUpdateSwitch -BeforeInstall $beforeInstall -AfterInstall $afterInstall `
-        -BeforeShortcut $beforeShortcut -AfterShortcut $afterShortcut `
-        -ExpectedVersion $afterInstall.version `
-        -ExpectedCurrentTarget $afterInstall.currentTargetResolved `
-        -ExpectedShortcutTarget $afterShortcut.resolvedTarget
-
-    return [ordered]@{
-        BeforeInstall = $beforeInstall
-        AfterInstall = $afterInstall
-        BeforeShortcut = $beforeShortcut
-        AfterShortcut = $afterShortcut
-        Assertion = $assertion
-    }
-}
 
 Describe 'Hermes Desktop Light Scoop update assertions' {
     BeforeEach {
