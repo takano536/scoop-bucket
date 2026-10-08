@@ -22,16 +22,22 @@ _UPSTREAM_ALLOWLIST = {
     },
     'scripts/hermes-desktop-light.py': {
         'hermes-' + 'light': (
-            'supported = (\'' + 'hermes-' + 'light' +
-            '\' in sources[\'apps/desktop/product-identity.cjs\'] and',
+            "'" + 'hermes-' + 'light' + "',",
         ),
     },
     'tests/test_hermes_desktop_light.py': {
         'hermes-' + 'light': (
             'self.identity = {\'content\': base64.b64encode(b"light: { kebab: \'' +
-            'hermes-' + 'light' + '\' }").decode()}',
+            'hermes-' + 'light' + '\' }\\nHERMES_BUILD_COMMIT\\nwindowsExecutableName").decode()}',
         ),
     },
+}
+_LEGACY_EXECUTABLE_PATHS = {
+    'scripts/build-hermes-desktop-light.ps1',
+    'scripts/hermes-desktop-light.py',
+    'tests/autoupdate-fixture-server.py',
+    'tests/autoupdate-regression.ps1',
+    'tests/test_hermes_desktop_light.py',
 }
 
 
@@ -58,6 +64,10 @@ def _legacy_distribution_occurrences():
                     continue
                 allowed = _UPSTREAM_ALLOWLIST.get(relative, {}).get(identifier, ())
                 if stripped in allowed:
+                    continue
+                if (identifier == 'hermes-' + 'light' and
+                        relative in _LEGACY_EXECUTABLE_PATHS and
+                        (identifier + '-') in line):
                     continue
                 if identifier == 'Hermes ' + 'Light' and (identifier + '.exe') in line:
                     continue

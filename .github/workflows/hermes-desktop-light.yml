@@ -38,6 +38,7 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       channel: ${{ steps.plan.outputs.channel }}
       ref: ${{ steps.plan.outputs.ref }}
+      upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
       version: ${{ steps.plan.outputs.version }}
       release_tag: ${{ steps.plan.outputs.release_tag }}
       artifact: ${{ steps.plan.outputs.artifact }}
@@ -94,6 +95,7 @@ jobs:
         env:
           CHANNEL: ${{ needs.plan.outputs.channel }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
+          UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
         run: ./bucket/scripts/build-hermes-desktop-light.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -132,6 +134,7 @@ jobs:
           RELEASE_ENABLED: ${{ needs.plan.outputs.channel == 'development' && vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED || vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
+          UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
           RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
           LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}

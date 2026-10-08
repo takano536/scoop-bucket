@@ -18,7 +18,7 @@ from distribution import (dev_artifact_name, dev_package_version, dev_release_ta
 
 UPSTREAM = 'NousResearch/hermes-agent'
 APP = 'hermes-desktop-light'
-VERSION = re.compile(r'v(0|[1-9]\d{0,2})\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
+VERSION = re.compile(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
 DEV_TAG = re.compile(
     rf'^{re.escape(APP)}/dev/v0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)-([a-f0-9]{{40}})$')
 STABLE_TAG = re.compile(rf'^{re.escape(APP)}/v(.+)$')
@@ -167,9 +167,23 @@ def output(**values):
 
 
 def supports_light(commit):
-    """Preflight exact source without executing it; only missing files mean skip."""
+    """Preflight the exact managed builder contract without executing upstream."""
+    contract = {
+        'apps/desktop/product-identity.cjs': (
+            'hermes-light',
+            'HERMES_BUILD_COMMIT',
+            'windowsExecutableName',
+        ),
+        'scripts/bundles/desktop.py': (
+            'add_argument("--commit"',
+            'add_argument("--variant"',
+            'choices=["bundled", "store", "light"]',
+            'nargs=argparse.REMAINDER',
+            'build_prepared',
+        ),
+    }
     sources = {}
-    for path in ('apps/desktop/product-identity.cjs', 'scripts/bundles/desktop.py'):
+    for path in contract:
         try:
             record = api(f'repos/{UPSTREAM}/contents/{path}?ref={commit}')
         except subprocess.CalledProcessError as exc:
@@ -177,14 +191,20 @@ def supports_light(commit):
                 raise
             print(f'Skipping {commit}: no {path}')
             return False
-        sources[path] = base64.b64decode(record['content']).decode('utf-8')
-    builder = sources['scripts/bundles/desktop.py']
-    supported = ('hermes-light' in sources['apps/desktop/product-identity.cjs'] and
-                 '--variant' in builder and
-                 ('"light"' in builder or "'light'" in builder))
-    if not supported:
-        print(f'Skipping {commit}: source lacks the managed Light build contract')
-    return supported
+        try:
+            sources[path] = base64.b64decode(record['content']).decode('utf-8')
+        except (KeyError, ValueError, UnicodeDecodeError) as exc:
+            raise ValueError(f'Cannot read managed Light contract file: {path}') from exc
+    missing = [
+        f'{path}:{marker}'
+        for path, markers in contract.items()
+        for marker in markers
+        if marker not in sources[path]
+    ]
+    if missing:
+        print(f"Skipping {commit}: source lacks managed Light contract ({', '.join(missing)})")
+        return False
+    return True
 
 
 def license_sha(commit):
@@ -314,8 +334,7 @@ def _stable_admission_available():
     upstream_version = stable_version(release)
     if upstream_version is None:
         return False
-    tag = release['tag_name']
-    commit = api(f'repos/{UPSTREAM}/commits/{tag}')['sha']
+    commit = _commit(api(f'repos/{UPSTREAM}/commits/{tag}')['sha'])
     if not supports_light(commit):
         return False
     ref = api(f'repos/{UPSTREAM}/git/ref/tags/{tag}')['object']
@@ -344,7 +363,7 @@ def _plan_stable():
             output(build='false')
             return
     tag = release['tag_name']
-    commit = api(f'repos/{UPSTREAM}/commits/{tag}')['sha']
+    commit = _commit(api(f'repos/{UPSTREAM}/commits/{tag}')['sha'])
     if not supports_light(commit):
         output(build='false')
         return
@@ -354,7 +373,10 @@ def _plan_stable():
     record = api(f"repos/{UPSTREAM}/git/tags/{ref['sha']}")
     metadata = json.loads(record['message'].split('\n-----BEGIN ', 1)[0])
     claim, claim_object = release_claim(metadata, upstream_version, commit)
-    output(build='true', ref=tag, version=version, claim=claim, claim_object=claim_object, channel='stable')
+    # Build and publish jobs use this exact commit; the tag is only the managed
+    # builder input and is checked locally against the pinned checkout.
+    output(build='true', ref=commit, upstream_tag=tag, version=version,
+           claim=claim, claim_object=claim_object, channel='stable')
 
 
 def _plan_development():
@@ -635,9 +657,14 @@ def _publish_stable():
     version, source_ref = os.environ['PACKAGE_VERSION'], os.environ['SOURCE_REF']
     repository = _repository(os.environ['GITHUB_REPOSITORY'])
     root = Path('output')
+    upstream_tag = os.environ.get('UPSTREAM_TAG', 'v' + '.'.join(map(str, version_key(version)[:3])))
+    if not re.fullmatch(r'v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)', upstream_tag):
+        raise ValueError('Stable upstream tag is invalid')
+    upstream_commit = _commit(api(f'repos/{UPSTREAM}/commits/{upstream_tag}')['sha'])
+    if source_ref != upstream_commit:
+        raise ValueError('Upstream tag moved or build has wrong source')
     record = json.loads((root / 'provenance.json').read_text(encoding='utf-8-sig'))
-    artifact = verify_artifact(root, record, version, source_ref)
-    upstream_commit = api(f'repos/{UPSTREAM}/commits/{source_ref}')['sha']
+    artifact = verify_artifact(root, record, version, upstream_tag)
     if record['commit'] != upstream_commit:
         raise ValueError('Upstream tag moved or build has wrong source')
     tag = release_tag(APP, version)
@@ -648,7 +675,7 @@ def _publish_stable():
         gh('release', 'download', tag, '--repo', repository, '--pattern', artifact.name,
            '--pattern', 'provenance.json', '--dir', str(saved))
         published = json.loads((saved / 'provenance.json').read_text(encoding='utf-8-sig'))
-        artifact = verify_artifact(saved, published, version, source_ref)
+        artifact = verify_artifact(saved, published, version, upstream_tag)
         if published['commit'] != upstream_commit:
             raise ValueError('Existing release belongs to another source')
         record = published

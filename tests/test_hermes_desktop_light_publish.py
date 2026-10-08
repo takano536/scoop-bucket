@@ -61,7 +61,8 @@ class PublishTests(unittest.TestCase):
         self.previous_cwd = Path.cwd()
         os.chdir(self.work)
         self.addCleanup(os.chdir, self.previous_cwd)
-        self.env = patch.dict(os.environ, PACKAGE_VERSION='0.22.0-r1', SOURCE_REF='v0.22.0',
+        self.env = patch.dict(os.environ, PACKAGE_VERSION='0.22.0-r1', SOURCE_REF='a' * 40,
+                              UPSTREAM_TAG='v0.22.0',
                               GITHUB_REPOSITORY='fixture/bucket', RELEASE_ENABLED='true',
                               GITHUB_ACTIONS='true', GITHUB_REF='refs/heads/main',
                               GITHUB_EVENT_NAME='schedule')

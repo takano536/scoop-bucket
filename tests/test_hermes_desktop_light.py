@@ -13,8 +13,10 @@ class ReleaseTests(unittest.TestCase):
         light = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(light)
         self.assertEqual(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}), '0.22.0')
-        for tag in ('v2026.9.24', 'v2026.10.1', 'v0.22.0-rc.1', 'v0.22.0+canary.20261007T000000Z', 'main', 'v00.22.0'):
+        for tag in ('v0.22.0-rc.1', 'v0.22.0+canary.20261007T000000Z', 'main', 'v00.22.0'):
             self.assertIsNone(light.stable_version({'tag_name': tag, 'draft': False, 'prerelease': False}))
+        self.assertEqual(light.stable_version({'tag_name': 'v2026.9.24', 'draft': False, 'prerelease': False}), '2026.9.24')
+        self.assertEqual(light.stable_version({'tag_name': 'v2026.10.1', 'draft': False, 'prerelease': False}), '2026.10.1')
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}))
         self.assertIsNone(light.stable_version({'tag_name': 'v0.22.0', 'draft': True, 'prerelease': False}))
 
@@ -163,8 +165,8 @@ class PlanTests(unittest.TestCase):
         self.light = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.light)
         self.commit = 'a' * 40
-        self.identity = {'content': base64.b64encode(b"light: { kebab: 'hermes-light' }").decode()}
-        self.builder = {'content': base64.b64encode(b'parser.add_argument("--variant", choices=["bundled", "light"])').decode()}
+        self.identity = {'content': base64.b64encode(b"light: { kebab: 'hermes-light' }\nHERMES_BUILD_COMMIT\nwindowsExecutableName").decode()}
+        self.builder = {'content': base64.b64encode(b'parser.add_argument("--commit"); parser.add_argument("--variant", choices=["bundled", "store", "light"]); parser.add_argument("builder_args", nargs=argparse.REMAINDER); build_prepared').decode()}
         self.calls = []
         self.result = Mock()
 
@@ -283,7 +285,7 @@ class PlanTests(unittest.TestCase):
 
     def test_supported_stable_builds_after_capability_and_claim_checks(self):
         self.run_plan(self.response)
-        self.result.assert_called_once_with(build='true', ref='v0.22.0', version='0.22.0-r1', claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable')
+        self.result.assert_called_once_with(build='true', ref=self.commit, upstream_tag='v0.22.0', version='0.22.0-r1', claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable')
         identity = next(i for i, call in enumerate(self.calls) if '/contents/apps/desktop/product-identity.cjs' in call)
         claim = next(i for i, call in enumerate(self.calls) if '/git/ref/' in call)
         self.assertLess(identity, claim)
@@ -299,7 +301,7 @@ class PlanTests(unittest.TestCase):
         from unittest.mock import patch
         with patch.dict(os.environ, BUILD_REVISION='2'):
             self.run_plan(self.response)
-        self.result.assert_called_once_with(build='true', ref='v0.22.0', version='0.22.0-r2', claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable')
+        self.result.assert_called_once_with(build='true', ref=self.commit, upstream_tag='v0.22.0', version='0.22.0-r2', claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable')
 
     def test_scheduled_r1_does_not_rebuild_or_downgrade_r2(self):
         import json
@@ -351,7 +353,7 @@ class PlanTests(unittest.TestCase):
     def test_schedule_selects_stable_only_after_admission_and_gate(self):
         self.run_schedule(self.response)
         self.result.assert_called_once_with(
-            build='true', ref='v0.22.0', version='0.22.0-r1',
+            build='true', ref=self.commit, upstream_tag='v0.22.0', version='0.22.0-r1',
             claim='rc.1-v0.22.0', claim_object='c' * 40, channel='stable',
         )
 

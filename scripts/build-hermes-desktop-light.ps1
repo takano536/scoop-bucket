@@ -6,22 +6,32 @@ $out = Join-Path $root 'output'
 New-Item -ItemType Directory -Path $out | Out-Null
 $commit = (git -C $source rev-parse HEAD).Trim()
 $development = $env:CHANNEL -eq 'development'
+if ($commit -notmatch '^[a-f0-9]{40}$' -or $env:SOURCE_REF -cne $commit) {
+    throw 'Builder checkout is not the exact admitted upstream commit'
+}
 if ($development -and
     ($env:LICENSE_SHA256 -cnotmatch '^[a-f0-9]{64}$' -or
      $env:CONDITIONS_FINGERPRINT -cnotmatch '^[a-f0-9]{64}$')) {
     throw 'Development admission digests are missing or malformed'
 }
 if ($development) {
-    if ($env:PACKAGE_VERSION -cnotmatch '^0\.0\.0-alpha\.dev\.[1-9][0-9]*-r[1-9][0-9]*$' -or
-        $env:SOURCE_REF -cne $commit -or $env:SOURCE_REF -cnotmatch '^[a-f0-9]{40}$') {
+    if ($env:PACKAGE_VERSION -cnotmatch '^0\.0\.0-alpha\.dev\.[1-9][0-9]*-r[1-9][0-9]*$') {
         throw 'Development release identity mismatch'
     }
     python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
 } else {
-    if ($env:PACKAGE_VERSION -cnotmatch '^([0-9]+\.[0-9]+\.[0-9]+)-r[1-9][0-9]*$' -or $env:SOURCE_REF -cne "v$($Matches[1])") { throw 'Release identity mismatch' }
-    python "$source/scripts/bundles/desktop.py" --tag $env:SOURCE_REF --variant light -- --dir
+    $versionMatch = [regex]::Match($env:PACKAGE_VERSION, '^([0-9]+\.[0-9]+\.[0-9]+)-r[1-9][0-9]*$')
+    $upstreamTag = $env:UPSTREAM_TAG
+    if (!$versionMatch.Success -or $upstreamTag -cne "v$($versionMatch.Groups[1].Value)") {
+        throw 'Stable release identity mismatch'
+    }
+    $tagCommit = (git -C $source rev-parse "refs/tags/$upstreamTag^{commit}").Trim()
+    if ($tagCommit -cne $commit) {
+        throw 'Upstream stable tag does not point to the pinned commit'
+    }
+    python "$source/scripts/bundles/desktop.py" --tag $upstreamTag --variant light -- --dir
 }
-if ($commit -notmatch '^[a-f0-9]{40}$') { throw 'Builder checkout is not an exact full commit' }
+$sourceRef = if ($development) { $commit } else { $upstreamTag }
 $pack = Join-Path $source 'apps/desktop/release/win-unpacked'
 if (!(Test-Path $pack)) { throw 'No unpacked Windows application was built' }
 $stamp = Get-Content "$pack/resources/install-stamp.json" -Raw | ConvertFrom-Json
@@ -45,7 +55,7 @@ Compress-Archive -Path "$pack/*" -DestinationPath "$out/$name" -CompressionLevel
 $receipt = @{
     schema = 1
     upstream = 'NousResearch/hermes-agent'
-    sourceRef = $env:SOURCE_REF
+    sourceRef = $sourceRef
     commit = $commit
     version = $version
     preview = $false
