@@ -28,23 +28,35 @@ function Get-ScoopInstalledState {
         $manifestPath = (Resolve-Path -LiteralPath $BucketManifestPath).Path
         $manifestSource = 'disposable-bucket'
     }
+
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $manifestVersion = [string]$manifest.version
     $installPath = Join-Path $appDirectory 'install.json'
     if (!(Test-Path -LiteralPath $installPath)) {
         $installPath = Join-Path $resolvedCurrent 'install.json'
     }
-    if (!(Test-Path -LiteralPath $installPath)) {
-        throw "Scoop install receipt is missing: $installPath"
+    $installSource = 'install-receipt'
+    $listOutput = ''
+    if (Test-Path -LiteralPath $installPath) {
+        $install = Get-Content -LiteralPath $installPath -Raw | ConvertFrom-Json
+        $installVersion = [string]$install.version
+    } else {
+        $installPath = $null
+        $installSource = 'scoop-list'
+        $listOutput = (& scoop list $AppName 2>&1 | Out-String)
+        $cleanList = [regex]::Replace($listOutput, "`e\[[0-9;]*m", '')
+        $listPattern = "(?im)^\s*$([regex]::Escape($AppName))\s+(\S+)\s+"
+        $listMatch = [regex]::Match($cleanList, $listPattern)
+        if (!$listMatch.Success) {
+            throw "Scoop install receipt is missing and scoop list did not report $AppName"
+        }
+        $installVersion = $listMatch.Groups[1].Value
     }
-
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    $install = Get-Content -LiteralPath $installPath -Raw | ConvertFrom-Json
-    $manifestVersion = [string]$manifest.version
-    $installVersion = [string]$install.version
     if (!$manifestVersion -or !$installVersion) {
-        throw "Installed Scoop state has no manifest/install version: $resolvedCurrent"
+        throw "Installed Scoop state has no manifest/list version: $resolvedCurrent"
     }
     if ($manifestVersion -ne $installVersion) {
-        throw "Installed manifest/install versions disagree: $manifestVersion vs $installVersion"
+        throw "Installed manifest/list versions disagree: $manifestVersion vs $installVersion"
     }
 
     return [ordered]@{
@@ -56,6 +68,8 @@ function Get-ScoopInstalledState {
         currentTargetResolved = $resolvedCurrent
         manifestPath = $manifestPath
         manifestSource = $manifestSource
+        installSource = $installSource
+        scoopList = $listOutput
         installPath = $installPath
     }
 }
