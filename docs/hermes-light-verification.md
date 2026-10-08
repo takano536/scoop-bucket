@@ -48,12 +48,13 @@ PR #4 の Windows 成果物（[run 37642669034](https://github.com/takano536/sco
 desktop production dependency は bundle に入る構成であることを確認した。
 
 今回のWindows buildでは、対象commitの上流 `LICENSE` をそのまま `LICENSE` としてコピーし、
-上流 `apps/desktop/package.json` の `dependencies`（80）、`optionalDependencies`（1）、
-`devDependencies`（31）を起点に、インストール済みpackageの依存を再帰的に辿って
-`THIRD-PARTY-NOTICES.txt` を生成する。到達したworkspace package（Lightでは
-`@hermes/shared`）については自身のdependencies/optionalDependenciesに加えて
-devDependenciesも辿る。lockfileで`optional`とされた、または名前から対象OS/CPU向けと
-判定できるplatform packageの未インストールな子依存だけは、対象Windowsに存在しないため収集対象から除外する。
+上流 `apps/desktop/package.json` のproduction `dependencies`（80）と
+`optionalDependencies`（1）を起点に、インストール済みpackageのproduction依存を再帰的に辿って
+`THIRD-PARTY-NOTICES.txt` を生成する。さらに`resources/app.asar`のheader、
+`resources/app.asar.unpacked`と`resources`配下の物理`node_modules`を走査し、
+実際にwin-unpackedへ入ったpackageを収集する。devDependenciesは起点・再帰対象にしない。
+lockfileで`optional`とされた、または名前から対象OS/CPU向けと判定できるplatform packageの
+未インストールな子依存だけは、対象Windowsに存在しないため収集対象から除外する。
 完全な`LICENSE`/`LICENSE-*`本文（SPDX本文を含む）とpackage固有の権利表示を
 同梱候補packageから特定できない場合は、buildを失敗させる。`NOTICE`はlicense本文として
 扱わず、MPLの抜粋、package固有copyright行のないMIT fallback、`LICENSE`本文のない
@@ -69,14 +70,16 @@ non-zeroで終了するため、first failureだけで後続blockerを隠さな�
 場所を記録する。`provenance.json`には3ファイルのSHA256と対象package数を記録し、
 publish側はZIP内の存在・SHA256・上流MIT copyright行をdata-onlyで検証する。
 
-PR #6 の成果物ではsourcemapが生成されていなかったため、bundleからpackage名を
-完全列挙する方式ではなく、上記のdevDependenciesを含む保守的なsupersetを採用した。
-`dist/assets/vendor-react-*.js` にReact実装、`dist/assets/katex-*.js` と
-`mermaid-*.js` に第三者bundle、`dist/electron-main.mjs` に`node-pty`と
-esbuild由来のbundled license bannerがあることを、ASAR header offsetと
-`resources/app.asar.unpacked`のファイルだけで確認した。`desktop_prepare.py`の
-Light workspace選択は`apps/desktop`のみで、`web`/`ui-tui`はLightではbuildされない。
-将来Lightのworkspace選択を拡張する場合は、そのworkspaceを起点に同じ再帰収集を行う。
+PR #6 のartifact inventoryは`resources/app.asar`のheader、`resources/app.asar.unpacked`、
+`resources`配下の物理`node_modules`を基準にする。前回baseline ZIPでは
+`resources/app.asar.unpacked/dist/node_modules/get-windows`と
+`resources/app.asar.unpacked/dist/node_modules/node-pty`を実測し、renderer/main bundleの
+React、Katex、Mermaid等はproduction dependenciesとして通知対象に残す。
+一方、`app-builder-lib`/`dmg-builder`はdesktop devDependency `electron-builder`の子、
+`@esbuild/win32-x64`はdevDependency `esbuild`のplatform child、
+`@rolldown/binding-*`はdevDependency `vite`→`rolldown`のplatform childであり、
+artifactのASAR header/`app.asar.unpacked`/`resources`に実体pathがないため収集しない。
+物理inventoryまたはproduction graphにあるpackageを解決できない場合はfail-closedにする。
 
 manifestの`license`は、Hermes Agent本体の上流`package.json`/`LICENSE`がMITであるため
 `MIT`のままとする。依存packageごとに異なるlicenseの集合を一つの正確なSPDX式へ

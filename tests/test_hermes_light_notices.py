@@ -138,11 +138,12 @@ class NoticeTests(unittest.TestCase):
                             'fixture-one': '1.0.0',
                             'fixture-two': '1.0.0',
                         },
+                        'devDependencies': {'build-tool': '1.0.0'},
                     }
                 ),
                 encoding='utf-8',
             )
-            for name in ('fixture-one', 'fixture-two'):
+            for name in ('fixture-one', 'fixture-two', 'build-tool'):
                 package = node_modules / name
                 package.mkdir()
                 (package / 'package.json').write_text(
@@ -166,6 +167,21 @@ class NoticeTests(unittest.TestCase):
             self.assertIn('fixture-one@1.0.0', message)
             self.assertIn('fixture-two@1.0.0', message)
             self.assertLess(message.index('fixture-one@1.0.0'), message.index('fixture-two@1.0.0'))
+            self.assertNotIn('build-tool@1.0.0', message)
+
+    def test_unpacked_node_modules_reports_resources_packages(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            resources = Path(scratch) / 'pack' / 'resources'
+            unpacked = resources / 'app.asar.unpacked' / 'dist' / 'node_modules'
+            scoped = resources / 'node_modules' / '@fixture'
+            (unpacked / 'node-pty').mkdir(parents=True)
+            (scoped / 'resource-tool').mkdir(parents=True)
+            (unpacked / 'node-pty' / 'package.json').write_text('{}', encoding='utf-8')
+            (scoped / 'resource-tool' / 'package.json').write_text('{}', encoding='utf-8')
+            self.assertEqual(
+                notices.unpacked_node_modules(Path(scratch) / 'pack'),
+                {'node-pty', '@fixture/resource-tool'},
+            )
 
     def test_unknown_or_missing_license_fails_closed(self):
         for license_name in ('Custom-License', ''):

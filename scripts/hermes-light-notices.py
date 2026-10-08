@@ -376,6 +376,25 @@ def asar_node_modules(pack: Path) -> set[str]:
     return {name for name in found if name != ".hermes-product"}
 
 
+def unpacked_node_modules(pack: Path) -> set[str]:
+    """Find package directories physically shipped outside app.asar."""
+    resources = pack / "resources"
+    if not resources.is_dir():
+        return set()
+    found = set()
+    for node_modules in resources.rglob("node_modules"):
+        if not node_modules.is_dir():
+            continue
+        for child in node_modules.iterdir():
+            if child.name.startswith("@") and child.is_dir():
+                for scoped in child.iterdir():
+                    if (scoped / "package.json").is_file():
+                        found.add(f"{child.name}/{scoped.name}")
+            elif (child / "package.json").is_file():
+                found.add(child.name)
+    return {name for name in found if name != ".hermes-product"}
+
+
 def package_identity(package_dir: Path, metadata: dict) -> str:
     name = metadata.get("name")
     version = metadata.get("version")
@@ -391,13 +410,15 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
     used_overrides: set[str] = set()
     optional_names = optional_package_names(source)
     direct = {}
-    for field, is_optional in (("dependencies", False), ("optionalDependencies", True), ("devDependencies", False)):
+    for field, is_optional in (("dependencies", False), ("optionalDependencies", True)):
         values = desktop_meta.get(field, {})
         if isinstance(values, dict):
             for name in values:
                 direct[name] = direct.get(name, True) and is_optional
     queue = [(desktop, name, optional) for name, optional in sorted(direct.items())]
     for name in sorted(asar_node_modules(pack)):
+        queue.append((desktop, name, False))
+    for name in sorted(unpacked_node_modules(pack)):
         queue.append((desktop, name, False))
     visited: set[Path] = set()
     packages = []
@@ -428,8 +449,6 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
             else:
                 packages.append((package_name, metadata["version"], license_name, text, package_dir))
         fields = (("dependencies", False), ("optionalDependencies", True))
-        if is_workspace_package(source, package_dir):
-            fields += (("devDependencies", False),)
         for field, is_optional in fields:
             values = metadata.get(field, {})
             if isinstance(values, dict):
