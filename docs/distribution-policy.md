@@ -82,11 +82,12 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
   stable Releaseがまだ公開されているわけでない場合、dev manifestは維持する。
 - PRはbucket Release一覧を参照せず、pinしたupstream main commitのdevelopment build/smoke、
   exact MIT gate、conditions fingerprintをread-onlyで検証する。publish/writebackはしない。
-- Light stable Releaseが公開されるtransitionは一方向で、`metadata/hermes-desktop-light-channel.json`
-  にstable version/tag、upstream commit、artifact SHA256を記録する。以後、stable publisherだけが
-  `bucket/hermes-desktop-light.json`を更新し、開発publisherはそのmarkerまたはこのappのstable
-  Releaseを検出してhard-refuseする。stable Releaseが実際に公開されるまでmanifestを自動切替せず、
-  channelをbounceしない。
+- Light stable Releaseが公開されるtransitionは一方向で、公開URL/SHA256を再検証した
+  `bucket/hermes-desktop-light.json`のmanifestがそのReleaseを指すことを確認してから
+  `metadata/hermes-desktop-light-channel.json`へstable version/tag、upstream commit、artifact
+  SHA256を記録する。以後、stable publisherだけがmanifestを更新し、開発publisherは一致する
+  stable Releaseとmanifestまたはそのmarkerを検出してhard-refuseする。stable Releaseだけ、
+  またはstable buildの失敗/skipだけではchannelを停止せず、manifestを自動bounceしない。
 
 ## 公開と過去版
 

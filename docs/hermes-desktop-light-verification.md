@@ -38,10 +38,11 @@
 
 最新の公開安定版`v2026.9.24`にはLightのビルド機構がないため、開発版はLight対応main commit
 の公開で先にインストール可能になる。Light対応stableをこのapp向けにbuild・Windows検証・公開
-できた時点で開発追従を終了し、`metadata/hermes-desktop-light-channel.json`へversion/tag、
-upstream commit、SHA256を記録する。そのstable Releaseまたはmarkerがある場合、dev publisherは
-hard-refuseする。manifestは自動切替せず、Scoop version順（全dev < stable）によりbounceしない。
-stable公開・manifest書き戻しは、stable gateの明示許可後だけ行う。
+できた時点で、公開URLとSHA256を再検証してstable manifestがそのReleaseを指すことを確認し、
+`metadata/hermes-desktop-light-channel.json`へversion/tag、upstream commit、SHA256を記録する。
+stable Releaseだけ、またはstable buildの失敗/skipだけではtransitionしない。manifest更新とmarkerが
+確認できた場合に限りdev publisherはhard-refuseする。manifestは自動切替せず、Scoop version順
+（全dev < stable）によりbounceしない。stable公開・manifest書き戻しはstable gateの明示許可後だけ行う。
 
 
 - Light対応stableのtag/claim admissionと実ビルド。
@@ -232,6 +233,11 @@ publisher自身もActionsのschedule/workflow_dispatchかつmainと、channel固
 ローカルcheckoutやPRで誤って実行しても、API操作やhard resetの前に停止する。成果物取得に必要な
 `actions: read`を公開jobへ明示した。draft作成後は`prerelease=true`/`latest=false`をread backし、
 公開URLのSHA256を検証してからpointer、manifest、READMEをcommitする。既存assetを上書きしない。
+publishは同じrunのWindows acceptance artifactも取得し、`acceptance.json`の
+`status=passed`、source commit/version、ZIP名/SHA256をbuild provenanceと突合する。
+`acceptance.json`がない、failed、別commit/bytesの場合はlicense/build evidenceがあっても
+公開しない。この条件は`tests/test_hermes_desktop_light_publish.py`のmissing/failed fixtureで
+確認する。
 Scoop checkver/autoupdateは、このappの公開済みpointer/releaseだけを参照する。
 
 `workflow_run`は、指定したschedule/workflow_dispatch実行が完了したというGitHubの完了イベントで

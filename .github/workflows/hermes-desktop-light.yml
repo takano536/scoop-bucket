@@ -178,6 +178,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name hermes-desktop-light-windows-x64 --dir output
+      - name: Download this run's passed Windows acceptance evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name hermes-desktop-light-windows-acceptance --dir acceptance
       - name: Publish immutable release and update manifest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,6 +193,7 @@ jobs:
           RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
           LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
+          ACCEPTANCE_EVIDENCE: acceptance/acceptance.json
         run: python3 scripts/hermes-desktop-light.py publish
       - name: Record exact written-back commit
         run: git rev-parse HEAD > written-back-sha.txt

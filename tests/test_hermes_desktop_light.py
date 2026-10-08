@@ -254,7 +254,7 @@ class PlanTests(unittest.TestCase):
         with patch.dict(os.environ, values), patch.object(self.light, 'api', side_effect=api), patch.object(self.light, 'output', self.result):
             self.light.plan()
 
-    def run_dev_plan(self, rows=(), revision='1', explicit='false', pointer=None, event='workflow_dispatch', dev_enabled='true'):
+    def run_dev_plan(self, rows=(), revision='1', explicit='false', pointer=None, event='workflow_dispatch', dev_enabled='true', manifest=None):
         import json
         import os
         import tempfile
@@ -266,6 +266,9 @@ class PlanTests(unittest.TestCase):
                 if pointer is not None:
                     Path('metadata').mkdir()
                     Path('metadata/hermes-desktop-light-dev.json').write_text(json.dumps(pointer))
+                if manifest is not None:
+                    Path('bucket').mkdir()
+                    Path('bucket/hermes-desktop-light.json').write_text(json.dumps(manifest))
                 values = {
                     'CHANNEL': 'development',
                     'GITHUB_EVENT_NAME': event,
@@ -314,6 +317,24 @@ class PlanTests(unittest.TestCase):
         self.run_dev_plan(pointer=pointer)
         self.result.assert_called_once_with(build='false', channel='development')
 
+    def test_scheduled_r1_is_noop_when_pointer_is_published_r2(self):
+        pointer = {
+            'version': '0.0.0-alpha.dev.1-r2',
+            'commit': self.commit,
+            'conditionsFingerprint': 'd' * 64,
+        }
+        self.run_dev_plan(pointer=pointer, event='schedule')
+        self.result.assert_called_once_with(build='false', channel='development')
+
+    def test_scheduled_r1_is_noop_when_release_rows_have_r2(self):
+        rows = [{
+            'tag_name': f'hermes-desktop-light/dev/v0.0.0-alpha.dev.1-r2-{self.commit}',
+            'draft': False,
+            'prerelease': True,
+        }]
+        self.run_dev_plan(rows=rows, event='schedule')
+        self.result.assert_called_once_with(build='false', channel='development')
+
     def test_development_revision_two_requires_dispatch(self):
         with self.assertRaisesRegex(ValueError, 'workflow_dispatch'):
             self.run_dev_plan(revision='2')
@@ -321,8 +342,21 @@ class PlanTests(unittest.TestCase):
     def test_development_plan_ends_after_published_stable_release(self):
         rows = [{'tag_name': 'hermes-desktop-light/v2026.9.24-r1',
                  'draft': False, 'prerelease': False}]
-        self.run_dev_plan(rows=rows)
+        manifest = {
+            'version': '2026.9.24-r1',
+            'architecture': {'64bit': {
+                'url': 'https://github.com/fixture/bucket/releases/download/hermes-desktop-light%2Fv2026.9.24-r1/hermes-desktop-light-2026.9.24-r1-windows-x64.zip',
+            }},
+        }
+        self.run_dev_plan(rows=rows, manifest=manifest)
         self.result.assert_called_once_with(build='false', channel='development', transition='stable')
+
+    def test_stable_release_without_manifest_does_not_stop_development(self):
+        rows = [{'tag_name': 'hermes-desktop-light/v2026.9.24-r1',
+                 'draft': False, 'prerelease': False}]
+        self.run_dev_plan(rows=rows)
+        self.assertTrue(self.result.call_args.kwargs['build'])
+        self.assertEqual(self.result.call_args.kwargs['channel'], 'development')
     def response(self, endpoint):
         import json
         if endpoint.endswith('/releases/latest'):

@@ -115,11 +115,12 @@ manifestのcheckver/autoupdateはこのpointerと検証済みReleaseだけを参
 publish gateは初期状態で無効です。開発版を公開するには管理者が
 `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`を設定する必要があります（このPRでは設定しません）。
 stable gateが有効でstable admissionを満たすscheduleはstable buildを計画しますが、dev manifestを
-自動で切り替えません。Light対応の安定版をこのアプリ用にbuild・Windows検証・公開できた時点で
-初めて開発追従を一方向に終了し、`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。
-stable Releaseが実際に公開される前の失敗・skipではdev manifestを維持し、channelをbounceしません。
-その後は`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`のstableだけを追従し、開発publisherはstable
-Releaseまたは遷移記録が存在すると即時拒否します。stable gateもこのPRでは設定しません。
+自動で切り替えません。Light対応の安定版をこのアプリ用にbuild・Windows検証・公開し、公開URLと
+SHA256を再検証したstable manifestの更新まで完了した時点で初めて開発追従を一方向に終了し、
+`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。stable Releaseだけ、または
+stable buildの失敗・skipではdev manifestを維持し、channelをbounceしません。その後は
+`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`のstableだけを追従し、開発publisherは一致する
+stable Releaseとmanifest、または遷移記録が存在すると即時拒否します。stable gateもこのPRでは設定しません。
 
 `v2026.9.24`はLight非対応ですが、Light対応の`main`開発commitを公開すれば現在でも
 インストールできます。Release title/body、manifest description/notes、READMEには常に
@@ -127,6 +128,9 @@ Releaseまたは遷移記録が存在すると即時拒否します。stable gat
 各Releaseには上流commit、MIT LICENSEのSHA256、build conditions fingerprint、artifact SHA256、
 provenance.jsonとその版のScoop manifestを添付します。公開URLとSHA256を再検証してから
 `bucket/hermes-desktop-light.json`とアプリ一覧を`main`へ更新し、失敗時はmanifestを変更しません。
+公開jobは同じrunのWindows acceptance artifactを取得し、`acceptance.json`のstatus・
+source commit/version・ZIP SHA256をbuild provenanceと突合します。missing/failedまたは
+別成果物の受入証拠は公開を拒否します。
 
 配布は非公式・未署名のx64ビルドで、ローカルのPython・agentは含まず、既存のHermes gatewayへの
 接続が必要です。gateway接続、必要なランタイム、接続・認証情報の実アップグレード移行は、

@@ -37,6 +37,12 @@ def stable_version(release):
         return None
     return tag[1:] if VERSION.fullmatch(tag) else None
 
+def validate_upstream_release(release, source_ref, version):
+    """Require the source tag to remain a published stable release."""
+    upstream_version = version.rsplit('-r', 1)[0]
+    if release.get('tag_name') != source_ref or stable_version(release) != upstream_version:
+        raise ValueError('Upstream source is no longer a published stable release')
+
 
 def _repository(repository):
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repository):
@@ -200,7 +206,8 @@ def supports_light(commit):
             print(f'Skipping {commit}: no {path}')
             return False
         try:
-            sources[path] = base64.b64decode(record['content']).decode('utf-8')
+            encoded = ''.join(str(record['content']).split())
+            sources[path] = base64.b64decode(encoded, validate=True).decode('utf-8')
         except (KeyError, ValueError, UnicodeDecodeError) as exc:
             raise ValueError(f'Cannot read managed Light contract file: {path}') from exc
     missing = [
@@ -222,7 +229,8 @@ def license_sha(commit):
     if record.get('license', {}).get('spdx_id') != 'MIT':
         raise ValueError('Upstream exact commit is not MIT licensed')
     try:
-        content = base64.b64decode(record['content'])
+        encoded = ''.join(str(record['content']).split())
+        content = base64.b64decode(encoded, validate=True)
     except (KeyError, ValueError) as exc:
         raise ValueError('Upstream exact commit has no readable LICENSE') from exc
     if not content.lstrip().startswith(b'MIT License'):
@@ -310,19 +318,27 @@ def _stable_release(row):
         return None
 
 
-def _stable_manifest_present():
+def _stable_manifest_present(rows):
+    """Require the manifest to point at an actually published stable Release."""
     target = Path(f'bucket/{APP}.json')
     if not target.exists():
         return False
     try:
-        current = json.loads(target.read_text(encoding='utf-8'))['version']
-        return distribution_version_key(current)[0] == 1
-    except (KeyError, ValueError):
+        data = json.loads(target.read_text(encoding='utf-8'))
+        current = data['version']
+        if distribution_version_key(current)[0] != 1:
+            return False
+        release_tag_value = f'{APP}/v{current}'
+        url = data['architecture']['64bit']['url']
+        expected_suffix = f'/releases/download/{quote(release_tag_value, safe="")}/{APP}-{current}-windows-x64.zip'
+        if not url.endswith(expected_suffix):
+            return False
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
-
-
-def _has_stable_release(rows):
-    return any(_stable_release(row) is not None for row in rows)
+    return any(
+        row.get('tag_name') == release_tag_value and _stable_release(row) is not None
+        for row in rows
+    )
 
 
 def _read_json(path):
@@ -404,8 +420,8 @@ def _plan_development():
     pull_request = event == 'pull_request'
     repository = '' if pull_request else os.environ.get('GITHUB_REPOSITORY', '')
     rows = [] if pull_request else _release_rows(repository)
-    if not pull_request and (_has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present()):
-        print('Development tracking has ended: a stable Hermes Desktop Light release exists')
+    if not pull_request and (CHANNEL_RECORD.exists() or _stable_manifest_present(rows)):
+        print('Development tracking has ended after a published stable Release and manifest update')
         output(build='false', channel='development', transition='stable')
         return
     pointer = None if pull_request else _read_json(DEV_POINTER)
@@ -425,19 +441,21 @@ def _plan_development():
             sequence = int(pointer['version'].split('.dev.', 1)[1].split('-r', 1)[0])
             previous_revision = dev_version_key(pointer['version'])[1]
             if pointer.get('conditionsFingerprint') == fingerprint:
-                if requested != previous_revision:
-                    raise ValueError('Same development build conditions require the existing revision')
-                print('Development build is already published for this commit and conditions')
-                output(build='false', channel='development')
-                return
+                if requested <= previous_revision:
+                    print('Development build is already published for this commit and conditions')
+                    output(build='false', channel='development')
+                    return
+                raise ValueError('Same development build conditions require the existing revision')
             if requested <= previous_revision:
                 raise ValueError('Development conditions changed; workflow_dispatch with a higher revision is required')
         elif same_commit:
             sequence = max(item[0] for item in same_commit)
             previous_revision = max(item[1] for item in same_commit)
             if requested <= previous_revision:
-                requested = previous_revision
-            elif not explicit:
+                print('Development revision already published for this commit; no-op')
+                output(build='false', channel='development')
+                return
+            if not explicit:
                 raise ValueError('Development revisions above r1 require workflow_dispatch')
         else:
             sequence = max((item[0] for item in published), default=0) + 1
@@ -475,6 +493,24 @@ def _verify_common_stamp(archive, record):
     stamp = json.loads(archive.read('resources/install-stamp.json'))
     if any(stamp.get(key) != record[key] for key in ('commit', 'payload', 'updateMechanism')):
         raise ValueError('Packaged provenance mismatch')
+
+def verify_acceptance_evidence(record, version, source_ref):
+    """Require a passed Windows acceptance receipt for the exact artifact."""
+    path = Path(os.environ.get('ACCEPTANCE_EVIDENCE', 'acceptance/acceptance.json'))
+    if not path.is_file():
+        raise ValueError(f'Acceptance evidence is missing: {path}')
+    try:
+        evidence = json.loads(path.read_text(encoding='utf-8-sig'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError('Acceptance evidence is unreadable') from exc
+    if evidence.get('status') != 'passed':
+        raise ValueError('Acceptance evidence is not passed')
+    if evidence.get('sourceRef') != source_ref or evidence.get('commit') != record.get('commit'):
+        raise ValueError('Acceptance evidence source identity mismatch')
+    if evidence.get('bucketPackageVersion') != version:
+        raise ValueError('Acceptance evidence package version mismatch')
+    if evidence.get('artifact') != record.get('artifact') or evidence.get('artifactSha256') != record.get('sha256'):
+        raise ValueError('Acceptance evidence artifact mismatch')
 
 
 def verify_artifact(root, record, version, source_ref, channel='stable', expected_conditions=None):
@@ -630,6 +666,7 @@ def _publish_development():
     if _has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present():
         raise ValueError('Development publication is closed after the stable transition')
     record = json.loads((Path('output') / 'provenance.json').read_text(encoding='utf-8-sig'))
+    verify_acceptance_evidence(record, version, source_ref)
     if record.get('licenseSha256') != license_digest:
         raise ValueError('Build license digest does not match the admitted commit')
     artifact = verify_artifact(Path('output'), record, version, source_ref, 'development', fingerprint)
@@ -699,10 +736,13 @@ def _publish_stable():
     upstream_tag = os.environ.get('UPSTREAM_TAG', 'v' + '.'.join(map(str, version_key(version)[:3])))
     if not re.fullmatch(r'v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)', upstream_tag):
         raise ValueError('Stable upstream tag is invalid')
+    upstream_release = api(f'repos/{UPSTREAM}/releases/tags/{upstream_tag}')
+    validate_upstream_release(upstream_release, upstream_tag, version)
     upstream_commit = _commit(api(f'repos/{UPSTREAM}/commits/{upstream_tag}')['sha'])
     if source_ref != upstream_commit:
         raise ValueError('Upstream tag moved or build has wrong source')
     record = json.loads((root / 'provenance.json').read_text(encoding='utf-8-sig'))
+    verify_acceptance_evidence(record, version, source_ref)
     artifact = verify_artifact(root, record, version, upstream_tag)
     if record['commit'] != upstream_commit:
         raise ValueError('Upstream tag moved or build has wrong source')
