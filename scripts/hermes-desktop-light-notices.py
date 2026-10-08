@@ -656,6 +656,47 @@ def graph_emitter_audit_limitations(roots: list[Path]) -> list[str]:
         limitations.extend(values)
     return limitations
 
+IMPORT_SPECIFIER = re.compile(
+    r"""(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\(|\burl\(\s*)['"]([^'"]+)['"]"""
+)
+
+
+def fallback_production_packages(source: Path) -> list[tuple[str, Path]]:
+    """Use app-owned source imports as a conservative fallback when maps are unavailable."""
+    desktop = source / "apps" / "desktop"
+    metadata = read_json(desktop / "package.json")
+    declared = set(metadata.get("dependencies", {})) | set(metadata.get("optionalDependencies", {}))
+    if not declared:
+        return []
+    found: dict[str, Path] = {}
+    roots = [desktop / "src", desktop / "electron"]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or "node_modules" in path.parts or path.suffix.lower() not in {
+                ".css", ".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"
+            }:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for specifier in IMPORT_SPECIFIER.findall(text):
+                candidate = specifier.replace("\\", "/")
+                if "/node_modules/" in candidate:
+                    candidate = candidate.split("/node_modules/", 1)[1]
+                if candidate.startswith((".", "/", "#")):
+                    continue
+                parts = candidate.split("/")
+                name = "/".join(parts[:2]) if candidate.startswith("@") and len(parts) > 1 else parts[0]
+                if name not in declared:
+                    continue
+                package_dir = resolve_package(desktop, name)
+                if package_dir is not None:
+                    found[name] = package_dir
+    return sorted(found.items(), key=lambda item: (item[0].lower(), str(item[1]).lower()))
+
 
 def app_owned_source(source: Path, path: Path) -> bool:
     roots = (source / "apps" / "desktop", source / "scripts")
@@ -922,6 +963,17 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             )
             entry["modules"] += 1
             module_count += 1
+    if not map_files and not metafile_files:
+        audit_limitations.append("No source maps or esbuild metafiles were available")
+    fallback_names: set[str] = set()
+    if audit_limitations:
+        try:
+            for package_name, package_dir in fallback_production_packages(source):
+                add_graph_package(packages, (package_name, package_dir))
+                fallback_names.add(package_name)
+                module_count += 1
+        except RuntimeError as exc:
+            audit_limitations.append(f"Production dependency fallback unavailable: {exc}")
     try:
         for package in css_asset_packages(css_files):
             add_graph_package(packages, package)
@@ -940,10 +992,11 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         )
     else:
         shipped_files = set()
-    if not map_files and not metafile_files:
-        audit_limitations.append("No source maps or esbuild metafiles were available")
     if not packages:
         audit_limitations.append("No package modules were resolved from bundle evidence")
+    for entry in packages.values():
+        if entry["name"] in fallback_names:
+            entry["evidence"] = "fallback-production-source"
     for entry in packages.values():
         package_dir = Path(entry["path"])
         try:
@@ -1098,7 +1151,7 @@ def collect_packages(
         if not (package_hint / "package.json").is_file():
             raise RuntimeError(f"Bundle module graph package is missing: {relative}")
         bundle_names.add(name)
-        enqueue(desktop, name, package_hint, "bundle-map")
+        enqueue(desktop, name, package_hint, "fallback-evidence" if entry.get("evidence") else "bundle-map")
     if inventory is not None:
         inventory.clear()
         inventory.update(

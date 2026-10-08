@@ -276,6 +276,7 @@ class NoticeTests(unittest.TestCase):
     def test_bundled_dev_dependency_is_detected_from_source_map(self):
         mit = (
             'MIT License\n\nCopyright (c) 2025 Bundle Author\n\n'
+
             'Permission is hereby granted, free of charge, to any person obtaining a copy\n'
             'of this software and associated documentation files (the "Software"), to deal\n'
             'in the Software without restriction, including without limitation the rights\n'
@@ -387,6 +388,43 @@ class NoticeTests(unittest.TestCase):
                 [(name, version) for name, version, *_ in packages],
                 [('@nous-research/ui', '0.18.2')],
             )
+    def test_missing_source_maps_use_production_import_fallback(self):
+        mit = (
+            'MIT License\n\nCopyright (c) 2025 Fallback Author\n\n'
+            'Permission is hereby granted, free of charge, to any person obtaining a copy\n'
+            'of this software and associated documentation files (the "Software"), to deal\n'
+            'in the Software without restriction, including without limitation the rights\n'
+            'to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n'
+            'copies of the Software, and to permit persons to whom the Software is\n'
+            'furnished to do so, subject to the following conditions:\n\n'
+            'The above copyright notice and this permission notice shall be included in all\n'
+            'copies or substantial portions of the Software.\n\n'
+            'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.\n'
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            source = Path(scratch) / 'source'
+            desktop = source / 'apps' / 'desktop'
+            (desktop / 'src').mkdir(parents=True)
+            (desktop / 'package.json').write_text(
+                json.dumps({'name': 'desktop', 'dependencies': {'fallback-package': '1.0.0'}}),
+                encoding='utf-8',
+            )
+            package = desktop / 'node_modules' / 'fallback-package'
+            package.mkdir(parents=True)
+            (package / 'package.json').write_text(
+                json.dumps({'name': 'fallback-package', 'version': '1.0.0', 'license': 'MIT'}),
+                encoding='utf-8',
+            )
+            (package / 'LICENSE').write_text(mit, encoding='utf-8')
+            (desktop / 'src' / 'main.ts').write_text(
+                "import fallback from 'fallback-package'; console.log(fallback);",
+                encoding='utf-8',
+            )
+            graph = notices.bundle_module_graph(source)
+            self.assertIn('No source maps or esbuild metafiles were available', graph['auditLimitations'])
+            self.assertEqual(graph['packages'][0]['name'], 'fallback-package')
+            self.assertEqual(graph['packages'][0]['evidence'], 'fallback-production-source')
+
 
     def test_unattributed_shipped_asset_is_recorded_as_audit_limitation(self):
         with tempfile.TemporaryDirectory() as scratch, patch.object(
