@@ -189,8 +189,8 @@ renderer Viteのsource mapとmain/preload esbuildのmetafileを出力し、そ�
 source moduleの`url(...)`からpackage-owned assetも同じbundle graphへ追加する。
 `devDependencies`はこのbundle graphで実際に参照されたものだけを含め、package.jsonに
 列挙されただけの未出荷build-time toolingやproduction graph全体は通知対象にしない。
-map/metafile、CSS emitter manifest/sourceを取得できない場合、またはsource pathからpackageを
-解決できない場合はfail-closedとする。
+map/metafile、CSS source、asset-origin manifestを取得できない場合、またはsource pathから
+package/app-owned fileを解決できない場合はfail-closedとする。
 
 このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
 PowerShell build stepは、本番electron-builderが生成した上流の永続出力
@@ -198,6 +198,12 @@ PowerShell build stepは、本番electron-builderが生成した上流の永続�
 後にbuilderがpackした同じディレクトリ）として読み取る。同じstepで管理対象Vite/esbuild実行
 からsource map/metafileとCSS source manifestを`apps/desktop/.hermes-bundle-graph`へ保存し、
 graphの入力を作る。
+asset-origin manifestはCSS、font、image、wasm、worker等のVite出力ごとに
+originating source pathを記録する。notice stepは`app.asar/dist`と
+`app.asar.unpacked/dist`の全ファイル（JS/CSS/assetを含む）を列挙し、JSはsource
+map/metafile、その他はasset-origin manifestまたは`apps/desktop/src`/`public`/
+`electron`等の明示的app-owned sourceへ帰属できないファイルを一覧付きでfail-closedにする。
+`dist/node_modules`はASAR/unpackedの物理package scanで引き続き被覆する。
 永続`dist`のJS chunk setと内容を、`resources/app.asar` headerのoffsetおよび
 `resources/app.asar.unpacked/dist`から読み取ったwin-unpackedの実体と突合し、setまたはbytesが
 違えばnotice生成前にfail-closedする（末尾の`//# sourceMappingURL=`行だけは比較から除外）。

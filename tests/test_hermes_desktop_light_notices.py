@@ -341,6 +341,9 @@ class NoticeTests(unittest.TestCase):
                 encoding='utf-8',
             )
             (package / 'LICENSE').write_text(notices.MIT_LICENSE_TEXT, encoding='utf-8')
+            asset = package / 'dist' / 'fonts' / 'Collapse-Bold.woff2'
+            asset.parent.mkdir(parents=True)
+            asset.write_bytes(b'font bytes')
             (desktop / 'src' / 'styles.css').write_text(
                 '@font-face { src: url("../../../node_modules/@nous-research/ui/dist/fonts/Collapse-Bold.woff2"); }',
                 encoding='utf-8',
@@ -355,7 +358,18 @@ class NoticeTests(unittest.TestCase):
             emitter = desktop / '.hermes-bundle-graph'
             emitter.mkdir()
             (emitter / 'graph-emitter.json').write_text(
-                json.dumps({'schema': 1, 'cssSources': ['apps/desktop/src/styles.css']}),
+                json.dumps(
+                    {
+                        'schema': 1,
+                        'cssSources': ['apps/desktop/src/styles.css'],
+                        'assetSources': {
+                            'assets/index.css': ['apps/desktop/src/styles.css'],
+                            'assets/Collapse-Bold.woff2': [
+                                'node_modules/@nous-research/ui/dist/fonts/Collapse-Bold.woff2'
+                            ],
+                        },
+                    }
+                ),
                 encoding='utf-8',
             )
             bundle_graph = notices.bundle_module_graph(source)
@@ -371,6 +385,28 @@ class NoticeTests(unittest.TestCase):
                 [(name, version) for name, version, *_ in packages],
                 [('@nous-research/ui', '0.18.2')],
             )
+
+    def test_unattributed_shipped_asset_fails_closed(self):
+        with tempfile.TemporaryDirectory() as scratch, patch.object(
+            notices, 'shipped_dist_files', return_value={'assets/unattributed.bin'}
+        ):
+            source = Path(scratch) / 'source'
+            dist = source / 'apps' / 'desktop' / 'dist' / 'assets'
+            dist.mkdir(parents=True)
+            (dist / 'index.js.map').write_text(
+                json.dumps({'version': 3, 'sources': []}),
+                encoding='utf-8',
+            )
+            emitter = source / 'apps' / 'desktop' / '.hermes-bundle-graph'
+            emitter.mkdir()
+            (emitter / 'graph-emitter.json').write_text(
+                json.dumps({'schema': 1, 'cssSources': [], 'assetSources': {}}),
+                encoding='utf-8',
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, r'Unattributed packaged app dist files:\s+- assets/unattributed.bin'
+            ):
+                notices.bundle_module_graph(source, Path(scratch) / 'pack')
 
     def test_bundle_module_graph_missing_fails_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
