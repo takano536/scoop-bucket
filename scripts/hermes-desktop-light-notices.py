@@ -10,10 +10,12 @@ import shutil
 import struct
 import urllib.request
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 UPSTREAM = "NousResearch/hermes-agent"
 THIRD_PARTY_FILE = "THIRD-PARTY-NOTICES.txt"
 UNOFFICIAL_FILE = "UNOFFICIAL-BUILD.txt"
+BUNDLE_GRAPH_FILE = "hermes-bundle-module-graph.json"
 
 # NPM packages normally carry one of these files. Keep LICENSE and NOTICE
 # separate: a NOTICE file contains attribution text, not the license terms.
@@ -371,28 +373,70 @@ def has_package_copyright(text: str) -> bool:
     return False
 
 
-def validate_license_text(declaration: str, text: str, name: str) -> None:
+MIT_REQUIRED_MARKERS = (
+    "Permission is hereby granted",
+    "THE SOFTWARE IS PROVIDED",
+)
+
+
+def has_placeholder_copyright(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        placeholder in lowered
+        for placeholder in (
+            "<copyright holders>",
+            "[copyright holders]",
+            "[year] [fullname]",
+            "<year> <fullname>",
+            "copyright (c) [year]",
+        )
+    )
+
+
+def validate_license_text(
+    declaration: str,
+    text: str,
+    name: str,
+    *,
+    package_supplied: bool = False,
+) -> None:
     identifiers = spdx_identifiers(declaration) or []
     if "MPL-2.0" in identifiers:
         missing = [marker for marker in MPL_REQUIRED_MARKERS if marker not in text]
         if missing:
             raise RuntimeError(f"Incomplete MPL-2.0 license text for shipped package {name}")
-    if "MIT" in identifiers and not has_package_copyright(text):
-        raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
+    if "MIT" in identifiers:
+        missing = [marker for marker in MIT_REQUIRED_MARKERS if marker not in text]
+        if missing:
+            raise RuntimeError(f"Incomplete MIT license text for shipped package {name}")
+        if has_placeholder_copyright(text):
+            raise RuntimeError(f"MIT license text has placeholder copyright for shipped package {name}")
+        if not package_supplied and not has_package_copyright(text):
+            raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
 
 
-MPL_SOURCE_AVAILABILITY = {
-    "@novnc/novnc@1.7.0": (
+def novnc_source_availability(origins: set[str]) -> str:
+    if origins == {"bundle-map"}:
+        location = (
+            "The package's JavaScript was inlined and minified into the renderer "
+            "bundle; no unmodified @novnc/novnc node_modules directory was shipped."
+        )
+    elif "asar" in origins or "unpacked" in origins:
+        location = (
+            "The package's unmodified node_modules files are shipped in the "
+            "application payload; any separately bundled code remains executable form."
+        )
+    else:
+        location = "The package's executable-form location was not classified."
+    return (
         "MPL-2.0 Source Code Form availability: the unmodified source for this "
         "package is available from the exact npm tarball "
         "https://registry.npmjs.org/@novnc/novnc/-/novnc-1.7.0.tgz "
         "(SHA256 32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903) "
         "and upstream noVNC commit "
         "https://github.com/novnc/noVNC/tree/63107bd06d9e1f6136ff21aeda8cd62cbf0d433e. "
-        "The executable form may contain minified/modified bundles; these locations "
-        "provide the corresponding Source Code Form."
-    ),
-}
+        f"{location} These locations provide the corresponding Source Code Form."
+    )
 
 
 def license_text(
@@ -401,6 +445,7 @@ def license_text(
     name: str,
     overrides: dict[str, dict] | None = None,
     used_overrides: set[str] | None = None,
+    source_origins: set[str] | None = None,
 ) -> tuple[str, str]:
     if overrides is None:
         overrides = load_license_overrides()
@@ -452,7 +497,7 @@ def license_text(
                 f"License override does not match the shipped license file for {key}"
             )
         text = "\n\n".join([reconstructed, *notice_pieces])
-        validate_license_text(declaration, text, name)
+        validate_license_text(declaration, text, name, package_supplied=True)
         return declaration, text
 
     if not license_pieces:
@@ -472,12 +517,149 @@ def license_text(
             raise RuntimeError(f"Found NOTICE without a LICENSE text for shipped package {name}")
         raise RuntimeError(f"Cannot determine a license text for shipped package {name} ({declaration or 'no declaration'})")
     text = "\n\n".join(license_pieces + notice_pieces)
-    if key in MPL_SOURCE_AVAILABILITY:
-        text = f"{text}\n\n{MPL_SOURCE_AVAILABILITY[key]}"
-    validate_license_text(declaration, text, name)
+    if name == "@novnc/novnc" and source_origins is not None:
+        text = f"{text}\n\n{novnc_source_availability(source_origins)}"
+    validate_license_text(
+        declaration,
+        text,
+        name,
+        package_supplied=bool(license_pieces),
+    )
     return declaration or "See included license file", text
 
 
+def package_at_path(path: Path) -> tuple[str, Path] | None:
+    """Resolve the nearest package directory for a source-map source path."""
+    for ancestor in (path.parent, *path.parents):
+        if ancestor.name != "node_modules":
+            continue
+        try:
+            relative = path.relative_to(ancestor)
+        except ValueError:
+            continue
+        parts = relative.parts
+        if not parts or parts[0] == ".pnpm":
+            continue
+        package_parts = 2 if parts[0].startswith("@") else 1
+        if len(parts) < package_parts:
+            continue
+        package_dir = ancestor.joinpath(*parts[:package_parts])
+        package_json = package_dir / "package.json"
+        if not package_json.is_file():
+            continue
+        metadata = read_json(package_json)
+        package_name = metadata.get("name")
+        if isinstance(package_name, str) and package_name:
+            return package_name, package_dir.resolve()
+    return None
+
+
+def source_map_path(map_file: Path, source_name: str) -> Path:
+    source_name = unquote(source_name.split("?", 1)[0])
+    if "://" in source_name:
+        parsed = urlparse(source_name)
+        source_name = unquote(parsed.path)
+    return (map_file.parent / source_name).resolve()
+
+
+def bundle_module_graph(source: Path) -> dict:
+    """Read Vite source maps and esbuild metafiles emitted by the controlled build."""
+    roots = [
+        source / "apps" / "desktop" / "dist",
+        source / "apps" / "desktop" / ".hermes-bundle-graph",
+    ]
+    map_files = sorted(
+        {
+            path.resolve()
+            for root in roots
+            if root.is_dir()
+            for path in root.rglob("*.map")
+            if path.is_file()
+        },
+        key=lambda item: str(item).lower(),
+    )
+    metafile_files = sorted(
+        {
+            path.resolve()
+            for root in roots
+            if root.is_dir()
+            for path in root.rglob("*.metafile.json")
+            if path.is_file()
+        },
+        key=lambda item: str(item).lower(),
+    )
+    packages: dict[tuple[str, Path], dict] = {}
+    module_count = 0
+    for map_file in map_files:
+        try:
+            metadata = json.loads(map_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot read bundle source map: {map_file}") from exc
+        sources = metadata.get("sources")
+        if not isinstance(sources, list):
+            continue
+        for source_name in sources:
+            if not isinstance(source_name, str):
+                continue
+            package = package_at_path(source_map_path(map_file, source_name))
+            if package is None:
+                continue
+            package_name, package_dir = package
+            key = (package_name, package_dir)
+            entry = packages.setdefault(
+                key,
+                {"name": package_name, "path": str(package_dir), "modules": 0},
+            )
+            entry["modules"] += 1
+            module_count += 1
+    for metafile in metafile_files:
+        try:
+            metadata = json.loads(metafile.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot read bundle metafile: {metafile}") from exc
+        inputs = metadata.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for input_name in inputs:
+            if not isinstance(input_name, str):
+                continue
+            package = package_at_path(source_map_path(metafile, input_name))
+            if package is None:
+                continue
+            package_name, package_dir = package
+            key = (package_name, package_dir)
+            entry = packages.setdefault(
+                key,
+                {"name": package_name, "path": str(package_dir), "modules": 0},
+            )
+            entry["modules"] += 1
+            module_count += 1
+    if not map_files and not metafile_files:
+        raise RuntimeError("Cannot obtain bundled module graph: no source maps or esbuild metafiles")
+    if not packages:
+        raise RuntimeError("Cannot obtain bundled module graph: no package modules found")
+    for entry in packages.values():
+        package_dir = Path(entry["path"])
+        try:
+            entry["path"] = package_dir.relative_to(source).as_posix()
+        except ValueError as exc:
+            raise RuntimeError(f"Bundle module resolves outside source checkout: {package_dir}") from exc
+    return {
+        "schema": 1,
+        "maps": [path.relative_to(source).as_posix() for path in map_files],
+        "metafiles": [path.relative_to(source).as_posix() for path in metafile_files],
+        "moduleCount": module_count,
+        "packages": sorted(packages.values(), key=lambda item: (item["name"].lower(), item["path"].lower())),
+    }
+
+
+def bundle_package_origins(bundle_graph: dict) -> dict[str, set[str]]:
+    origins: dict[str, set[str]] = {}
+    for entry in bundle_graph.get("packages", []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            continue
+        origins.setdefault(entry["name"], set()).add("bundle-map")
+    return origins
 def asar_node_modules(pack: Path) -> set[str]:
     """Read package paths from the ASAR header without extracting payload bytes."""
     asar = pack / "resources" / "app.asar"
@@ -535,29 +717,61 @@ def package_identity(package_dir: Path, metadata: dict) -> str:
     return name
 
 
-def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str, Path]]:
+def collect_packages(
+    source: Path,
+    pack: Path,
+    bundle_graph: dict | None = None,
+    inventory: dict | None = None,
+) -> list[tuple[str, str, str, str, Path]]:
     desktop = source / "apps" / "desktop"
-    desktop_meta = read_json(desktop / "package.json")
+    read_json(desktop / "package.json")
     overrides = load_license_overrides()
     used_overrides: set[str] = set()
     optional_names = optional_package_names(source)
-    direct = {}
-    for field, is_optional in (("dependencies", False), ("optionalDependencies", True)):
-        values = desktop_meta.get(field, {})
-        if isinstance(values, dict):
-            for name in values:
-                direct[name] = direct.get(name, True) and is_optional
-    queue = [(desktop, name, optional) for name, optional in sorted(direct.items())]
-    for name in sorted(asar_node_modules(pack)):
-        queue.append((desktop, name, False))
-    for name in sorted(unpacked_node_modules(pack)):
-        queue.append((desktop, name, False))
+    asar_names = asar_node_modules(pack)
+    unpacked_names = unpacked_node_modules(pack)
+    bundle_graph = bundle_graph or {"packages": []}
+    queue: list[tuple[Path, str, bool, Path | None, str | None]] = []
+    origins: dict[str, set[str]] = {}
+
+    def enqueue(parent: Path, name: str, optional: bool, hint: Path | None, origin: str | None) -> None:
+        queue.append((parent, name, optional, hint, origin))
+        if origin is not None:
+            origins.setdefault(name, set()).add(origin)
+
+    for name in sorted(asar_names):
+        enqueue(desktop, name, False, None, "asar")
+    for name in sorted(unpacked_names):
+        enqueue(desktop, name, False, None, "unpacked")
+    bundle_names: set[str] = set()
+    for entry in bundle_graph.get("packages", []):
+        if not isinstance(entry, dict):
+            raise RuntimeError("Bundle module graph contains an invalid package entry")
+        name = entry.get("name")
+        relative = entry.get("path")
+        if not isinstance(name, str) or not isinstance(relative, str):
+            raise RuntimeError("Bundle module graph package lacks name or path")
+        package_hint = (source / relative).resolve()
+        if not (package_hint / "package.json").is_file():
+            raise RuntimeError(f"Bundle module graph package is missing: {relative}")
+        bundle_names.add(name)
+        enqueue(desktop, name, False, package_hint, "bundle-map")
+    if inventory is not None:
+        inventory.clear()
+        inventory.update(
+            {
+                "asar": len(asar_names),
+                "unpacked": len(unpacked_names),
+                "bundleMap": len(bundle_names),
+                "origins": origins,
+            }
+        )
     visited: set[Path] = set()
     packages = []
     license_failures: list[str] = []
     while queue:
-        parent, name, optional = queue.pop(0)
-        package_dir = resolve_package(parent, name)
+        parent, name, optional, hint, origin = queue.pop(0)
+        package_dir = hint if hint is not None else resolve_package(parent, name)
         if package_dir is None:
             if optional:
                 continue
@@ -567,6 +781,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
         visited.add(package_dir)
         metadata = read_json(package_dir / "package.json")
         package_name = package_identity(package_dir, metadata)
+        package_origins = origins.get(package_name, set())
         if not is_workspace_package(source, package_dir):
             try:
                 license_name, text = license_text(
@@ -575,6 +790,7 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
                     package_name,
                     overrides,
                     used_overrides,
+                    package_origins,
                 )
             except RuntimeError as exc:
                 license_failures.append(f"{package_name}@{metadata['version']}: {exc}")
@@ -585,7 +801,8 @@ def collect_packages(source: Path, pack: Path) -> list[tuple[str, str, str, str,
             values = metadata.get(field, {})
             if isinstance(values, dict):
                 dependency_optional = is_optional or package_name in optional_names or is_platform_package(package_name)
-                queue.extend((package_dir, child, dependency_optional) for child in sorted(values))
+                for child in sorted(values):
+                    enqueue(package_dir, child, dependency_optional, None, None)
     try:
         validate_unused_overrides(overrides, used_overrides)
     except RuntimeError as exc:
@@ -606,13 +823,24 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     if target_license.read_bytes() != source_license.read_bytes():
         raise RuntimeError("Copied upstream license does not match the checked-out source")
 
-    packages = collect_packages(source, pack)
+    bundle_graph = bundle_module_graph(source)
+    graph_target = pack / "resources" / BUNDLE_GRAPH_FILE
+    graph_target.parent.mkdir(parents=True, exist_ok=True)
+    graph_target.write_text(
+        json.dumps(bundle_graph, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    inventory: dict = {}
+    packages = collect_packages(source, pack, bundle_graph, inventory)
     lines = [
         "THIRD-PARTY NOTICES",
         "=======================",
         "",
         "These notices cover code present in the Hermes Desktop Light win-unpacked payload.",
-        "The set comes from the app.asar header, bundled production dependency graph, and physical node_modules under resources/app.asar.unpacked and resources; devDependencies and unshipped build tooling are excluded.",
+        "The inventory is the union of package paths in the app.asar header, physical node_modules under resources/app.asar.unpacked/resources, and package modules identified in the emitted Vite source maps and esbuild metafiles.",
+        "DevDependencies and build tooling are included only when the bundle graph proves that their modules shipped; packages listed only in package.json are not included.",
+        f"Inventory source counts (unique package names): asar={inventory['asar']}; unpacked={inventory['unpacked']}; bundle-map={inventory['bundleMap']}.",
         f"Upstream repository: {UPSTREAM}",
         f"Upstream source ref: {source_ref}",
         f"Upstream commit: {commit}",
@@ -658,6 +886,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "License files in this package:",
                 "- LICENSE: Hermes Agent upstream MIT license.",
                 f"- {THIRD_PARTY_FILE}: bundled production dependency license notices.",
+                f"- resources/{BUNDLE_GRAPH_FILE}: emitted bundle module inventory.",
                 "- LICENSE.electron.txt: Electron license.",
                 "- LICENSES.chromium.html: Chromium component licenses.",
                 "",
@@ -674,8 +903,17 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
         "bucketCommit": bucket_commit,
         "run": run_url,
         "upstreamLicense": {"path": "LICENSE", "sha256": sha256(target_license)},
-        "thirdParty": {"path": THIRD_PARTY_FILE, "sha256": sha256(third_party), "packages": len(packages)},
-        "unofficial": {"path": UNOFFICIAL_FILE, "sha256": sha256(unofficial)},
+        "bundleGraph": {"path": f"resources/{BUNDLE_GRAPH_FILE}", "sha256": sha256(graph_target), "modules": bundle_graph["moduleCount"]},
+        "thirdParty": {
+            "path": THIRD_PARTY_FILE,
+            "sha256": sha256(third_party),
+            "packages": len(packages),
+            "inventory": {
+                "asar": inventory["asar"],
+                "unpacked": inventory["unpacked"],
+                "bundleMap": inventory["bundleMap"],
+            },
+        },
     }
 
 

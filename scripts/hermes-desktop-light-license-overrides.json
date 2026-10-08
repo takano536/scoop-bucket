@@ -15,7 +15,25 @@
         "path": "package/README.md"
       }
     },
-    "note": "The exact npm tarball omits a license file. The immutable package README commit publishes the package-specific MIT attribution; this reviewed override fetches and hashes that README before reconstructing the standard MIT text with the cited copyright line."
+    "note": "The exact npm tarball omits a license file. Tag @audiowave/react@0.6.2 resolves to immutable commit 677823284c7fc9f0baf9e62a6d912192a7eb15f9, whose packages/react/package.json is version 0.6.2. That commit has no root or packages/react LICENSE file; its root README publishes the package-specific MIT attribution. This reviewed override fetches and hashes that README before reconstructing the standard MIT text with the cited copyright line."
+  },
+  "@audiowave/core@0.3.1": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) teomyth",
+    "evidence": {
+      "kind": "attribution",
+      "url": "https://raw.githubusercontent.com/teomyth/audiowave/677823284c7fc9f0baf9e62a6d912192a7eb15f9/README.md",
+      "path": "README.md",
+      "sha256": "b131e67bff8cde4879eb0ba4595ab70cb99a0fcd6b9a76f06dc71f230cf0c87d",
+      "retrieval": "npm view @audiowave/core@0.3.1 dist.tarball dist.integrity gitHead repository license; git ls-remote --tags audiowave; curl -fsSL <immutable README URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/@audiowave/core/-/core-0.3.1.tgz",
+        "integrity": "sha512-KtC2MTWKp6Orkedty3I8IklVBVQ2IFaFWDJ1cz+UsACpX2x1gINwZGTRZT7bw/dx8KazNSMuVK5lm1jL67KQkQ==",
+        "sha256": "298f1ab351d798ffa2eefb7962cf39afddd1e58b87d8ffb21377bf5a240f8485",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact tarball contains no license file or README. Tag @audiowave/core@0.3.1 resolves to the same immutable commit 677823284c7fc9f0baf9e62a6d912192a7eb15f9, whose packages/core/package.json is version 0.3.1 and whose root README supplies the same MIT attribution used for @audiowave/react@0.6.2. No root or packages/core LICENSE exists, so the reviewed root-README attribution evidence is used."
   },
   "khroma@2.1.0": {
     "spdx": "MIT",

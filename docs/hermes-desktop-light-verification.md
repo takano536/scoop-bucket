@@ -183,47 +183,58 @@ package固有の権利表示を収録する。Electron/Chromiumの既存
 
 通知対象は `win-unpacked` の実体を基準にする。`resources/app.asar` のheaderから
 bundleに残る `dist/node_modules` packageを読み取り、`resources/app.asar.unpacked`
-と `resources` 配下の物理 `node_modules` も走査する。renderer/main bundleへ
-インライン化されたpackageは、bundler metadataまたはproduction dependency graphで
-同定できる場合に含め、desktop/workspaceの `devDependencies` や、artifactへ入らない
-build-time toolingは含めない。物理inventoryまたはproduction graphにあるpackageを
-解決できない場合はfail-closedとする。
+と `resources` 配下の物理 `node_modules` も走査する。さらに管理対象のbuild stepが
+renderer Viteのsource mapとmain/preload esbuildのmetafileを出力し、そのsource path
+からbundleへinline化されたpackageを解決してunionする。`devDependencies`はこの
+bundle graphで実際に参照されたものだけを含め、package.jsonに列挙されただけの
+未出荷build-time toolingやproduction graph全体は通知対象にしない。map/metafileを
+取得できない場合、またはsource pathからpackageを解決できない場合はfail-closedとする。
 
-`LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文とpackage固有の権利表示を
-特定できないpackageはbuildを失敗させる。`NOTICE`だけをlicense本文として扱わず、
-MPL本文の抜粋、package固有copyright行のないMIT、未知/欠落license、汎用SPDX
-template fallbackも成功扱いにしない。license検査は依存走査の最後まで続け、
+`LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
+buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright
+行がなくても改変せず収録するが、`<copyright holders>`/`[year] [fullname]`などの
+placeholderは拒否する。bucketで再構成するMIT本文には固定sourceのcopyright evidence
+を要求する。`NOTICE`だけをlicense本文として扱わず、MPL本文の抜粋、未知/欠落license、
+汎用SPDX template fallbackも成功扱いにしない。license検査は依存走査の最後まで続け、
 失敗した全packageを一つのerror listに集約する。例外は
 `scripts/hermes-desktop-light-license-overrides.json` のexact name/versionに
 レビュー済み登録されたものだけで、package宣言とSPDXの一致、固定40文字commit URL、
-取得元、license fileのSHA256、copyright lineを検証する。未使用override entryも
-失敗させる。
+取得元、license file/sourceのSHA256、copyright line（再構成時）を検証する。未使用
+override entryも失敗させる。
 
 MPL-2.0の実行形式を配布する場合は、通知にSource Code Formの取得方法を明記する。
-noVNCについては、同梱npm tarballと対応upstream commitを固定URLで示し、minifyを
-含む実行形式に対応する未変更sourceの取得先を記録する。`UNOFFICIAL-BUILD.txt`
-には上流ref/commit、bucket commit、workflow URL、各licenseファイルの場所を記録し、
-`provenance.json`には通知ファイルのSHA256と対象package数を記録する。
+noVNCについては、inventory graphが実際の実行形式の位置を分類し、同梱npm tarballと
+対応upstream commitを固定URLで示す。bundleへinline/minifyされた場合と、未変更の
+`node_modules` fileが出荷された場合を通知で区別する。`UNOFFICIAL-BUILD.txt`には
+上流ref/commit、bucket commit、workflow URL、各licenseファイルの場所を記録し、
+`provenance.json`にはbundle graph・通知ファイルのSHA256と対象package数を記録する。
 
-`@audiowave/react@0.6.2` はnpm tarballにlicense fileがないため、固定upstream
-README commitの取得元・SHA256・`Copyright (c) teomyth` を記録したowner-review
-overrideのみを適用する。`khroma@2.1.0` はpackage.jsonのlicense宣言がないが、
-exact npm tarballの `package/license` に完全なMIT本文とcopyrightがあるため、
-そのtarball integrity/SHA256・file path・file SHA256を固定したoverrideで補う。
-同一versionの証拠が得られないpackageはoverrideを追加せずhard blockerとする。
+`@audiowave/react@0.6.2` はnpm tarballにlicense fileがなく、tag
+`@audiowave/react@0.6.2`である固定commit
+`677823284c7fc9f0baf9e62a6d912192a7eb15f9`の`packages/react/package.json`が
+version `0.6.2`であることを確認した。このcommitにはroot/`packages/react` LICENSEが
+ないため、同commitのroot README（SHA256
+`b131e67bff8cde4879eb0ba4595ab70cb99a0fcd6b9a76f06dc71f230cf0c87d`）を固定して
+MIT attribution overrideを適用する。同じcommitの`packages/core/package.json`は
+version `0.3.1`で、root READMEの同じattributionを使えるため、
+`@audiowave/core@0.3.1`も同じreviewed evidenceで解消する。`khroma@2.1.0`は
+package.jsonのlicense宣言がないが、exact npm tarballの`package/license`に完全な
+MIT本文とcopyrightがあるため、そのtarball integrity/SHA256・file path・file SHA256
+を固定したoverrideで補う。同一versionの証拠が得られないpackageはoverrideを追加せず
+hard blockerとする。
 
-### CIで追加検出した未解消項目
+### CIで追加検出したpackage evidence
 
 Hermes Desktop Lightの実CI（run `37744831557`）では、実際の`win-unpacked` inventory
-から次も検出された。`dbus-native@0.15.2` はexact npm tarball
+から`dbus-native@0.15.2`も検出された。exact npm tarball
 (`https://registry.npmjs.org/dbus-native/-/dbus-native-0.15.2.tgz`,
-SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)と、
-registryの`gitHead` `2126c95fd460c81d7b90e45a4588efdb23ba3f99`に対応するupstream
-`LICENSE`（固定URL
-`https://raw.githubusercontent.com/sidorares/dbus-native/2126c95fd460c81d7b90e45a4588efdb23ba3f99/LICENSE`,
-SHA256 `435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b`）を調査した。
-本文はMITの完全な条項だがpackage固有のcopyright holder行がなく、README/treeにも
-補足表示がないため、汎用行の追加や別versionの流用はせずfail-closedで残す。
+SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)自体に
+`package/LICENSE`（SHA256
+`435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b`）があり、
+完全なMIT条項だがholder行はない。generatorはこのpackage-supplied本文を改変せず収録し、
+holder行がないことを明記する。registry `gitHead`
+`2126c95fd460c81d7b90e45a4588efdb23ba3f99`のupstream LICENSE（同一SHA256）でも
+一致を確認した。bucket側のcopyright行追加やoverrideによる再構成は行わない。
 
 名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
 Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を

@@ -5,6 +5,37 @@ $source = Join-Path $root 'upstream'
 $out = Join-Path $root 'output'
 New-Item -ItemType Directory -Path $out | Out-Null
 $commit = (git -C $source rev-parse HEAD).Trim()
+$bundleGraphDir = Join-Path $source 'apps/desktop/.hermes-bundle-graph'
+New-Item -ItemType Directory -Path $bundleGraphDir -Force | Out-Null
+$rendererBuildPath = Join-Path $source 'scripts/build/desktop.mjs'
+$rendererBuild = Get-Content $rendererBuildPath -Raw
+$rendererMarker = 'build: { outDir: product, emptyOutDir: true },'
+if (!$rendererBuild.Contains($rendererMarker)) { throw 'Upstream renderer build marker changed; refusing to build without source maps' }
+$rendererBuild = $rendererBuild.Replace(
+    $rendererMarker,
+    'build: { outDir: product, emptyOutDir: true, sourcemap: true },'
+)
+Set-Content $rendererBuildPath -Value $rendererBuild -Encoding utf8NoBOM -NoNewline
+$mainBundlePath = Join-Path $source 'apps/desktop/scripts/bundle-electron-main.mjs'
+$mainBundle = Get-Content $mainBundlePath -Raw
+$commonMarker = '  const common = {'
+if (!$mainBundle.Contains($commonMarker)) { throw 'Upstream Electron bundle marker changed; refusing to build without metafiles' }
+$mainBundle = $mainBundle.Replace(
+    $commonMarker,
+    "  const metafileDir = process.env.HERMES_BUNDLE_METAFILE_DIR`n$commonMarker"
+)
+foreach ($entry in @(
+    @{ Output = 'electron-main.mjs'; Metafile = 'electron-main.metafile.json' },
+    @{ Output = 'electron-preload.js'; Metafile = 'electron-preload.metafile.json' },
+    @{ Output = 'preview-guest-preload.js'; Metafile = 'preview-guest-preload.metafile.json' }
+)) {
+    $old = "    outfile: join(out, '$($entry.Output)'),"
+    $new = "$old`n    metafile: metafileDir ? join(metafileDir, '$($entry.Metafile)') : undefined,"
+    if (!$mainBundle.Contains($old)) { throw "Upstream Electron bundle output marker changed: $($entry.Output)" }
+    $mainBundle = $mainBundle.Replace($old, $new)
+}
+Set-Content $mainBundlePath -Value $mainBundle -Encoding utf8NoBOM -NoNewline
+$env:HERMES_BUNDLE_METAFILE_DIR = $bundleGraphDir
 if ($env:PREVIEW -eq 'true') {
     python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
 } else {

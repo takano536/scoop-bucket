@@ -197,11 +197,12 @@ class NoticeTests(unittest.TestCase):
                     {
                         'name': 'desktop',
                         'version': '1.0.0',
-                        'dependencies': {
+                        'dependencies': {},
+                        'devDependencies': {
                             'fixture-one': '1.0.0',
                             'fixture-two': '1.0.0',
+                            'build-tool': '1.0.0',
                         },
-                        'devDependencies': {'build-tool': '1.0.0'},
                     }
                 ),
                 encoding='utf-8',
@@ -219,20 +220,29 @@ class NoticeTests(unittest.TestCase):
                     ),
                     encoding='utf-8',
                 )
+            bundle_graph = {
+                'packages': [
+                    {
+                        'name': name,
+                        'path': f'apps/desktop/node_modules/{name}',
+                    }
+                    for name in ('fixture-one', 'fixture-two')
+                ]
+            }
             with patch.object(notices, 'load_license_overrides', return_value={}), patch.object(
                 notices, 'asar_node_modules', return_value=set()
             ):
                 with self.assertRaisesRegex(
                     RuntimeError, 'License validation failed for shipped packages'
                 ) as raised:
-                    notices.collect_packages(source, root / 'pack')
+                    notices.collect_packages(source, root / 'pack', bundle_graph)
             message = str(raised.exception)
             self.assertIn('fixture-one@1.0.0', message)
             self.assertIn('fixture-two@1.0.0', message)
             self.assertLess(message.index('fixture-one@1.0.0'), message.index('fixture-two@1.0.0'))
             self.assertNotIn('build-tool@1.0.0', message)
 
-    def test_bundled_production_dependency_is_detected_without_node_modules_path(self):
+    def test_bundled_dev_dependency_is_detected_from_source_map(self):
         mit = (
             'MIT License\n\nCopyright (c) 2025 Bundle Author\n\n'
             'Permission is hereby granted, free of charge, to any person obtaining a copy\n'
@@ -254,7 +264,7 @@ class NoticeTests(unittest.TestCase):
             package = desktop / 'node_modules' / 'bundled-only'
             package.mkdir(parents=True)
             (desktop / 'package.json').write_text(
-                json.dumps({'name': 'desktop', 'version': '1.0.0', 'dependencies': {'bundled-only': '1.0.0'}}),
+                json.dumps({'name': 'desktop', 'version': '1.0.0', 'devDependencies': {'bundled-only': '1.0.0'}}),
                 encoding='utf-8',
             )
             (package / 'package.json').write_text(
@@ -262,11 +272,28 @@ class NoticeTests(unittest.TestCase):
                 encoding='utf-8',
             )
             (package / 'LICENSE').write_text(mit, encoding='utf-8')
+            dist = desktop / 'dist' / 'assets'
+            dist.mkdir(parents=True)
+            (dist / 'index.js.map').write_text(
+                json.dumps({'version': 3, 'sources': ['../../node_modules/bundled-only/index.js']}),
+                encoding='utf-8',
+            )
+            bundle_graph = notices.bundle_module_graph(source)
             with patch.object(notices, 'load_license_overrides', return_value={}), patch.object(
                 notices, 'asar_node_modules', return_value=set()
             ):
-                packages = notices.collect_packages(source, root / 'pack')
-            self.assertEqual([(name, version) for name, version, *_ in packages], [('bundled-only', '1.0.0')])
+                packages = notices.collect_packages(source, root / 'pack', bundle_graph)
+            self.assertEqual(
+                [(name, version) for name, version, *_ in packages],
+                [('bundled-only', '1.0.0')],
+            )
+
+    def test_bundle_module_graph_missing_fails_closed(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            source = Path(scratch) / 'source'
+            (source / 'apps' / 'desktop' / 'dist').mkdir(parents=True)
+            with self.assertRaisesRegex(RuntimeError, 'Cannot obtain bundled module graph'):
+                notices.bundle_module_graph(source)
 
     def test_unpacked_node_modules_reports_resources_packages(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -289,11 +316,26 @@ class NoticeTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'Cannot determine a license text'):
                     notices.license_text(package, metadata, 'fixture-package')
 
-    def test_generic_mit_template_without_copyright_fails_closed(self):
-        generic = notices.MIT_LICENSE_TEXT
+    def test_reconstructed_mit_without_copyright_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, 'no package-specific copyright'):
+            notices.validate_license_text('MIT', notices.MIT_LICENSE_TEXT, 'fixture-package')
+
+    def test_package_supplied_complete_mit_without_holder_is_retained(self):
         with tempfile.TemporaryDirectory() as scratch:
-            package, metadata = self.package(Path(scratch), 'MIT', {'LICENSE': generic})
-            with self.assertRaisesRegex(RuntimeError, 'no package-specific copyright'):
+            package, metadata = self.package(
+                Path(scratch), 'MIT', {'LICENSE': notices.MIT_LICENSE_TEXT}
+            )
+            license_name, text = notices.license_text(package, metadata, 'fixture-package')
+            self.assertEqual(license_name, 'MIT')
+            self.assertIn('Permission is hereby granted', text)
+
+    def test_package_supplied_mit_placeholder_fails_closed(self):
+        placeholder = notices.MIT_LICENSE_TEXT.replace(
+            'MIT License\n\n', 'MIT License\n\nCopyright (c) [year] [fullname]\n\n', 1
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', {'LICENSE': placeholder})
+            with self.assertRaisesRegex(RuntimeError, 'placeholder copyright'):
                 notices.license_text(package, metadata, 'fixture-package')
 
     def test_non_line_start_and_multi_holder_copyright_passes(self):
@@ -352,8 +394,15 @@ SOFTWARE.
                 },
                 name='@novnc/novnc', version='1.7.0'
             )
-            _, text = notices.license_text(package, metadata, '@novnc/novnc')
+            _, text = notices.license_text(
+                package, metadata, '@novnc/novnc', source_origins={'bundle-map'}
+            )
             self.assertIn('MPL-2.0 Source Code Form availability', text)
+            self.assertIn(
+                'inlined and minified into the renderer bundle; no unmodified '
+                '@novnc/novnc node_modules directory was shipped.',
+                text,
+            )
             self.assertIn('novnc-1.7.0.tgz', text)
             self.assertIn('63107bd06d9e1f6136ff21aeda8cd62cbf0d433e', text)
 
