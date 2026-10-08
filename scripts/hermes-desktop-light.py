@@ -24,6 +24,11 @@ DEV_TAG = re.compile(
 STABLE_TAG = re.compile(rf'^{re.escape(APP)}/v(.+)$')
 DEV_POINTER = Path('metadata/hermes-desktop-light-dev.json')
 CHANNEL_RECORD = Path('metadata/hermes-desktop-light-channel.json')
+NOTICE_PATHS = {
+    'upstreamLicense': 'LICENSE',
+    'thirdParty': 'THIRD-PARTY-NOTICES.txt',
+    'unofficial': 'UNOFFICIAL-BUILD.txt',
+}
 
 
 def stable_version(release):
@@ -515,11 +520,36 @@ def verify_artifact(root, record, version, source_ref, channel='stable', expecte
     if hashlib.sha256(artifact.read_bytes()).hexdigest() != record.get('sha256'):
         raise ValueError('Artifact digest mismatch')
     with zipfile.ZipFile(artifact) as archive:
-        names = archive.namelist()
-        if expected_executable not in names or 'resources/app.asar' not in names or any(name.startswith('resources/agent-payload/') for name in names):
+        names = set(archive.namelist())
+        required = {
+            expected_executable,
+            'resources/app.asar',
+            'LICENSE.electron.txt',
+            'LICENSES.chromium.html',
+            *NOTICE_PATHS.values(),
+        }
+        if not required <= names or any(name.startswith('resources/agent-payload/') for name in names):
             raise ValueError('Invalid Light package contents')
         if archive.testzip() is not None:
             raise ValueError('Corrupt ZIP')
+        try:
+            upstream_license = archive.read('LICENSE').decode('utf-8')
+        except UnicodeDecodeError as exc:
+            raise ValueError('Upstream license is not UTF-8') from exc
+        if 'MIT License' not in upstream_license or 'Copyright (c) 2025 Nous Research' not in upstream_license:
+            raise ValueError('Upstream MIT license is missing or unexpected')
+        notices = record.get('notices')
+        if not isinstance(notices, dict):
+            raise ValueError('Notice traceability is missing')
+        for key, path in NOTICE_PATHS.items():
+            entry = notices.get(key)
+            if (not isinstance(entry, dict) or entry.get('path') != path or
+                    not re.fullmatch(r'[a-f0-9]{64}', entry.get('sha256', ''))):
+                raise ValueError('Notice traceability is invalid')
+            if hashlib.sha256(archive.read(path)).hexdigest() != entry['sha256']:
+                raise ValueError('Notice digest mismatch')
+        if not isinstance(notices['thirdParty'].get('packages'), int) or notices['thirdParty']['packages'] < 1:
+            raise ValueError('Third-party notice package count is invalid')
         _verify_common_stamp(archive, record)
     return artifact
 

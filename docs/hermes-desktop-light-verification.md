@@ -51,6 +51,172 @@ stable公開・manifest書き戻しは、stable gateの明示許可後だけ行�
 - 既存draftに異なるビルドの部分成果物が残った場合、上書きせず停止する。
   管理者がdraftを確認する必要がある。公開済みReleaseは書き戻し再試行時に再利用する。
 
+以下のrunはこの強化前の実装による履歴であり、新しい版切替assertionおよび全PE import受入の成功証拠として扱わない。最新runでは版切替と全PE検査を実行し、未同梱VC++ redistributableが見つかったため公開blockerとして失敗した。
+最新の実Windows受入run: [37714650337](https://github.com/takano536/scoop-bucket/actions/runs/37714650337)。実測evidenceは`hermes-desktop-light-windows-acceptance` artifactへ保存した。
+
+- run: [37673954715](https://github.com/takano536/scoop-bucket/actions/runs/37673954715)
+- acceptance job: [112983466324](https://github.com/takano536/scoop-bucket/actions/runs/37673954715/job/112983466324)
+- upstream: `NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`
+- このrunのbucket commit: `371b9a0`
+- build ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`
+- ZIP SHA256: `72f30c28b60e43c31f344681a425818f8400a7515378e04ee7f09044783f7648`
+- acceptance artifact: `hermes-desktop-light-windows-acceptance`（保持14日）
+- Scoopのtest-only before/after version、Start Menu shortcut、uninstall後のapp/shortcut削除と
+  user-data残存を確認。preload bridge IPCを通じたアプリ側の認証済み`session.list`
+  WebSocket RPC、同一gatewayへのdirect Node `/api/sessions` probeの`200`、誤secretの
+  `401`、Scoop update後の設定・tokenSet保持を確認。
+- 異なるLight対応upstream commitの同一runビルドはまだないため、before/afterは
+  同じZIPを異なるtest-only versionとして使った。これはScoop更新時の設定保持を
+  検証するが、異なるバイナリ間のmigrationは証明しない。
+- 旧runのPE調査では検査対象のruntime importsと同梱CRT DLLが空だった。ただしrunnerIsCleanは
+  `false`であり、クリーンなWindowsへのruntime独立性は未証明。最新runではWindows 10+
+  API-set probeを実施し、OS提供API set/UCRTとVC++ redistributableを区別して記録した。
+- previewのin-app updaterは`mechanism=external`、`reason=commit-build`を返し、
+  applyを拒否しapp tree不変だった。local-install表示は残るが、probeは
+  `bootstrap-needed`で、ローカルagentの起動は行われなかった。
+- pinned upstream protocol basis: `apps/desktop/electron/preload.ts:49-52,276-279`
+  exposes the URL/config bridge IPC; `apps/desktop/electron/gateway-ws-probe.ts:4-13`
+  documents the renderer `/api/ws` handshake; `apps/shared/src/json-rpc-channel.ts:12-18,248-325`
+  defines JSON-RPC frames/requests; and
+  `apps/shared/src/gateway-contract.openrpc.json:3394-3410,31168-31182`
+  defines `session.list` and its `{sessions}` result.
+- updater source is also pinned: `apps/desktop/electron/updater/external.ts:20-35`
+  returns `reason=commit-build` only for `source=commit-build`, otherwise
+  `reason=bundled-not-appinstaller`; its non-commit branch returns
+  `{ok:true, manual:true, bundled:true, mechanism:'external'}`. This is
+  source-grounded, but stable behavior remains unexecuted because no stable
+  Light artifact exists.
+
+受入artifactの`acceptance.json`、`before.json`、`after.json`、runtime evidenceと
+gateway/httpログをrun artifactから取得できる。将来の別runでは、そのrunのURLと
+SHA256を追記し、未実行のrunを検証済みとは扱わない。
+
+## ライセンス通知・名称/ロゴの公開条件（PR #6）
+
+PR #6 の配布物は、対象commitの上流 `LICENSE` をそのまま `LICENSE` としてコピーし、
+`THIRD-PARTY-NOTICES.txt` に実際に同梱された第三者コードの完全なlicense本文・
+package固有の権利表示を収録する。Electron/Chromiumの既存
+`LICENSE.electron.txt` と `LICENSES.chromium.html` も維持する。
+
+通知対象は `win-unpacked` の実体を基準にする。`resources/app.asar` のheaderから
+bundleに残る `dist/node_modules` packageを読み取り、`resources/app.asar.unpacked`
+と `resources` 配下の物理 `node_modules` も走査する。さらに管理対象のbuild stepが
+renderer Viteのsource mapとmain/preload esbuildのmetafileを出力し、そのsource path
+からbundleへinline化されたpackageを解決してunionする。`devDependencies`はこの
+bundle graphで実際に参照されたものだけを含め、package.jsonに列挙されただけの
+未出荷build-time toolingやproduction graph全体は通知対象にしない。map/metafileを
+取得できない場合、またはsource pathからpackageを解決できない場合はfail-closedとする。
+
+このgraphは上流checkoutの変更を成果物へ持ち込むためのものではない。管理対象の
+PowerShell build stepは、本番electron-builderが生成した上流の永続出力
+`apps/desktop/dist`を、`scripts/build/desktop.mjs`のrenderer/main/preload成果物（`productOutput`
+後にbuilderがpackした同じディレクトリ）として読み取る。同じstepで管理対象Vite/esbuild実行
+からsource map/metafileだけを`apps/desktop/.hermes-bundle-graph`へ保存し、graphの入力を作る。
+永続`dist`のJS chunk setと内容を、`resources/app.asar` headerのoffsetおよび
+`resources/app.asar.unpacked/dist`から読み取ったwin-unpackedの実体と突合し、setまたはbytesが
+違えばnotice生成前にfail-closedする（末尾の`//# sourceMappingURL=`行だけは比較から除外）。
+`dist`を取得できない場合もfail-closedとし、手書きoptionの差異を見逃さない。collectorは
+ graph/ASAR/unpackedが列挙したpackage自身だけを解決し、package.jsonの依存を推移走査して
+未出荷packageを追加しない。各failureには`asar`、`unpacked`、`bundle-map`のoriginを記録する。
+
+`LICENSE`/`LICENSE-*`/`LICENCE`/`COPYING` の完全な本文を特定できないpackageは
+buildを失敗させる。package自身が同梱した完全なlicense本文はpackage固有copyright
+行がなくても改変せず収録するが、`<copyright holders>`/`[year] [fullname]`などの
+placeholderは拒否する。bucketで再構成するMIT本文には固定sourceのcopyright evidence
+を要求する。`NOTICE`だけをlicense本文として扱わず、MPL本文の抜粋、未知/欠落license、
+汎用SPDX template fallbackも成功扱いにしない。license検査は依存走査の最後まで続け、
+失敗した全packageを一つのerror listに集約する。例外は
+`scripts/hermes-desktop-light-license-overrides.json` のexact name/versionに
+レビュー済み登録されたものだけで、package宣言とSPDXの一致、固定40文字commit URL、
+取得元、license file/sourceのSHA256、copyright line（再構成時）を検証する。未使用
+override entryも失敗させる。
+
+MPL-2.0の実行形式を配布する場合は、通知にSource Code Formの取得方法を明記する。
+noVNCについては、inventory graphが実際の実行形式の位置を分類し、同梱npm tarballと
+対応upstream commitを固定URLで示す。bundleへinline/minifyされた場合と、未変更の
+`node_modules` fileが出荷された場合を通知で区別する。`UNOFFICIAL-BUILD.txt`には
+上流ref/commit、bucket commit、workflow URL、各licenseファイルの場所を記録し、
+`provenance.json`にはbundle graph・通知ファイルのSHA256と対象package数を記録する。
+
+`@audiowave/react@0.6.2` はnpm tarballにlicense fileがなく、tag
+`@audiowave/react@0.6.2`である固定commit
+`677823284c7fc9f0baf9e62a6d912192a7eb15f9`の`packages/react/package.json`が
+version `0.6.2`であることを確認した。このcommitにはroot/`packages/react` LICENSEが
+ないため、同commitのroot README（SHA256
+`b131e67bff8cde4879eb0ba4595ab70cb99a0fcd6b9a76f06dc71f230cf0c87d`）を固定した
+reviewed attribution evidenceを確認した。同じcommitの`packages/core/package.json`は
+version `0.3.1`で同じroot attribution evidenceを確認した。今回の実CI inventoryでは
+両packageのbundle moduleが検出されなかったため、未使用overrideを成果物へ残さず、
+実際に出荷された版で再検出された場合だけこのexact evidenceを適用する。`khroma@2.1.0`は
+package.jsonのlicense宣言がないが、exact npm tarballの`package/license`に完全な
+MIT本文とcopyrightがあるため、そのtarball integrity/SHA256・file path・file SHA256
+を固定したoverrideで補う。同一versionの証拠が得られないpackageはoverrideを追加せず
+hard blockerとする。
+
+### CIで追加検出したpackage evidence
+
+Hermes Desktop Lightの最終実CI（run `37771200718`、head `eb7c4f104e6861f3e3ad2832e3f41c7a8acb7c6f`）では、実際の`win-unpacked` inventoryから`dbus-native@0.15.2`を`origin=bundle-map`として検出した。exact npm tarball
+(`https://registry.npmjs.org/dbus-native/-/dbus-native-0.15.2.tgz`,
+SHA256 `930b119209c999c992b9a7e7ac89fc5d62dbc035b8528e934ce18bb30f2b8da9`)自体に
+`package/LICENSE`（SHA256
+`435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b`）があり、
+完全なMIT条項だがholder行はない。generatorはこのpackage-supplied本文を改変せず収録し、
+holder行がないことを明記する。registry `gitHead`
+`2126c95fd460c81d7b90e45a4588efdb23ba3f99`のupstream LICENSE（同一SHA256）でも
+一致を確認した。bucket側のcopyright行追加やoverrideによる再構成は行わない。
+
+同じ最終inventoryで`dijkstrajs@1.0.3`も`origin=bundle-map`だった。exact npm tarball
+（`https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.3.tgz`, SHA256
+`07149886ab98299c227b8de61912770b24b8a17b250996a4b5727c9f8bff4c00`）の
+`package/LICENSE.md`（SHA256
+`c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2`）がcopyright、
+MIT license名、完全なdisclaimerを含む短縮形だった。registry `gitHead`
+`49ad1ecd5c519281ee3c4711bb78db4d96e19c83`とも照合した。このpackage-supplied形式だけを
+受理し、generic本文は引き続き拒否する。
+
+一方、`@pkgjs/parseargs@0.11.0`は最終inventoryに存在せず（最終CIのorigin診断でも
+`not-in-inventory`）、過剰なtransitive traversalを使っていた旧検出でのみ対象になった
+非出荷transitive dependencyである。したがって現在のlicense gateの対象・hard blockerでは
+ない。package.jsonがMIT宣言なのにexact tarball/upstream固定commitの`LICENSE`がApache-2.0
+本文だったという宣言と実体の衝突は調査上の観察として残すが、未出荷packageの通知には追加しない。
+
+最終確認run `37771200718`（head `eb7c4f104e6861f3e3ad2832e3f41c7a8acb7c6f`）では、
+inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=351`だった。`@novnc/novnc@1.7.0`
+は`bundle-map`のみで、未変更の`node_modules` fileではなくrenderer bundleへinline/minifyされた
+実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
+Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
+同runで残るfailureは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
+`unicode-animations@1.0.3`、`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに
+対応する完全なlicense本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
+fail-closedのままとする。
+
+名称・ロゴについては、対象commitのREADME、desktop identity、electron-builder設定、
+Contributing、公式サイトに明記された制限だけを根拠にする。明記がない条件を
+「許可」とは扱わず、個別の許諾が必要だとも断定しない。第三者再配布での商標・
+ロゴ利用規則が上流資料から確認できない場合は、`UNOFFICIAL-BUILD.txt` の表示だけで
+解消したとは扱わず、公開前の未確認事項として残す。
+
+## 未確認事項と配布開始条件
+
+最新の公開安定版 `v2026.9.24` にはLightのビルド機構がない。初回manifestは、
+Light対応の安定版を実際にビルド・検証・公開できた後に生成する。
+main由来のコードを過去の安定版の名前で配布しない。
+
+上の画面には「Install Hermes locally」も表示される。今回の受入runでは、Light ZIPに
+`resources/agent-payload`がなく、restricted PATH下のlocal backend probeが
+`bootstrap-needed`を返し、bootstrap/local agentを起動しないことを確認した。
+同じrunで、同一upstream commitのgatewayへの認証、誤secret拒否、Scoop update後の
+接続設定保持も確認済みである。ただしこのrunnerはクリーンなWindowsではなく、
+安定版の実アップグレードや配布を証明するものではない。
+
+- [x] Windows上のScoop実インストール・更新・ショートカット起動（run 37673954715）。
+- [x] gateway接続、認証・接続設定の移行、Lightのローカル動作制約（同run）。
+- [ ] 対応安定版でのtag/claim admissionと実ビルド。
+- [ ] マージ後のReleases公開・manifest/READMEのmain書き戻し。
+- [ ] 安定版での実アップグレードとクリーンなWindowsでのruntime独立性。
+- [ ] 既存draftに異なるビルドの部分成果物が残った場合の管理者確認。
+
+上記の未確認項目は、Light対応安定版と明示的な公開許可がないため実行しない。
 
 ## 公開ゲートと自動化の追加検証
 

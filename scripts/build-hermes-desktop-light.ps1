@@ -14,6 +14,7 @@ if ($development -and
      $env:CONDITIONS_FINGERPRINT -cnotmatch '^[a-f0-9]{64}$')) {
     throw 'Development admission digests are missing or malformed'
 }
+$bundleGraphDir = Join-Path $source 'apps/desktop/.hermes-bundle-graph'
 if ($development) {
     if ($env:PACKAGE_VERSION -cnotmatch '^0\.0\.0-alpha\.dev\.[1-9][0-9]*-r[1-9][0-9]*$') {
         throw 'Development release identity mismatch'
@@ -39,11 +40,24 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
     throw 'Wrong payload, provenance, or update owner'
 }
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
+$bucket = Join-Path $root 'bucket'
+$prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
+& $prepared.node "$bucket/scripts/hermes-desktop-light-bundle-graph.mjs" $source $bundleGraphDir $pack
+$repository = $env:GITHUB_REPOSITORY
+$runUrl = "https://github.com/$repository/actions/runs/$env:GITHUB_RUN_ID"
+$bucketCommit = (git -C $bucket rev-parse HEAD).Trim()
+$noticeMetadata = & python "$bucket/scripts/hermes-desktop-light-notices.py" `
+    --source $source `
+    --pack $pack `
+    --source-ref $env:SOURCE_REF `
+    --commit $commit `
+    --bucket-repository $repository `
+    --bucket-commit $bucketCommit `
+    --run-url $runUrl | ConvertFrom-Json
 $exeName = 'Hermes Light.exe'
 if ($development) { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
 $exe = Get-Item (Join-Path $pack $exeName)
 # Use the exact managed Node admitted by upstream preparation.
-$prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
 & $prepared.node "$root/bucket/scripts/smoke-hermes-desktop-light.cjs" $source $exe.FullName $out
 $version = $env:PACKAGE_VERSION
 if ($development) {
@@ -68,6 +82,7 @@ $receipt = @{
     executable = $exe.Name
     smoke = 'two native launches; renderer loaded; localStorage retained'
     nativeChecks = Get-Content "$out/native-checks.json" -Raw | ConvertFrom-Json
+    notices = $noticeMetadata
     signing = 'unsigned unofficial build'
     licenseSha256 = $env:LICENSE_SHA256
     conditionsFingerprint = $env:CONDITIONS_FINGERPRINT

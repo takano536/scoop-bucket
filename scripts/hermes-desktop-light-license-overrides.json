@@ -1,0 +1,182 @@
+{
+  "khroma@2.1.0": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2019-present Fabio Spampinato, Andrew Maney",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/fabiospampinato/khroma/4968165afb0d3d09be66497e7985a34f7bfe6d42/license",
+      "path": "package/license",
+      "sha256": "66b333b0f66759a0b710459e03f7029abe17f4358114a128d2c972e642961b49",
+      "retrieval": "npm view khroma@2.1.0 dist.tarball dist.integrity gitHead repository license; npm tarball package/license; curl -fsSL <immutable upstream license URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/khroma/-/khroma-2.1.0.tgz",
+        "integrity": "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==",
+        "sha256": "8963d209f3a682374d7f7e45e5fa361a58fc060c8528df6656fae0fc7c508110",
+        "path": "package/license"
+      }
+    },
+    "note": "package.json has no license declaration, but the exact npm tarball contains a complete MIT grant at package/license with the cited copyright. The override validates the declaration supplied here, fetches the fixed upstream source, compares its SHA256 to the reviewed file evidence, and requires the shipped package/license bytes to match."
+  },
+  "@xterm/addon-serialize@0.14.0": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2017-2019, The xterm.js authors",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/xtermjs/xterm.js/f447274f430fd22513f6adbf9862d19524471c04/LICENSE",
+      "path": "LICENSE",
+      "sha256": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd",
+      "retrieval": "npm view @xterm/addon-serialize@0.14.0 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/@xterm/addon-serialize/-/addon-serialize-0.14.0.tgz",
+        "integrity": "sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==",
+        "sha256": "f9a290923dc9c6178446e3fc082c29812a7096a1664fd7bf904022c141c5bbfb",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; the package's pinned gitHead resolves to the complete xterm.js LICENSE at the fixed commit."
+  },
+  "react-arborist@3.13.2": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2022 Brim Data",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/jameskerr/react-arborist/e6dc5c6d2cd1efd94ce3bc7cee722f6b428134e4/LICENSE",
+      "path": "LICENSE",
+      "sha256": "f1dcfe846608164333e4662013cd41adcee862327ca0b93228fbc11418b299c8",
+      "retrieval": "npm view react-arborist@3.13.2 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/react-arborist/-/react-arborist-3.13.2.tgz",
+        "integrity": "sha512-Qa5h2MwBGflTZXsg8vXOHOonF04w31u6DyPL06iyboe+A8CMqxRxgI/Imd5mwTo679iNNJ4e7CuinJGe3rGqgg==",
+        "sha256": "f4f5b7f658f7faa5ecc78123dd3b4d464bc0e9041836ec47dd689a3349c930f3",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; the package gitHead is pinned to the complete upstream LICENSE."
+  },
+  "remark-math@6.0.0": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2017 Junyoung Choi <fluke8259@gmail.com>",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/remarkjs/remark-math/d5d0660b150810a535bbb07eac6cc96a4510aa24/license",
+      "path": "license",
+      "sha256": "cb992262f361a5359e6771c28740d33c7041e15332ae8537fae40538992591a9",
+      "retrieval": "npm view remark-math@6.0.0 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream license URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/remark-math/-/remark-math-6.0.0.tgz",
+        "integrity": "sha512-MMqgnP74Igy+S3WwnhQ7kqGlEerTETXMvJhrUzDikVZ2/uogJCb+WHUg97hK9/jcfc0dkD73s3LN8zU49cTEtA==",
+        "sha256": "33d1b07c723a1167e0e4360437d98dedc1ef95cc9f0da1122147f26efb345417",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; the package gitHead resolves the complete upstream license file."
+  },
+  "simple-git@3.36.0": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2025 Steve King",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/steveukx/git-js/01bb7ceae698831e9abd9310f7d61484970ab53c/LICENSE",
+      "path": "LICENSE",
+      "sha256": "3a31277abe4e0a30eb17dad52addace2fd73580fd9d79d40590e69785fdf71d5",
+      "retrieval": "npm view simple-git@3.36.0 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/simple-git/-/simple-git-3.36.0.tgz",
+        "integrity": "sha512-cGQjLjK8bxJw4QuYT7gxHw3/IouVESbhahSsHrX97MzCL1gu2u7oy38W6L2ZIGECEfIBG4BabsWDPjBxJENv9Q==",
+        "sha256": "e694b2f1b5a9e362ba2592d707d13c0a579d37ccaed6c9d6fca5c50d9553bf8c",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; its pinned gitHead resolves the complete simple-git upstream LICENSE."
+  },
+  "@simple-git/args-pathspec@1.0.3": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2025 Steve King",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/steveukx/git-js/01bb7ceae698831e9abd9310f7d61484970ab53c/LICENSE",
+      "path": "LICENSE",
+      "sha256": "3a31277abe4e0a30eb17dad52addace2fd73580fd9d79d40590e69785fdf71d5",
+      "retrieval": "npm view @simple-git/args-pathspec@1.0.3 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/@simple-git/args-pathspec/-/args-pathspec-1.0.3.tgz",
+        "integrity": "sha512-ngJMaHlsWDTfjyq9F3VIQ8b7NXbBLq5j9i5bJ6XLYtD6qlDXT7fdKY2KscWWUF8t18xx052Y/PUO1K1TRc9yKA==",
+        "sha256": "539588c3707d43cbec0d5d77069ec09f165e0b7c40aaa6c243a60d09ed9a17b7",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; the package monorepo's pinned gitHead resolves the complete upstream LICENSE."
+  },
+  "@simple-git/argv-parser@1.1.1": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2025 Steve King",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/steveukx/git-js/0e485f7706f61e7b1f8dba7b0d82448d23bc4b53/LICENSE",
+      "path": "LICENSE",
+      "sha256": "3a31277abe4e0a30eb17dad52addace2fd73580fd9d79d40590e69785fdf71d5",
+      "retrieval": "npm view @simple-git/argv-parser@1.1.1 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/@simple-git/argv-parser/-/argv-parser-1.1.1.tgz",
+        "integrity": "sha512-Q9lBcfQ+VQCpQqGJFHe5yooOS5hGdLFFbJ5R+R5aDsnkPCahtn1hSkMcORX65J2Z5lxSkD0lQorMsncuBQxYUw==",
+        "sha256": "8ed7b81dbdcbc17b0655d308b85a0e395fc27afa5d5203a1f22b425538913220",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact npm tarball declares MIT but omits a license file; its pinned gitHead resolves the complete upstream LICENSE."
+  },
+  "https-proxy-agent@5.0.1": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2013 Nathan Rajlich &lt;nathan@tootallnate.net&gt;",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/TooTallNate/node-https-proxy-agent/d0d80cc0482f20495aa8595f802e1a9f3b1b3409/README.md",
+      "path": "README.md (License section)",
+      "sha256": "32f0856d2c43df7d05cca960fdee84e1e38ab545bd7b2186433dfa41aa90a712",
+      "retrieval": "npm view https-proxy-agent@5.0.1 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable README URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
+        "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==",
+        "sha256": "6da16fb44331f2e5d30bd21bf880aa934c1ad4fe7da7187910ef2b2509712019",
+        "path": "package/README.md"
+      }
+    },
+    "note": "The exact npm tarball has no LICENSE file, but its pinned upstream commit README contains the complete MIT grant and package-specific copyright section."
+  },
+  "agent-base@6.0.2": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2013 Nathan Rajlich &lt;nathan@tootallnate.net&gt;",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/TooTallNate/node-agent-base/c4b8ea2e1a11bae023bb09b708050a50418204e9/README.md",
+      "path": "README.md (License section)",
+      "sha256": "f1425c3b72330fe4fb2aa5a2fb152e939bdf534692a32b5f0b38f74147b98556",
+      "retrieval": "npm view agent-base@6.0.2 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable README URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz",
+        "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==",
+        "sha256": "bc6da06f2a2e6bc80fa5878bd7227bd0318812976d45f47f17e1aafcec2be831",
+        "path": "package/README.md"
+      }
+    },
+    "note": "The exact npm tarball has no LICENSE file, but its pinned upstream commit README contains the complete MIT grant and package-specific copyright section."
+  },
+  "imurmurhash@0.1.4": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2013 Gary Court, Jens Taylor",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/jensyt/imurmurhash-js/9f40361c7e2835a9b7b8eaa1cbab2a9f94ee22a2/README.md",
+      "path": "README.md (License section)",
+      "sha256": "4491517f7deb68d0b2a3bb590e785e276a60f12448447a9650d0bd50161a101c",
+      "retrieval": "npm view imurmurhash@0.1.4 dist.tarball dist.integrity gitHead repository license; resolve tag 0.1.4 to the fixed commit; curl -fsSL <immutable README URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/imurmurhash/-/imurmurhash-0.1.4.tgz",
+        "integrity": "sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==",
+        "sha256": "ac23a031966a7371d192e35c7852ab31c772b7d4e468ddd886ad3c014372cb60",
+        "path": "package/README.md"
+      }
+    },
+    "note": "npm metadata has no gitHead and the tarball has no LICENSE file; the exact version tag 0.1.4 resolves to this immutable upstream commit whose README contains the complete MIT grant and package-specific copyright."
+  }
+}
