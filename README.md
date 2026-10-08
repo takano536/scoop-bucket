@@ -138,6 +138,8 @@ stable公開を有効化する前にWindowsで受け入れ確認が必要です�
 
 [実Windows CIの検証結果と画面](docs/hermes-desktop-light-verification.md)を記録しています。
 起動検証はgateway接続や認証移行の証明ではありません。
+検証版の初回画面にはローカルインストールの選択肢も表示されるため、LightのUI/実行制約は
+stable版での追加確認が必要です。
 
 ## 🛠️ メンテナンス
 
