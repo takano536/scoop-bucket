@@ -2,6 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 
 const [sourceArg, outputArg] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -17,7 +18,7 @@ await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 
 const appRequire = createRequire(path.join(app, 'package.json'))
-const vite = await import(appRequire.resolve('vite'))
+const vite = await import(pathToFileURL(appRequire.resolve('vite')).href)
 await vite.build({
   root: app,
   configFile: path.join(app, 'vite.config.ts'),
