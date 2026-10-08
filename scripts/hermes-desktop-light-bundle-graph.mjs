@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { readFile, mkdir, rm, writeFile } from 'node:fs/promises'
+import { readFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -128,7 +128,7 @@ function stripSourceMapLine(bytes) {
 function outputFiles(root) {
   const result = new Map()
   const visit = async (directory, prefix = '') => {
-    for (const entry of await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true })) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
       const relative = `${prefix}${entry.name}`
       const file = path.join(directory, entry.name)
       if (entry.isDirectory()) await visit(file, `${relative}/`)
@@ -155,20 +155,37 @@ try {
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error
 }
-const reconstructed = new Map(await outputFiles(renderer))
-for (const [name, bytes] of await outputFiles(main)) {
-  if (!name.endsWith('.metafile.json')) reconstructed.set(name, bytes)
-}
 const shippedNames = [...shippedJs.keys()].sort()
-const reconstructedNames = [...reconstructed.keys()].sort()
-if (JSON.stringify(shippedNames) !== JSON.stringify(reconstructedNames)) {
+const upstreamProducts = []
+for (const entry of await readdir(app, { withFileTypes: true })) {
+  if (!entry.isDirectory() || !/^\.dist-build-/.test(entry.name)) continue
+  const product = path.join(app, entry.name, 'product')
+  try {
+    const files = new Map()
+    addShippedScripts(await outputFiles(product))
+    for (const [name, bytes] of await outputFiles(product)) {
+      if (name.startsWith('node_modules/') || name.includes('/node_modules/')) continue
+      if (/\.(?:js|mjs)$/.test(name)) files.set(name, bytes)
+    }
+    upstreamProducts.push({ product, files })
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+}
+const reconstructed = upstreamProducts.find((candidate) => {
+  const names = [...candidate.files.keys()].sort()
+  return JSON.stringify(names) === JSON.stringify(shippedNames)
+})?.files
+if (!reconstructed) {
+  const candidates = upstreamProducts.map(({ product }) => product).join(',') || '(none)'
   throw new Error(
-    `Bundle graph output set differs from shipped ASAR: shipped=${shippedNames.join(',')} reconstructed=${reconstructedNames.join(',')}`,
+    `No upstream electron-builder product matches shipped script set: shipped=${shippedNames.join(',')} candidates=${candidates}`,
   )
 }
+const reconstructedNames = [...reconstructed.keys()].sort()
 for (const name of shippedNames) {
   if (stripSourceMapLine(shippedJs.get(name)) !== stripSourceMapLine(reconstructed.get(name))) {
-    throw new Error(`Bundle graph output differs from shipped ASAR file: dist/${name}`)
+    throw new Error(`Bundle graph output differs from shipped product file: dist/${name}`)
   }
 }
 
@@ -179,6 +196,7 @@ const manifest = {
   equivalence: {
     asar: 'resources/app.asar/dist',
     unpacked: 'resources/app.asar.unpacked/dist',
+    product: upstreamProducts.map(({ product }) => product),
     shippedJs: shippedNames,
     comparedAfter: 'stripping trailing //# sourceMappingURL= line',
   },
