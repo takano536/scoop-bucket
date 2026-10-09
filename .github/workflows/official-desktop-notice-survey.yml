@@ -176,6 +176,21 @@ jobs:
             else
               echo 'No app.asar found' > "$dir/app.asar.listing.txt"
             fi
+            : > "$dir/jetbrains-msix-members.txt"
+            python3 - "$msix" "$dir/jetbrains-msix-members.txt" <<'PY'
+          import re
+          import sys
+          import zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z, open(sys.argv[2], "w", encoding="utf-8") as out:
+              for info in z.infolist():
+                  name = info.filename.replace("\\", "/")
+                  if not info.is_dir() and re.search(r"JetBrainsMono-[^/]+\.woff2$", name, re.I):
+                      out.write(name + "\n")
+          PY
+            while IFS= read -r member; do
+              [[ -n "$member" ]] || continue
+              printf '%s  %s\n' "$(unzip -p "$msix" "$member" | sha256sum | cut -d' ' -f1)" "$member" >> "$dir/jetbrains-font-sha256.txt"
+            done < "$dir/jetbrains-msix-members.txt"
 
             python3 - "$dir" "$url" "$msix_member" <<'PY'
           import pathlib
