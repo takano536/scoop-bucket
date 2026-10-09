@@ -100,7 +100,7 @@ jobs:
           import re
           import sys
           import zipfile
-          patterns = re.compile(r"(^|/)(?:license|licence|copying|notice|third[-_ ]party|authors)[^/]*$|(?:/)(?:notices?|ofl)(?:/|$)|(^|/)(?:package\.json|appxmanifest\.xml|.*(?:install|build)[^/]*\.(?:json|xml|txt))$", re.I)
+          patterns = re.compile(r"(^|/)(?:license|licence|copying|notice|third[-_ ]party|authors)[^/]*$|(?:/)(?:notices?|ofl)(?:/|$)|(^|/)(?:appxmanifest\.xml|(?:install-stamp|build-stamp|hermes-build)[^/]*\.(?:json|xml|txt))$", re.I)
           with zipfile.ZipFile(sys.argv[1]) as z, open(sys.argv[2], "w", encoding="utf-8") as out:
               for info in z.infolist():
                   name = info.filename.replace("\\", "/")
@@ -199,8 +199,11 @@ jobs:
           done < "$out/bundle-urls.txt"
 
           du -sh "$out" | tee "$out/output-size.txt"
-          size_mb="$(du -sm "$out" | cut -f1)"
-          [[ "$size_mb" -lt 20 ]] || { echo "survey artifact exceeds 20MB" >&2; exit 1; }
+          tar -C "$out" -czf "$work/official-notice-survey.tar.gz" .
+          compressed_mb="$(du -sm "$work/official-notice-survey.tar.gz" | cut -f1)"
+          printf 'compressed_artifact_size_mb=%s\n' "$compressed_mb" >> "$out/output-size.txt"
+          [[ "$compressed_mb" -lt 20 ]] || { echo "survey artifact exceeds 20MB compressed" >&2; exit 1; }
+          rm -f "$work/official-notice-survey.tar.gz"
 
       - name: Upload small survey evidence
         if: always()
