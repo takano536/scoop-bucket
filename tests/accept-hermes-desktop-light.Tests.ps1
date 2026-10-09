@@ -34,6 +34,41 @@ BeforeAll {
 }
 
 
+Describe 'Hermes Desktop Light updater channel expectations' {
+    It 'maps a development receipt to commit-build even when preview is false' {
+        $receipt = [pscustomobject]@{
+            channel = 'development'
+            development = $true
+            preview = $false
+        }
+
+        Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '0.0.0-alpha.dev.1-r1' | Should -BeTrue
+    }
+
+    It 'maps a stable receipt to bundled-not-appinstaller' {
+        $receipt = [pscustomobject]@{
+            channel = 'stable'
+            development = $false
+            preview = $false
+        }
+
+        Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '0.22.0-r1' | Should -BeFalse
+    }
+
+    It 'rejects a channel and development flag mismatch' {
+        $receipt = [pscustomobject]@{
+            channel = 'development'
+            development = $false
+            preview = $false
+        }
+
+        {
+            Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '0.0.0-alpha.dev.1-r1'
+        } | Should -Throw '*development=true*'
+    }
+}
+
+
 Describe 'Hermes Desktop Light Scoop update assertions' {
     BeforeEach {
         $fixtures = New-TestScoopUpdateFixtures

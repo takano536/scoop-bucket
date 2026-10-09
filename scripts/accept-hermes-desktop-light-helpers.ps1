@@ -120,6 +120,35 @@ function Get-ShortcutState {
     }
 }
 
+function Get-HermesAcceptanceDevelopmentMode {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Receipt,
+        [Parameter(Mandatory = $true)]
+        [string]$PackageVersion
+    )
+
+    $channel = [string]$Receipt.channel
+    if ($channel) {
+        if ($channel -notin @('development', 'stable')) {
+            throw "Unsupported Hermes Desktop Light provenance channel: $channel"
+        }
+        $development = $channel -eq 'development'
+        if ($development -and $Receipt.development -ne $true) {
+            throw 'Development provenance channel is missing development=true'
+        }
+        if (!$development -and $Receipt.development -eq $true) {
+            throw 'Stable provenance channel is marked development=true'
+        }
+        return $development
+    }
+
+    # Legacy preview receipts predate the explicit channel field.
+    return ($PackageVersion -eq 'preview') -or ([string]$Receipt.preview -ieq 'true')
+}
+
+
 function Assert-ScoopUpdateSwitch {
     [CmdletBinding()]
     param(

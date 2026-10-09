@@ -34,7 +34,7 @@ const { _electron: electron } = upstreamRequire('playwright');
       assert.equal(status.supported, false);
       const apply = await page.evaluate(() => window.hermesDesktop.updates.apply());
       assert.equal(apply.mechanism, 'external');
-      // Commit previews reject apply; stable external builds return manual-only.
+      // Development commits reject apply; stable external builds return manual-only.
       assert.ok(apply.ok === false || apply.manual === true);
       checks.launches.push({ updaterCheck: status, updaterApply: apply });
       if (attempt === 0) {

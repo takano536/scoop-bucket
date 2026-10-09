@@ -22,16 +22,22 @@ _UPSTREAM_ALLOWLIST = {
     },
     'scripts/hermes-desktop-light.py': {
         'hermes-' + 'light': (
-            'supported = (\'' + 'hermes-' + 'light' +
-            '\' in sources[\'apps/desktop/product-identity.cjs\'] and',
+            "'" + 'hermes-' + 'light' + "',",
         ),
     },
     'tests/test_hermes_desktop_light.py': {
         'hermes-' + 'light': (
             'self.identity = {\'content\': base64.b64encode(b"light: { kebab: \'' +
-            'hermes-' + 'light' + '\' }").decode()}',
+            'hermes-' + 'light' + '\' }\\nHERMES_BUILD_COMMIT\\nwindowsExecutableName").decode()}',
         ),
     },
+}
+_LEGACY_EXECUTABLE_PATHS = {
+    'scripts/build-hermes-desktop-light.ps1',
+    'scripts/hermes-desktop-light.py',
+    'tests/autoupdate-fixture-server.py',
+    'tests/autoupdate-regression.ps1',
+    'tests/test_hermes_desktop_light.py',
 }
 
 
@@ -59,6 +65,10 @@ def _legacy_distribution_occurrences():
                 allowed = _UPSTREAM_ALLOWLIST.get(relative, {}).get(identifier, ())
                 if stripped in allowed:
                     continue
+                if (identifier == 'hermes-' + 'light' and
+                        relative in _LEGACY_EXECUTABLE_PATHS and
+                        (identifier + '-') in line):
+                    continue
                 if identifier == 'Hermes ' + 'Light' and (identifier + '.exe') in line:
                     continue
                 violations.append(f'{relative}:{line_number}: {line}')
@@ -73,6 +83,41 @@ class DistributionTests(unittest.TestCase):
         self.assertLess(distribution.version_key('0.22.0-r2'), distribution.version_key('0.22.0-r10'))
         self.assertLess(distribution.version_key('0.22.0-r10'), distribution.version_key('0.23.0-r1'))
         self.assertEqual(distribution.package_version('0.22.0', '2'), '0.22.0-r2')
+
+    def test_development_identity_and_order_are_numeric(self):
+        commit = 'a' * 40
+        first = distribution.dev_package_version(9, 1)
+        next_sequence = distribution.dev_package_version(10, 1)
+        next_revision = distribution.dev_package_version(9, 2)
+        self.assertEqual(
+            distribution.dev_release_tag('hermes-desktop-light', first, commit),
+            f'hermes-desktop-light/dev/v{first}-{commit}',
+        )
+        self.assertEqual(
+            distribution.dev_artifact_name('hermes-desktop-light', first, commit),
+            f'hermes-desktop-light-dev-{first}-{commit}-windows-x64.zip',
+        )
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key(next_sequence))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key(next_revision))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key('0.0.0-r1'))
+        self.assertLess(distribution.distribution_version_key(first),
+                        distribution.distribution_version_key('2026.9.24-r1'))
+        self.assertLess(distribution.distribution_version_key('0.0.0-r1'),
+                        distribution.distribution_version_key('2026.10.1-r1'))
+
+    def test_development_identities_fail_closed(self):
+        commit = 'a' * 40
+        for version in ('0.0.0-alpha.dev.0-r1', '0.0.0-alpha.dev.1-r0',
+                        '0.0.0-alpha.dev.01-r1', '0.0.0.dev.1-r1'):
+            with self.assertRaises(ValueError):
+                distribution.dev_version_key(version)
+        with self.assertRaises(ValueError):
+            distribution.dev_release_tag('Hermes', '0.0.0-alpha.dev.1-r1', commit)
+        with self.assertRaises(ValueError):
+            distribution.dev_artifact_name('hermes-desktop-light', '0.0.0-alpha.dev.1-r1', 'bad')
 
     def test_invalid_identities_fail_closed(self):
         for version in (

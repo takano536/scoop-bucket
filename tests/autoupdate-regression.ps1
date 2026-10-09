@@ -52,7 +52,38 @@ try {
         if ((Get-FileHash $file).Hash -ne $before) { throw 'Validator modified the original manifest' }
         Write-Host "PASS $($case.Name)"
     }
-    Write-Host "Passed $($cases.Count) autoupdate regression cases"
+    $devVersion = '0.0.0-alpha.dev.1-r1'
+    $devCommit = 'a' * 40
+    $devShortSha = $devCommit.Substring(0, 7)
+    $devManifest = @{
+        version = $devVersion
+        homepage = $base
+        license = 'MIT'
+        description = 'DEVELOPMENT BUILD — NOT STABLE fixture'
+        shortcuts = @(@("hermes-light-$devShortSha.exe", 'Hermes Desktop Light (Development)'))
+        architecture = @{ '64bit' = @{
+            url = "$base/dev-$devVersion-$devCommit.zip"
+            hash = (Invoke-RestMethod "$base/dev-hash").Trim()
+        } }
+        checkver = @{
+            url = "$base/dev-pointer"
+            regex = '"version"\s*:\s*"(?<version>0\.0\.0-alpha\.dev\.[1-9]\d*-r[1-9]\d*)"[\s\S]*?"commit"\s*:\s*"(?<commit>[a-f0-9]{40})"[\s\S]*?"shortSha"\s*:\s*"(?<shortsha>[a-f0-9]{7})"'
+        }
+        autoupdate = @{
+            architecture = @{ '64bit' = @{
+                url = "$base/dev-`$matchVersion-`$matchCommit.zip"
+                hash = @{ url = "$base/dev-pointer"; jsonpath = '$.sha256' }
+            } }
+            shortcuts = @(@("hermes-light-`$matchShortsha.exe", 'Hermes Desktop Light (Development)'))
+        }
+    }
+    $devDir = Join-Path $root 'development-named-captures'
+    New-Item $devDir -ItemType Directory | Out-Null
+    $devFile = Join-Path $devDir 'hermes-desktop-light.json'
+    $devManifest | ConvertTo-Json -Depth 20 | Set-Content $devFile -Encoding utf8
+    & $validator -ScoopHome $ScoopHome -BucketDir $devDir
+    Write-Host 'PASS development named checkver captures ($matchVersion/$matchCommit/$matchShortsha; Scoop ToTitleCase)'
+    Write-Host "Passed $($cases.Count + 1) autoupdate regression cases"
 } finally {
     if ($server -and !$server.HasExited) { Stop-Process -Id $server.Id -Force }
     Remove-Item $root -Recurse -Force

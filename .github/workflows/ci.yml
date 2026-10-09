@@ -13,10 +13,47 @@ on:
 
 permissions:
   contents: read
-
 jobs:
+  resolve-target:
+    name: Resolve validation commit
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - id: resolve
+        name: Resolve exact written-back commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          target="$GITHUB_SHA"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-written-back-sha" and .expired == false)][0].id // empty')"
+            if [[ -n "$artifact_id" ]]; then
+              scratch="$(mktemp -d)"
+              gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+                --name hermes-desktop-light-written-back-sha --dir "$scratch"
+              target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
+            else
+              target="$WORKFLOW_RUN_HEAD_SHA"
+            fi
+          fi
+          if [[ ! "$target" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Resolved commit is not an exact lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          echo "sha=$target" >> "$GITHUB_OUTPUT"
+
   test:
     name: Test
+    needs: resolve-target
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.head_repository.full_name == github.repository &&
@@ -37,12 +74,13 @@ jobs:
           fetch-depth: 2
           path: 'my_bucket'
           persist-credentials: false
-          # workflow_run validates current trusted main, not triggering artifacts.
-          ref: ${{ github.event_name == 'workflow_run' && 'main' || '' }}
+          # workflow_run uses the exact publisher writeback SHA (or its triggering head SHA).
+          ref: ${{ needs.resolve-target.outputs.sha }}
       - name: Checkout Scoop
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ScoopInstaller/Scoop
+          ref: e6aa3b366bdee8ed138c1e0f7b85192ebdd35d0f # pinned for distribution-versions.ps1
           path: 'scoop_core'
       - name: Run distribution-name guard
         env:

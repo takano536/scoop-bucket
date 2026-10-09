@@ -60,11 +60,22 @@ class PublishTests(unittest.TestCase):
         rebuilt = self.package('different rebuilt fixture')
         (self.output / self.name).write_bytes(rebuilt)
         (self.output / 'provenance.json').write_text(json.dumps({**self.record, 'sha256': hashlib.sha256(rebuilt).hexdigest()}))
+        (self.output / 'acceptance.json').write_text(json.dumps({
+            'schema': 1,
+            'status': 'passed',
+            'sourceRef': 'a' * 40,
+            'commit': 'a' * 40,
+            'bucketPackageVersion': '0.22.0-r1',
+            'artifact': self.name,
+            'artifactSha256': hashlib.sha256(rebuilt).hexdigest(),
+        }))
         self.previous_cwd = Path.cwd()
         os.chdir(self.work)
         self.addCleanup(os.chdir, self.previous_cwd)
-        self.env = patch.dict(os.environ, PACKAGE_VERSION='0.22.0-r1', SOURCE_REF='v0.22.0',
+        self.env = patch.dict(os.environ, PACKAGE_VERSION='0.22.0-r1', SOURCE_REF='a' * 40,
+                              UPSTREAM_TAG='v0.22.0',
                               GITHUB_REPOSITORY='fixture/bucket', RELEASE_ENABLED='true',
+                              ACCEPTANCE_EVIDENCE='output/acceptance.json',
                               GITHUB_ACTIONS='true', GITHUB_REF='refs/heads/main',
                               GITHUB_EVENT_NAME='schedule')
         self.env.start()
@@ -148,6 +159,21 @@ class PublishTests(unittest.TestCase):
                 api.assert_not_called()
                 gh.assert_not_called()
                 self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
+
+    def test_publisher_requires_passed_acceptance_evidence(self):
+        evidence = self.output / 'acceptance.json'
+        original = evidence.read_text()
+        for replacement in (None, {**json.loads(original), 'status': 'failed'}):
+            with self.subTest(replacement=replacement):
+                if replacement is None:
+                    evidence.unlink()
+                else:
+                    evidence.write_text(json.dumps(replacement))
+                with self.assertRaisesRegex(ValueError, 'Acceptance evidence'):
+                    light.verify_acceptance_evidence(self.record, '0.22.0-r1', 'a' * 40)
+                if replacement is None:
+                    evidence.write_text(original)
+        evidence.write_text(original)
 
     def test_existing_release_reuses_immutable_bytes_and_writes_manifest_readme(self):
         self.run_publish()
