@@ -49,7 +49,7 @@ Actionsのcheckoutログで、ビルドjobが実際にcheckoutしたbucketのPR 
 - provenanceの配布version: `preview-a3ed4a1`。acceptanceの`bucketPackageVersion`は`preview`であり、安定版versionではない。
 - ZIP: `hermes-desktop-light-preview-a3ed4a1-windows-x64.zip`。
 - ZIP SHA256: `cd577d5789cbaefecf4750cf580ea940e86ff659bba0953470fb9d4779780c3c`。
-- `provenance.json`の`run`は上記run URL、`payload`は`light`、`updateMechanism`は`external`、実行ファイルはupstream commitのpreview executable、署名は`unsigned unofficial build`である。provenanceのSHA256とacceptanceの`artifactSha256`は一致する。
+- `provenance.json`の`run`は上記run URL、`payload`は`light`、`updateMechanism`は`external`、実行ファイルはupstream commitのpreview executable、署名ラベルは`unsigned unofficial build`である。これはAuthenticodeの測定結果ではなく、build/acceptanceで`Get-AuthenticodeSignature`・`signtool`・証明書結果を取得していないため、公開artifactの署名状態は未確認である。provenanceのSHA256とacceptanceの`artifactSha256`は一致する。
 - provenanceのsmoke記録は、native launchを2回実行し、rendererのloadとlocalStorage保持を確認したものだった。これはPR用preview artifactであり、GitHub Releasesへの公開やmanifest登録は行っていない。
 
 ### acceptance artifactの内容と実際に確認したこと
@@ -192,19 +192,22 @@ inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=352`だった。
 実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
 Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
 `@nous-research/ui@0.18.2`は出荷CSSの`url(...)`から参照されるfont assetとして
-`bundle-map`に追加された。旧runでのfailureは`@nous-research/ui@0.18.2`、
+**履歴（remediation前）:** 旧runでのfailureは`@nous-research/ui@0.18.2`、
 `lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、`unicode-animations@1.0.3`、
 `use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、当時は宣言MITに対応する
 完全なlicense本文のexact-version evidenceなし）であり、当時はfail-closedだった。
 現在のexact tarball/source evidenceと限定overrideは下記に記録する。
 
-### 最新Windows出力のfont/image/native確認（run 37801029051）
+### 履歴：remediation前のWindows出力のfont/image/native確認（run 37801029051）
 
-license gate到達前に出力されたbuild log（upstream `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、
-head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象を一度確認した。
-最終ZIPはgateで生成されていないため、ここでいう「出荷」は`win-unpacked`へpackされる
-対象としての確認であり、旧通知生成の5件failureを報告する。JetBrains Monoは
-後述の固定hash/immutable OFL evidenceで解決され、現在の配布条件blockerではない。
+この節はnotice remediation前の履歴であり、現在の状態を表さない。出力一覧と
+signing有無を測定していない出荷候補ファイルを確認したrun `37801029051`（上流
+`a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、head
+`9af0940a8c287a63de6f7e24dc458b64def768bb`）の記録である。当時の最終ZIPはgate停止で
+生成されず、以下は`win-unpacked`へpackされる対象と旧通知生成の5件failureの記録である。
+JetBrains Monoは後続の固定hash/immutable OFL evidenceで解決された。その後のPR #6 head
+run `37940526337`ではGitHub-hosted Windows runner上で最終ZIP・provenance・noticeを再確認
+したが、`runnerIsClean=false`であり、一般のclean Windows環境を保証しない。
 
 - **Font**: `Collapse-Bold-*.woff2` はCSSのsource pathが
   `@nous-research/ui@0.18.2`を指す。宣言MITだがexact tarballに完全本文/copyright
@@ -226,7 +229,7 @@ head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象
   適用する。別のcanonical third-party notice/source-offerはlogから確認できず、
   rights-holderの行は補っていない。
 - **Auxiliary executable**: Electron自身（`electron.exe`）は既存
-  `LICENSE.electron.txt`/`LICENSES.chromium.html`で被覆する。それ以外にsigning対象として
+  `LICENSE.electron.txt`/`LICENSES.chromium.html`で被覆する。それ以外に出荷候補として
   `node-pty@1.1.0`の`winpty-agent.exe`、`conpty/OpenConsole.exe`（prebuildと
   build/Releaseの2経路）、上流`apps/desktop/electron/native`から生成する
   `native/win32-x64/hud-modifier-monitor.exe`がある。前二者はnode-pty package-supplied
@@ -234,7 +237,9 @@ head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象
   logにはこれ以外の出荷`.dll`はなかった。stagingされた`get-windows@9.3.0`のJS packageは
   package-supplied MIT noticeの対象（単独native binaryなし）、build環境の
   `pywinpty==3.0.5`は出力へpackされないbuild-only dependencyとして分離する。
-  なお、gate停止のため最終ZIP内のnotice同梱をWindows acceptanceで再確認する作業は未実施である。
+  （履歴）gate停止時点では最終ZIP内のnotice同梱をWindows acceptanceで再確認できなかった。その後の
+  run `37940526337`ではGitHub-hosted Windows runner上で最終ZIP/provenance/noticeを再確認したが、
+  `runnerIsClean=false`であり、cleanな一般Windows環境のruntime独立性は保証しない。
 
 上記のうち完全本文/evidenceが確認できないものは配布条件不足として扱い、tool limitationや
 権利者の義務免除とは表現しない。
@@ -304,10 +309,11 @@ synthesize a copyright line:
 - `use-composed-ref@1.4.0`: declared-only MIT evidence; no author field,
   no license/notice member, and no license file in the exact tag/source tree.
 
-Declared-only output labels the SPDX and verbatim package.json author field,
-states that the exact tarball supplied no license or copyright notice, and
-includes the standard MIT text. It is a narrowly-scoped resolution of the
-package's missing-file evidence, not proof that an absent upstream notice exists.
+Declared-only output records the SPDX declaration and verbatim package.json author metadata
+when present. No license text or copyright notice was obtained from these four packages, so
+these remain declared-only records and no package-specific copyright line is synthesized.
+Existing package/Electron/Chromium notices are preserved; any standard MIT text emitted for
+the declared SPDX is generated boilerplate, not package-supplied evidence.
 Any package outside these exact entries, a changed tarball, or a package that
 starts shipping a notice file fails closed. The five package entries and the
 font evidence still require the Windows Light workflow to exercise the actual
@@ -328,12 +334,13 @@ that compiler, while `before-pack.mjs:136-143` copies the prepared output.
 
 The build log for the failed verification run
 [`37938735244`](https://github.com/takano536/scoop-bucket/actions/runs/37938735244)
-records the native preparation and `built ...hud-modifier-monitor.exe` before
-electron-builder packages and signs it. The notice generator now records this
-exact output under `firstPartyAssets`, lists its verified upstream source paths,
-and attributes it to the checked-out upstream root `LICENSE` (MIT). The mapping
-is exact; an unknown native executable, or a missing source/build path, remains
-fail-closed.
+records the native preparation and `built ...hud-modifier-monitor.exe` before electron-builder
+packaging. Any log wording about signing is not an Authenticode check of the shipped EXEs:
+the build and acceptance evidence contains no `Get-AuthenticodeSignature`, `signtool`,
+certificate, or signature-result measurement. The notice generator now records this exact
+output under `firstPartyAssets`, lists its verified upstream source paths, and attributes it to
+the checked-out upstream root `LICENSE` (MIT). The mapping is exact; an unknown native
+executable, or a missing source/build path, remains fail-closed.
 
 ## 未確認事項と配布開始条件
 
