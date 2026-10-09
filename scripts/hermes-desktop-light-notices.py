@@ -1856,6 +1856,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "firstPartyAssets": len(bundle_graph.get("firstPartyAssets", [])),
             },
         },
+        "unofficial": {"path": UNOFFICIAL_FILE, "sha256": sha256(unofficial)},
     }
 
 

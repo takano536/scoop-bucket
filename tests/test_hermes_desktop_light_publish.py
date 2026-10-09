@@ -55,7 +55,6 @@ class PublishTests(unittest.TestCase):
                            artifact=self.name, executable='Hermes Light.exe',
                            smoke='two native launches; renderer loaded; localStorage retained',
                            notices=self.notice_record(),
-                           audit={'status': 'complete', 'limitations': [], 'unresolved': []},
                            sha256=hashlib.sha256(self.published).hexdigest())
         rebuilt = self.package('different rebuilt fixture')
         (self.output / self.name).write_bytes(rebuilt)
@@ -103,6 +102,7 @@ class PublishTests(unittest.TestCase):
                 'packages': 1,
             },
             'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
+            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
         }
 
     def package(self, marker):
@@ -394,7 +394,6 @@ class DevelopmentPublishTests(unittest.TestCase):
             'executable': self.executable,
             'smoke': 'two native launches; renderer loaded; localStorage retained',
             'notices': self.notice_record(),
-            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
             'sha256': hashlib.sha256(self.zip_bytes).hexdigest(),
             'licenseSha256': self.license_sha,
             'conditionsFingerprint': self.conditions,
@@ -456,6 +455,7 @@ class DevelopmentPublishTests(unittest.TestCase):
                 'path': 'UNOFFICIAL-BUILD.txt',
                 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest(),
             },
+            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
         }
 
     def package(self):
