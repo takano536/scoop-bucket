@@ -404,8 +404,9 @@ class DevelopmentPublishTests(unittest.TestCase):
             'commit': self.commit, 'bucketPackageVersion': self.version,
             'artifact': self.name, 'artifactSha256': record['sha256'],
         }))
+        self.release_id = 408429868
         self.release_rows = []
-        self.release_state = {'draft': True, 'prerelease': False, 'assets': []}
+        self.release_state = {'id': self.release_id, 'tag_name': self.tag, 'draft': True, 'prerelease': False, 'assets': []}
         self.mutations = []
         previous_cwd = Path.cwd()
         os.chdir(self.work)
@@ -472,9 +473,14 @@ class DevelopmentPublishTests(unittest.TestCase):
 
     def api(self, endpoint):
         tag_endpoint = f'repos/fixture/bucket/releases/tags/{self.tag.replace("/", "%2F")}'
+        id_endpoint = f'repos/fixture/bucket/releases/{self.release_id}'
         if endpoint == f'repos/{light.UPSTREAM}/commits/{self.commit}':
             return {'sha': self.commit}
+        if endpoint == id_endpoint:
+            return self.release_state
         if endpoint == tag_endpoint:
+            if self.release_state.get('draft'):
+                raise AssertionError('GitHub does not expose draft releases through tag lookup')
             return self.release_state
         if endpoint.startswith('repos/fixture/bucket/contents/'):
             path = endpoint.split('/contents/', 1)[1].split('?ref=', 1)[0]
@@ -487,10 +493,12 @@ class DevelopmentPublishTests(unittest.TestCase):
             return json.dumps([self.release_rows])
         if args[:2] == ('release', 'create'):
             self.mutations.append(args)
+            self.release_state.update(id=self.release_id, tag_name=self.tag, draft=True, prerelease=False)
+            self.release_rows = [self.release_state]
             return ''
         if args[:2] == ('release', 'upload'):
             self.mutations.append(args)
-            self.release_state['assets'].append({'name': Path(args[2]).name})
+            self.release_state['assets'].append({'name': Path(args[3]).name})
             return ''
         if args[:2] == ('release', 'edit'):
             self.mutations.append(args)
@@ -507,6 +515,16 @@ class DevelopmentPublishTests(unittest.TestCase):
         pointer = json.loads(self.git('show', 'origin/main:metadata/hermes-desktop-light-dev.json'))
         self.assertEqual(pointer['commit'], self.commit)
         self.assertEqual(pointer['sha256'], hashlib.sha256(self.zip_bytes).hexdigest())
+
+    def test_development_publish_resumes_existing_draft_release(self):
+        self.release_rows = [self.release_state]
+        with patch.object(light, 'api', side_effect=self.api), \
+             patch.object(light, 'gh', side_effect=self.gh), \
+             patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
+            light.publish()
+        self.assertEqual([call[1] for call in self.mutations], ['upload', 'upload', 'upload', 'edit'])
+        self.assertFalse(self.release_state['draft'])
+        self.assertTrue(self.release_state['prerelease'])
 
     def test_development_publish_stops_for_existing_stable_release(self):
         self.release_rows = [{
