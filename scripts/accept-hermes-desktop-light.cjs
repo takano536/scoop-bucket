@@ -333,6 +333,8 @@ async function run() {
     const check = await bridge(client, 'updates.check', { force: true })
     assert(check.ok && check.value?.mechanism === 'external',
       `in-app updater did not report external ownership: ${redact(check.error || JSON.stringify(check.value))}`)
+    assert(check.value.supported === false,
+      `in-app updater did not report unsupported external ownership: ${redact(JSON.stringify(check.value))}`)
     if (preview) {
       assert(check.value.reason === 'commit-build',
         `preview external updater reason was not commit-build: ${redact(JSON.stringify(check.value))}`)
