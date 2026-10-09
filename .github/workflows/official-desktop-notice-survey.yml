@@ -142,10 +142,14 @@ jobs:
                   if name and patterns.search(name):
                       out.write(name + "\n")
           PY
+              : > "$dir/asar-extraction-errors.txt"
               while IFS= read -r member; do
                 [[ -n "$member" ]] || continue
                 safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
-                npx --yes @electron/asar extract-file "$asar" "$member" "$dir/asar-files/$safe"
+                if ! npx --yes @electron/asar extract-file "$asar" "$member" "$dir/asar-files/$safe"; then
+                  printf '%s\n' "$member" >> "$dir/asar-extraction-errors.txt"
+                  rm -f "$dir/asar-files/$safe"
+                fi
               done < "$dir/asar-candidates.txt"
               : > "$dir/jetbrains-font-sha256.txt"
               python3 - "$dir/app.asar.listing.txt" "$dir/jetbrains-members.txt" <<'PY'
@@ -160,9 +164,13 @@ jobs:
               while IFS= read -r member; do
                 [[ -n "$member" ]] || continue
                 safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
-                npx --yes @electron/asar extract-file "$asar" "$member" "$work/$label-font.tmp"
-                printf '%s  %s\n' "$(sha256sum "$work/$label-font.tmp" | cut -d' ' -f1)" "$member" >> "$dir/jetbrains-font-sha256.txt"
-                rm -f "$work/$label-font.tmp"
+                if npx --yes @electron/asar extract-file "$asar" "$member" "$work/$label-font.tmp"; then
+                  printf '%s  %s\n' "$(sha256sum "$work/$label-font.tmp" | cut -d' ' -f1)" "$member" >> "$dir/jetbrains-font-sha256.txt"
+                  rm -f "$work/$label-font.tmp"
+                else
+                  printf '%s\n' "$member" >> "$dir/asar-extraction-errors.txt"
+                  rm -f "$work/$label-font.tmp"
+                fi
               done < "$dir/jetbrains-members.txt"
               rm -f "$asar"
             else
