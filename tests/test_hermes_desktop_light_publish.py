@@ -512,6 +512,15 @@ class DevelopmentPublishTests(unittest.TestCase):
              patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
             light.publish()
         self.assertEqual([call[1] for call in self.mutations], ['create', 'upload', 'upload', 'upload', 'edit'])
+        create = self.mutations[0]
+        self.assertIn('--draft', create)
+        create_text = ' '.join(create)
+        self.assertIn('DEVELOPMENT BUILD — NOT STABLE', create_text)
+        self.assertIn('Unofficial unsigned Windows x64 Light build', create_text)
+        edit = self.mutations[-1]
+        self.assertIn('--draft=false', edit)
+        self.assertIn('--prerelease=true', edit)
+        self.assertIn('--latest=false', edit)
         pointer = json.loads(self.git('show', 'origin/main:metadata/hermes-desktop-light-dev.json'))
         self.assertEqual(pointer['commit'], self.commit)
         self.assertEqual(pointer['sha256'], hashlib.sha256(self.zip_bytes).hexdigest())
@@ -523,6 +532,10 @@ class DevelopmentPublishTests(unittest.TestCase):
              patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
             light.publish()
         self.assertEqual([call[1] for call in self.mutations], ['upload', 'upload', 'upload', 'edit'])
+        edit = self.mutations[-1]
+        self.assertIn('--draft=false', edit)
+        self.assertIn('--prerelease=true', edit)
+        self.assertIn('--latest=false', edit)
         self.assertFalse(self.release_state['draft'])
         self.assertTrue(self.release_state['prerelease'])
 
