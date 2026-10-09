@@ -347,5 +347,179 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((self.output / 'published' / self.name).read_bytes(), self.published)
 
 
+class DevelopmentPublishTests(unittest.TestCase):
+    """Exercise the development publisher against a disposable Git remote."""
+
+    def setUp(self):
+        self.scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(self.scratch.cleanup)
+        self.root = Path(self.scratch.name)
+        self.remote = self.root / 'origin.git'
+        self.work = self.root / 'work'
+        self.work.mkdir()
+        self.git('init', '--bare', str(self.remote))
+        self.git('init', '-b', 'main', str(self.work))
+        self.git('config', 'user.name', 'test fixture')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        (self.work / 'bucket').mkdir()
+        (self.work / 'scripts').mkdir()
+        shutil.copyfile(ROOT / 'scripts/update-readme.py', self.work / 'scripts/update-readme.py')
+        (self.work / 'bucket/fixture.json').write_text(json.dumps({
+            'version': '1.0.0', 'description': 'Synthetic test fixture',
+            'homepage': 'https://example.invalid/fixture',
+        }))
+        (self.work / 'README.md').write_text(
+            '# Fixture\n\n<!-- BEGIN GENERATED APPS -->\n\n<!-- END GENERATED APPS -->\n')
+        self.git('add', 'README.md', 'scripts/update-readme.py', 'bucket/fixture.json')
+        self.git('commit', '-m', 'test fixture')
+        self.git('remote', 'add', 'origin', str(self.remote))
+        self.git('push', 'origin', 'main')
+        self.initial = self.git('rev-parse', 'HEAD').strip()
+        self.output = self.work / 'output'
+        self.output.mkdir()
+        self.commit = 'a' * 40
+        self.version = '0.0.0-alpha.dev.1-r1'
+        self.name = light.dev_artifact_name(light.APP, self.version, self.commit)
+        self.tag = light.dev_release_tag(light.APP, self.version, self.commit)
+        self.conditions = 'd' * 64
+        self.license_sha = 'e' * 64
+        self.executable = 'hermes-' + 'light' + f'-{self.commit[:7]}.exe'
+        self.zip_bytes = self.package()
+        (self.output / self.name).write_bytes(self.zip_bytes)
+        record = {
+            'schema': 1, 'upstream': light.UPSTREAM, 'version': self.version,
+            'sourceRef': self.commit, 'preview': False, 'development': True,
+            'channel': 'development', 'payload': 'light', 'updateMechanism': 'external',
+            'commit': self.commit, 'artifact': self.name,
+            'executable': self.executable,
+            'smoke': 'two native launches; renderer loaded; localStorage retained',
+            'notices': self.notice_record(),
+            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
+            'sha256': hashlib.sha256(self.zip_bytes).hexdigest(),
+            'licenseSha256': self.license_sha,
+            'conditionsFingerprint': self.conditions,
+        }
+        (self.output / 'provenance.json').write_text(json.dumps(record))
+        (self.output / 'acceptance.json').write_text(json.dumps({
+            'schema': 1, 'status': 'passed', 'sourceRef': self.commit,
+            'commit': self.commit, 'bucketPackageVersion': self.version,
+            'artifact': self.name, 'artifactSha256': record['sha256'],
+        }))
+        self.release_rows = []
+        self.release_state = {'draft': True, 'prerelease': False, 'assets': []}
+        self.mutations = []
+        previous_cwd = Path.cwd()
+        os.chdir(self.work)
+        self.addCleanup(os.chdir, previous_cwd)
+        self.env = patch.dict(os.environ, {
+            'CHANNEL': 'development',
+            'PACKAGE_VERSION': self.version,
+            'SOURCE_REF': self.commit,
+            'GITHUB_REPOSITORY': 'fixture/bucket',
+            'RELEASE_ENABLED': 'true',
+            'GITHUB_ACTIONS': 'true',
+            'GITHUB_REF': 'refs/heads/main',
+            'GITHUB_EVENT_NAME': 'workflow_dispatch',
+            'RELEASE_TAG': self.tag,
+            'CONDITIONS_FINGERPRINT': self.conditions,
+            'LICENSE_SHA256': self.license_sha,
+            'ACCEPTANCE_EVIDENCE': 'output/acceptance.json',
+        })
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def git(self, *args):
+        return subprocess.check_output(['git', *args], cwd=self.work, text=True, stderr=subprocess.STDOUT)
+
+    def notice_files(self):
+        return {
+            'LICENSE': 'MIT License\n\nCopyright (c) 2025 Nous Research\n',
+            'LICENSE.electron.txt': 'Electron license fixture',
+            'LICENSES.chromium.html': '<html>Chromium license fixture</html>',
+            'THIRD-PARTY-NOTICES.txt': 'Package fixture: MIT\n',
+            'UNOFFICIAL-BUILD.txt': 'Unofficial unsigned build fixture\n',
+        }
+
+    def notice_record(self):
+        files = self.notice_files()
+        return {
+            'upstreamLicense': {
+                'path': 'LICENSE',
+                'sha256': hashlib.sha256(files['LICENSE'].encode()).hexdigest(),
+            },
+            'thirdParty': {
+                'path': 'THIRD-PARTY-NOTICES.txt',
+                'sha256': hashlib.sha256(files['THIRD-PARTY-NOTICES.txt'].encode()).hexdigest(),
+                'packages': 1,
+            },
+            'unofficial': {
+                'path': 'UNOFFICIAL-BUILD.txt',
+                'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest(),
+            },
+        }
+
+    def package(self):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, 'w') as archive:
+            archive.writestr(self.executable, 'synthetic fixture')
+            archive.writestr('resources/app.asar', 'synthetic fixture')
+            archive.writestr('resources/install-stamp.json', json.dumps({
+                'commit': self.commit, 'payload': 'light', 'updateMechanism': 'external',
+            }))
+            for name, content in self.notice_files().items():
+                archive.writestr(name, content)
+        return data.getvalue()
+
+    def api(self, endpoint):
+        tag_endpoint = f'repos/fixture/bucket/releases/tags/{self.tag.replace("/", "%2F")}'
+        if endpoint == f'repos/{light.UPSTREAM}/commits/{self.commit}':
+            return {'sha': self.commit}
+        if endpoint == tag_endpoint:
+            return self.release_state
+        if endpoint.startswith('repos/fixture/bucket/contents/'):
+            path = endpoint.split('/contents/', 1)[1].split('?ref=', 1)[0]
+            actual = self.git('show', f'origin/main:{path}')
+            return {'content': base64.b64encode(actual.encode()).decode()}
+        raise AssertionError(f'Unexpected API request: {endpoint}')
+
+    def gh(self, *args):
+        if args == ('api', '--paginate', '--slurp', 'repos/fixture/bucket/releases?per_page=100'):
+            return json.dumps([self.release_rows])
+        if args[:2] == ('release', 'create'):
+            self.mutations.append(args)
+            return ''
+        if args[:2] == ('release', 'upload'):
+            self.mutations.append(args)
+            self.release_state['assets'].append({'name': Path(args[2]).name})
+            return ''
+        if args[:2] == ('release', 'edit'):
+            self.mutations.append(args)
+            self.release_state.update(draft=False, prerelease=True)
+            return ''
+        raise AssertionError(f'Unexpected GitHub mutation or request: {args}')
+
+    def test_development_publish_with_no_stable_releases(self):
+        with patch.object(light, 'api', side_effect=self.api), \
+             patch.object(light, 'gh', side_effect=self.gh), \
+             patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
+            light.publish()
+        self.assertEqual([call[1] for call in self.mutations], ['create', 'upload', 'upload', 'upload', 'edit'])
+        pointer = json.loads(self.git('show', 'origin/main:metadata/hermes-desktop-light-dev.json'))
+        self.assertEqual(pointer['commit'], self.commit)
+        self.assertEqual(pointer['sha256'], hashlib.sha256(self.zip_bytes).hexdigest())
+
+    def test_development_publish_stops_for_existing_stable_release(self):
+        self.release_rows = [{
+            'tag_name': 'hermes-desktop-light/v0.22.0-r1',
+            'draft': False,
+            'prerelease': False,
+        }]
+        with patch.object(light, 'api') as api, patch.object(light, 'gh', side_effect=self.gh):
+            with self.assertRaisesRegex(ValueError, 'closed after the stable transition'):
+                light.publish()
+            api.assert_not_called()
+        self.assertEqual(self.mutations, [])
+        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
+
 if __name__ == '__main__':
     unittest.main()
