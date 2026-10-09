@@ -146,7 +146,7 @@ jobs:
               while IFS= read -r member; do
                 [[ -n "$member" ]] || continue
                 safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
-                if ! npx --yes @electron/asar extract-file "$asar" "$member" "$dir/asar-files/$safe"; then
+                if ! npx --yes @electron/asar extract-file "$asar" "$member" > "$dir/asar-files/$safe"; then
                   printf '%s\n' "$member" >> "$dir/asar-extraction-errors.txt"
                   rm -f "$dir/asar-files/$safe"
                 fi
@@ -164,7 +164,7 @@ jobs:
               while IFS= read -r member; do
                 [[ -n "$member" ]] || continue
                 safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
-                if npx --yes @electron/asar extract-file "$asar" "$member" "$work/$label-font.tmp"; then
+                if npx --yes @electron/asar extract-file "$asar" "$member" > "$work/$label-font.tmp"; then
                   printf '%s  %s\n' "$(sha256sum "$work/$label-font.tmp" | cut -d' ' -f1)" "$member" >> "$dir/jetbrains-font-sha256.txt"
                   rm -f "$work/$label-font.tmp"
                 else
