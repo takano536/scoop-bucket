@@ -372,6 +372,10 @@ def _stable_manifest_present(rows):
     )
 
 
+def _has_stable_release(rows):
+    return any(_stable_release(row) is not None for row in rows)
+
+
 def _read_json(path):
     if not path.exists():
         return None
@@ -716,7 +720,7 @@ def _publish_development():
     if not re.fullmatch(r'[a-f0-9]{64}', license_digest):
         raise ValueError('Development publication has no valid exact-commit license digest')
     rows = _release_rows(repository)
-    if _has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present():
+    if _has_stable_release(rows) or CHANNEL_RECORD.exists() or _stable_manifest_present(rows):
         raise ValueError('Development publication is closed after the stable transition')
     record = json.loads((Path('output') / 'provenance.json').read_text(encoding='utf-8-sig'))
     verify_acceptance_evidence(record, version, source_ref)
