@@ -16,6 +16,11 @@ from distribution import package_version, release_tag, version_key
 UPSTREAM = 'NousResearch/hermes-agent'
 VERSION = re.compile(r'v(0|[1-9]\d{0,2})\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
 PREVIEW_SHA = 'a3ed4a173070e981332e4d879ff6cc8b9efd57ab'
+NOTICE_PATHS = {
+    'upstreamLicense': 'LICENSE',
+    'thirdParty': 'THIRD-PARTY-NOTICES.txt',
+    'unofficial': 'UNOFFICIAL-BUILD.txt',
+}
 
 
 def stable_version(release):
@@ -161,11 +166,50 @@ def verify_artifact(root, record, version, source_ref):
     if hashlib.sha256(artifact.read_bytes()).hexdigest() != record.get('sha256'):
         raise ValueError('Artifact digest mismatch')
     with zipfile.ZipFile(artifact) as archive:
-        names = archive.namelist()
-        if 'Hermes Light.exe' not in names or 'resources/app.asar' not in names or any(name.startswith('resources/agent-payload/') for name in names):
+        names = set(archive.namelist())
+        required = {
+            'Hermes Light.exe',
+            'resources/app.asar',
+            'LICENSE.electron.txt',
+            'LICENSES.chromium.html',
+            *NOTICE_PATHS.values(),
+        }
+        if not required <= names or any(name.startswith('resources/agent-payload/') for name in names):
             raise ValueError('Invalid Light package contents')
         if archive.testzip() is not None:
             raise ValueError('Corrupt ZIP')
+        try:
+            upstream_license = archive.read('LICENSE').decode('utf-8')
+        except UnicodeDecodeError as exc:
+            raise ValueError('Upstream license is not UTF-8') from exc
+        if 'MIT License' not in upstream_license or 'Copyright (c) 2025 Nous Research' not in upstream_license:
+            raise ValueError('Upstream MIT license is missing or unexpected')
+        notices = record.get('notices')
+        if not isinstance(notices, dict):
+            raise ValueError('Notice traceability is missing')
+        for key, path in NOTICE_PATHS.items():
+            entry = notices.get(key)
+            if (not isinstance(entry, dict) or entry.get('path') != path or
+                    not re.fullmatch(r'[a-f0-9]{64}', entry.get('sha256', ''))):
+                raise ValueError('Notice traceability is invalid')
+            if hashlib.sha256(archive.read(path)).hexdigest() != entry['sha256']:
+                raise ValueError('Notice digest mismatch')
+        if not isinstance(notices['thirdParty'].get('packages'), int) or notices['thirdParty']['packages'] < 1:
+            raise ValueError('Third-party notice package count is invalid')
+        audit = record.get('audit')
+        if not isinstance(audit, dict) or audit.get('status') not in ('complete', 'limited'):
+            raise ValueError('Audit evidence is missing')
+        limitations = audit.get('limitations')
+        unresolved = audit.get('unresolved')
+        if (not isinstance(limitations, list) or
+                not all(isinstance(item, str) and item for item in limitations)):
+            raise ValueError('Audit limitation evidence is invalid')
+        if (not isinstance(unresolved, list) or
+                not all(isinstance(item, str) and item for item in unresolved)):
+            raise ValueError('Unresolved shipped-item evidence is invalid')
+        if unresolved:
+            details = ', '.join(unresolved)
+            raise ValueError(f'Unresolved shipped items block publication: {details}')
         stamp = json.loads(archive.read('resources/install-stamp.json'))
         if any(stamp.get(key) != record[key] for key in ('commit', 'payload', 'updateMechanism')):
             raise ValueError('Packaged provenance mismatch')

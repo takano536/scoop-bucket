@@ -63,7 +63,7 @@ class ReleaseTests(unittest.TestCase):
                 light.release_claim({**record, **change}, '0.22.0', 'a' * 40)
 
 
-    def test_receipt_rejects_preview_and_tampered_artifact(self):
+    def test_receipt_rejects_preview_tampering_and_missing_notices(self):
         import hashlib
         import tempfile
         import zipfile
@@ -75,14 +75,44 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             artifact = root / 'hermes-desktop-light-0.22.0-r1-windows-x64.zip'
-            # Synthetic packaging fixture, never published or reported as a build.
+            files = {
+                'LICENSE': 'MIT License\n\nCopyright (c) 2025 Nous Research\n',
+                'LICENSE.electron.txt': 'Electron license fixture',
+                'LICENSES.chromium.html': '<html>Chromium license fixture</html>',
+                'THIRD-PARTY-NOTICES.txt': 'Package fixture: MIT\n',
+                'UNOFFICIAL-BUILD.txt': 'Unofficial unsigned build fixture\n',
+            }
             with zipfile.ZipFile(artifact, 'w') as archive:
                 archive.writestr('Hermes Light.exe', b'test fixture')
                 archive.writestr('resources/app.asar', b'test fixture')
                 archive.writestr('resources/install-stamp.json', '{"payload":"light","updateMechanism":"external","commit":"' + 'a' * 40 + '"}')
-            record = dict(schema=1, upstream='NousResearch/hermes-agent', sourceRef='v0.22.0', version='0.22.0-r1', commit='a' * 40, preview=False, artifact=artifact.name, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(), payload='light', updateMechanism='external', executable='Hermes Light.exe', smoke='two native launches; renderer loaded; localStorage retained')
+                for name, content in files.items():
+                    archive.writestr(name, content)
+            notices = {
+                'upstreamLicense': {'path': 'LICENSE', 'sha256': hashlib.sha256(files['LICENSE'].encode()).hexdigest()},
+                'thirdParty': {
+                    'path': 'THIRD-PARTY-NOTICES.txt',
+                    'sha256': hashlib.sha256(files['THIRD-PARTY-NOTICES.txt'].encode()).hexdigest(),
+                    'packages': 1,
+                },
+                'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
+            }
+            record = dict(schema=1, upstream='NousResearch/hermes-agent', sourceRef='v0.22.0', version='0.22.0-r1', commit='a' * 40, preview=False, artifact=artifact.name, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(), payload='light', updateMechanism='external', executable='Hermes Light.exe', smoke='two native launches; renderer loaded; localStorage retained', notices=notices, audit={'status': 'complete', 'limitations': [], 'unresolved': []})
             self.assertEqual(light.verify_artifact(root, record, '0.22.0-r1', 'v0.22.0'), artifact)
-            for change in ({'preview': True}, {'sha256': 'b' * 64}, {'version': '0.21.0'}, {'commit': 'b' * 40}, {'artifact': '../escape.zip'}, {'smoke': 'not run'}):
+            valid_bytes = artifact.read_bytes()
+            with zipfile.ZipFile(artifact, 'w') as archive:
+                for name, content in files.items():
+                    if name != 'THIRD-PARTY-NOTICES.txt':
+                        archive.writestr(name, content)
+                archive.writestr('Hermes Light.exe', b'test fixture')
+                archive.writestr('resources/app.asar', b'test fixture')
+                archive.writestr('resources/install-stamp.json', '{"payload":"light","updateMechanism":"external","commit":"' + 'a' * 40 + '"}')
+            with self.assertRaisesRegex(ValueError, 'Invalid Light package contents'):
+                light.verify_artifact(root, {**record, 'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest()}, '0.22.0-r1', 'v0.22.0')
+            artifact.write_bytes(valid_bytes)
+            limited = {**record, 'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': []}}
+            self.assertEqual(light.verify_artifact(root, limited, '0.22.0-r1', 'v0.22.0'), artifact)
+            for change in ({'preview': True}, {'sha256': 'b' * 64}, {'version': '0.21.0'}, {'commit': 'b' * 40}, {'artifact': '../escape.zip'}, {'smoke': 'not run'}, {'notices': {}}, {'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': ['Unresolved shipped item: assets/unknown.bin']}}):
                 with self.assertRaises(ValueError):
                     light.verify_artifact(root, {**record, **change}, '0.22.0-r1', 'v0.22.0')
 

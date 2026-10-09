@@ -5,6 +5,8 @@ $source = Join-Path $root 'upstream'
 $out = Join-Path $root 'output'
 New-Item -ItemType Directory -Path $out | Out-Null
 $commit = (git -C $source rev-parse HEAD).Trim()
+$bundleGraphDir = Join-Path $source 'apps/desktop/.hermes-bundle-graph'
+
 if ($env:PREVIEW -eq 'true') {
     python "$source/scripts/bundles/desktop.py" --commit $commit --variant light -- --dir
 } else {
@@ -18,11 +20,24 @@ if ($stamp.payload -cne 'light' -or $stamp.commit -cne $commit -or $stamp.update
     throw 'Wrong payload, provenance, or update owner'
 }
 if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly contains a local agent' }
+$bucket = Join-Path $root 'bucket'
+$prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
+& $prepared.node "$bucket/scripts/hermes-desktop-light-bundle-graph.mjs" $source $bundleGraphDir $pack
+$repository = $env:GITHUB_REPOSITORY
+$runUrl = "https://github.com/$repository/actions/runs/$env:GITHUB_RUN_ID"
+$bucketCommit = (git -C $bucket rev-parse HEAD).Trim()
+$noticeMetadata = & python "$bucket/scripts/hermes-desktop-light-notices.py" `
+    --source $source `
+    --pack $pack `
+    --source-ref $env:SOURCE_REF `
+    --commit $commit `
+    --bucket-repository $repository `
+    --bucket-commit $bucketCommit `
+    --run-url $runUrl | ConvertFrom-Json
 $exeName = 'Hermes Light.exe'
 if ($env:PREVIEW -eq 'true') { $exeName = "hermes-light-$($commit.Substring(0, 7)).exe" }
 $exe = Get-Item (Join-Path $pack $exeName)
 # Use the exact managed Node admitted by upstream preparation.
-$prepared = Get-Content "$source/.build/desktop-job/prepared.json" -Raw | ConvertFrom-Json
 & $prepared.node "$root/bucket/scripts/smoke-hermes-desktop-light.cjs" $source $exe.FullName $out
 $version = $env:PACKAGE_VERSION
 if ($env:PREVIEW -eq 'true') { $version = "preview-$($commit.Substring(0, 7))" }
@@ -42,6 +57,7 @@ $receipt = @{
     executable = $exe.Name
     smoke = 'two native launches; renderer loaded; localStorage retained'
     nativeChecks = Get-Content "$out/native-checks.json" -Raw | ConvertFrom-Json
+    notices = $noticeMetadata
     signing = 'unsigned unofficial build'
     run = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
 }

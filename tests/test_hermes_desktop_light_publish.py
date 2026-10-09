@@ -54,6 +54,8 @@ class PublishTests(unittest.TestCase):
                            preview=False, payload='light', updateMechanism='external', commit='a' * 40,
                            artifact=self.name, executable='Hermes Light.exe',
                            smoke='two native launches; renderer loaded; localStorage retained',
+                           notices=self.notice_record(),
+                           audit={'status': 'complete', 'limitations': [], 'unresolved': []},
                            sha256=hashlib.sha256(self.published).hexdigest())
         rebuilt = self.package('different rebuilt fixture')
         (self.output / self.name).write_bytes(rebuilt)
@@ -71,12 +73,35 @@ class PublishTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', *args], cwd=self.work, text=True, stderr=subprocess.STDOUT)
 
+    def notice_files(self):
+        return {
+            'LICENSE': 'MIT License\n\nCopyright (c) 2025 Nous Research\n',
+            'LICENSE.electron.txt': 'Electron license fixture',
+            'LICENSES.chromium.html': '<html>Chromium license fixture</html>',
+            'THIRD-PARTY-NOTICES.txt': 'Package fixture: MIT\n',
+            'UNOFFICIAL-BUILD.txt': 'Unofficial unsigned build fixture\n',
+        }
+
+    def notice_record(self):
+        files = self.notice_files()
+        return {
+            'upstreamLicense': {'path': 'LICENSE', 'sha256': hashlib.sha256(files['LICENSE'].encode()).hexdigest()},
+            'thirdParty': {
+                'path': 'THIRD-PARTY-NOTICES.txt',
+                'sha256': hashlib.sha256(files['THIRD-PARTY-NOTICES.txt'].encode()).hexdigest(),
+                'packages': 1,
+            },
+            'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
+        }
+
     def package(self, marker):
         data = io.BytesIO()
         with zipfile.ZipFile(data, 'w') as archive:
             archive.writestr('Hermes Light.exe', marker)
             archive.writestr('resources/app.asar', 'synthetic fixture')
             archive.writestr('resources/install-stamp.json', json.dumps(dict(commit='a' * 40, payload='light', updateMechanism='external')))
+            for name, content in self.notice_files().items():
+                archive.writestr(name, content)
         return data.getvalue()
 
     def api(self, endpoint):
