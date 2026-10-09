@@ -281,18 +281,19 @@ inventory source countsは`asar=2`、`unpacked=2`、`bundle-map=352`だった。
 実行形式であるため、通知にはMPL-2.0全文、packageの複数license notice、および「Source Code
 Formは固定したnpm tarballとupstream commitから取得できる」という具体的な§3.2 pointerを入れる。
 `@nous-research/ui@0.18.2`は出荷CSSの`url(...)`から参照されるfont assetとして
-`bundle-map`に追加された。残るfailureは`@nous-research/ui@0.18.2`、
+`bundle-map`に追加された。旧runでのfailureは`@nous-research/ui@0.18.2`、
 `lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、`unicode-animations@1.0.3`、
-`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、宣言MITに対応する完全な
-license本文のexact-version evidenceなし）であり、固定version sourceを確認するまで
-fail-closedのままとする。
+`use-composed-ref@1.4.0`（いずれも`origin=bundle-map`、当時は宣言MITに対応する
+完全なlicense本文のexact-version evidenceなし）であり、当時はfail-closedだった。
+現在のexact tarball/source evidenceと限定overrideは下記に記録する。
 
 ### 最新Windows出力のfont/image/native確認（run 37801029051）
 
 license gate到達前に出力されたbuild log（upstream `a3ed4a173070e981332e4d879ff6cc8b9efd57ab`、
 head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象を一度確認した。
 最終ZIPはgateで生成されていないため、ここでいう「出荷」は`win-unpacked`へpackされる
-対象としての確認であり、通知生成の5件failureに加えてJetBrains font blockerを報告する。
+対象としての確認であり、旧通知生成の5件failureを報告する。JetBrains Monoは
+後述の固定hash/immutable OFL evidenceで解決され、現在の配布条件blockerではない。
 
 - **Font**: `Collapse-Bold-*.woff2` はCSSのsource pathが
   `@nous-research/ui@0.18.2`を指す。宣言MITだがexact tarballに完全本文/copyright
@@ -302,11 +303,10 @@ head `9af0940a8c287a63de6f7e24dc458b64def768bb`）のasset一覧とsigning対象
   package noticeに含まれる。`codicon-D*.ttf` は`@vscode/codicons@0.0.45`
   のCC-BY-4.0 package notice/attribution（同packageのlicense text）を収録する。
   `JetBrainsMono-{Regular,Bold,Italic}.woff2` は上流
-  `apps/desktop/src/fonts`のapp-owned copied fontで、`styles.css`がApache-2.0と
-  明記する。exact JetBrains release treeのblob SHAは対象commitの3 blobと一致せず、
-  固定versionのApache本文/source pointerを安全に選べないため、
-  `reviewed_distribution_blockers`がpackaged `JetBrainsMono-*.woff2` pathを
-  配布条件不足としてlicense errorと同時にfail-closedする。
+  `apps/desktop/src/fonts`のapp-owned copied fontである。CSSのApache-2.0
+  commentはfont name tableのOFL-1.1 metadataと一致しないため、license evidenceには
+ 使わない。後述のv2.305 blob hashとimmutable `OFL.txt`を照合し、異なるbytesは
+  fail-closedするexact asset attributionへ置き換えた。
 - **Image/icon**: `feature-{memory,automation,connect,sandbox}-*.webp`、
   `apps/desktop/assets`のicon/icon-dark（PNG/ICO/AppX各サイズ）、`apps/desktop/public`
   の`apple-touch-icon.png`/`nous-girl{,-dark}.png`等は対象commitのapp-owned source
@@ -333,6 +333,74 @@ Contributing、公式サイトに明記された制限だけを根拠にする�
 「許可」とは扱わず、個別の許諾が必要だとも断定しない。第三者再配布での商標・
 ロゴ利用規則が上流資料から確認できない場合は、`UNOFFICIAL-BUILD.txt` の表示だけで
 解消したとは扱わず、公開前の未確認事項として残す。
+
+### Official distribution notice survey and exact asset/package evidence
+
+The read-only official distribution survey completed in
+[Actions run 37936205871](https://github.com/takano536/scoop-bucket/actions/runs/37936205871).
+Its `official-notice-survey` artifact is
+[artifact 11617734477](https://api.github.com/repos/takano536/scoop-bucket/actions/artifacts/11617734477),
+with digest `sha256:a8cf344ad4bab06ec15e5dc67d36199b24072da2c1b82bade866643e8d125ce6`
+and compressed size 6,925,588 bytes. The fixed canary bundle
+`HermesBundled-26.1008.7.449-win.msixbundle` was SHA256
+`9b05aae0ac776becf30840297583dfaca841da7855acc22c58352df39f33a517`; the feed's
+current `HermesBundled-26.1009.7.410-win.msixbundle` was SHA256
+`5b1ccae5cf64fb1ad5917bf54f801f9a88ffd45e936b3d8212eaea5071ab3e98`.
+The fixed/current x64 MSIX SHA256 values were
+`db459b3ccf0bbfab9c2255bd083b8a7425f01d4fd8e2ee73d92162e4a58c4c1b` and
+`86f9b73fd5c2fab29525d3391e176c80169ed1cda999eafa5f17baebc5c1cdad`.
+
+The official MSIX inventory contains Hermes Agent's own `LICENSE` and plugin/skill
+`LICENSE`/`NOTICE` files, but no canonical third-party notice for the five npm
+packages below. Official distribution therefore is not used as compliance evidence
+for those packages. Its install stamps identify canary commits
+`a28a5d03a9fa60418db5f44f3436fa2aa029c8f2` (fixed) and
+`1744a19e0df568c647e4f3ff9c37f2a284a282fb` (current), not the Light pins
+`a3ed4a1`/`38880bd`.
+
+JetBrains Mono is resolved by bytes, not the upstream CSS comment. The shipped
+Regular/Bold/Italic WOFF2 hashes are respectively
+`f1a7a03672cdd494ce0d5543fac6e4360fe22403c6de297fdc2e55a815f7baff`,
+`08863c7964612257a90bd821e3127dc5ccb0b5046f881673a1ade5809eb21d0f`, and
+`9f158b85eca345daeee01dfffa602709a905ea08b0cc60dbf6153cbbd97da08f`.
+Font name tables identify version 2.305, copyright
+`Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)`,
+and SIL Open Font License 1.1. Each hash is matched against its immutable source
+at commit `19371302b95d218af43299bce79ddbddd0bc364d`; the complete
+[OFL.txt](https://raw.githubusercontent.com/JetBrains/JetBrainsMono/19371302b95d218af43299bce79ddbddd0bc364d/OFL.txt)
+is fetched with SHA256
+`a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697`.
+The upstream CSS's Apache-2.0 comment is inconsistent with the embedded font
+metadata and is not used. A filename match with different bytes remains a
+fail-closed blocker.
+
+The exact package overrides record registry tarball URL, integrity, SHA256,
+package metadata, and absence of license/copyright-named members. They never
+synthesize a copyright line:
+
+- `@nous-research/ui@0.18.2`: declared-only MIT evidence; no author field,
+  no license/notice member, and no available source repository license.
+- `lazy-val@1.0.5`: declared-only MIT evidence; verbatim author metadata is
+  `Vladimir Krivosheev`, but the exact source tree has no license file.
+- `react-remove-scroll-bar@2.3.8`: complete MIT license from author-added
+  immutable commit `7301c160fda44cb8cf2b9fdfde61efad35736196`
+  (SHA256 `a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84`).
+  The npm `gitHead` is unavailable and this license commit is later than the
+  published package, so the evidence is explicitly recorded as later
+  project-level evidence rather than exact source-tree identity.
+- `unicode-animations@1.0.3`: declared-only MIT evidence; no author field,
+  no license/notice member, and no license file in the exact or nearby source.
+- `use-composed-ref@1.4.0`: declared-only MIT evidence; no author field,
+  no license/notice member, and no license file in the exact tag/source tree.
+
+Declared-only output labels the SPDX and verbatim package.json author field,
+states that the exact tarball supplied no license or copyright notice, and
+includes the standard MIT text. It is a narrowly-scoped resolution of the
+package's missing-file evidence, not proof that an absent upstream notice exists.
+Any package outside these exact entries, a changed tarball, or a package that
+starts shipping a notice file fails closed. The five package entries and the
+font evidence still require the Windows Light workflow to exercise the actual
+`win-unpacked` inventory.
 
 ## 未確認事項と配布開始条件
 
