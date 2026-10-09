@@ -1,0 +1,204 @@
+name: Official Desktop Notice Survey
+
+on:
+  push:
+    branches:
+      - investigate/official-desktop-notices
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Survey official canary bundles
+        id: survey
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          work="$RUNNER_TEMP/official-notice-survey-work"
+          out="$RUNNER_TEMP/official-notice-survey-output"
+          mkdir -p "$work" "$out"
+          trap 'rm -f "$work"/*.msixbundle "$work"/*.msix "$work"/*.asar "$work"/*-font.tmp 2>/dev/null || true' EXIT
+
+          feed_url='https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller'
+          fixed_url='https://hermes-assets.nousresearch.com/releases/win32/canary/HermesBundled-26.1008.7.449-win.msixbundle'
+          fixed_sha='9b05aae0ac776becf30840297583dfaca841da7855acc22c58352df39f33a517'
+
+          df -h "$RUNNER_TEMP" | tee "$out/runner-disk.txt"
+          curl --fail --location --retry 2 --silent --show-error "$feed_url" -o "$out/canary.appinstaller"
+          python3 - "$out/canary.appinstaller" > "$out/current-bundle-url.txt" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          uri = next((e.attrib.get("Uri") for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "MainBundle"), None)
+          if not uri:
+              raise SystemExit("MainBundle Uri not found")
+          print(uri)
+          PY
+          current_url="$(cat "$out/current-bundle-url.txt")"
+          {
+            printf '%s\n' "$fixed_url"
+            if [[ "$current_url" != "$fixed_url" ]]; then
+              printf '%s\n' "$current_url"
+            fi
+          } > "$out/bundle-urls.txt"
+          {
+            echo "feed=$feed_url"
+            echo "fixed=$fixed_url"
+            echo "current=$current_url"
+          } > "$out/feed-summary.txt"
+
+          survey_bundle() {
+            local url="$1"
+            local label
+            label="$(python3 - "$url" <<'PY'
+          import re
+          import sys
+          from urllib.parse import urlparse
+          name = urlparse(sys.argv[1]).path.rsplit("/", 1)[-1]
+          print(re.sub(r"[^A-Za-z0-9._-]+", "_", name).removesuffix(".msixbundle"))
+          PY
+            )"
+            local bundle="$work/$label.msixbundle"
+            local dir="$out/$label"
+            mkdir -p "$dir/outer-files" "$dir/asar-files"
+            echo "Surveying $url" | tee "$dir/status.txt"
+            curl --fail --location --retry 2 --silent --show-error "$url" -o "$bundle"
+            sha256sum "$bundle" | tee "$dir/bundle.sha256"
+            if [[ "$url" == "$fixed_url" ]]; then
+              actual="$(cut -d' ' -f1 "$dir/bundle.sha256")"
+              [[ "$actual" == "$fixed_sha" ]] || { echo "fixed bundle SHA256 mismatch" >&2; return 1; }
+            fi
+            unzip -l "$bundle" > "$dir/bundle.listing.txt"
+            local msix_member
+            msix_member="$(python3 - "$bundle" <<'PY'
+          import re
+          import sys
+          import zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = [i.filename for i in z.infolist() if not i.is_dir() and i.filename.lower().endswith(".msix")]
+          preferred = [n for n in names if re.search(r"(?:win|windows)[-_](?:x64|amd64)\.msix$", n, re.I)]
+          if not preferred:
+              preferred = [n for n in names if re.search(r"(?:x64|amd64).*\.msix$", n, re.I)]
+          if not preferred:
+              raise SystemExit("no x64 MSIX member found")
+          print(preferred[0])
+          PY
+            )"
+            printf '%s\n' "$msix_member" > "$dir/msix-member.txt"
+            local msix="$work/$label.msix"
+            unzip -p "$bundle" "$msix_member" > "$msix"
+            sha256sum "$msix" | tee "$dir/msix.sha256"
+            unzip -l "$msix" > "$dir/msix.listing.txt"
+
+            python3 - "$msix" "$dir/outer-candidates.txt" <<'PY'
+          import re
+          import sys
+          import zipfile
+          patterns = re.compile(r"(^|/)(?:license|licence|copying|notice|third[-_ ]party|authors)[^/]*$|(?:/)(?:notices?|ofl)(?:/|$)|(^|/)(?:package\.json|appxmanifest\.xml|.*(?:install|build)[^/]*\.(?:json|xml|txt))$", re.I)
+          with zipfile.ZipFile(sys.argv[1]) as z, open(sys.argv[2], "w", encoding="utf-8") as out:
+              for info in z.infolist():
+                  name = info.filename.replace("\\", "/")
+                  if info.is_dir() or info.file_size > 4 * 1024 * 1024:
+                      continue
+                  if patterns.search(name):
+                      out.write(name + "\n")
+          PY
+            while IFS= read -r member; do
+              [[ -n "$member" ]] || continue
+              safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
+              unzip -p "$msix" "$member" > "$dir/outer-files/$safe"
+            done < "$dir/outer-candidates.txt"
+
+            local asar_member
+            asar_member="$(python3 - "$msix" <<'PY'
+          import sys
+          import zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              for i in z.infolist():
+                  n = i.filename.replace("\\", "/")
+                  if not i.is_dir() and n.rsplit("/", 1)[-1].lower() == "app.asar":
+                      print(n)
+                      break
+          PY
+            )"
+            if [[ -n "$asar_member" ]]; then
+              local asar="$work/$label.asar"
+              printf '%s\n' "$asar_member" > "$dir/asar-member.txt"
+              unzip -p "$msix" "$asar_member" > "$asar"
+              npx --yes @electron/asar list "$asar" > "$dir/app.asar.listing.txt"
+              python3 - "$dir/app.asar.listing.txt" "$dir/asar-candidates.txt" <<'PY'
+          import re
+          import sys
+          patterns = re.compile(r"(^|/)(?:license|licence|copying|notice|third[-_ ]party|authors)[^/]*$|(?:/)(?:notices?|ofl)(?:/|$)|(^|/)(?:package\.json|.*(?:install|build)[^/]*\.(?:json|xml|txt))$", re.I)
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as source, open(sys.argv[2], "w", encoding="utf-8") as out:
+              for line in source:
+                  name = line.strip().lstrip("/")
+                  if name and patterns.search(name):
+                      out.write(name + "\n")
+          PY
+              while IFS= read -r member; do
+                [[ -n "$member" ]] || continue
+                safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
+                npx --yes @electron/asar extract-file "$asar" "$member" "$dir/asar-files/$safe"
+              done < "$dir/asar-candidates.txt"
+              : > "$dir/jetbrains-font-sha256.txt"
+              python3 - "$dir/app.asar.listing.txt" "$dir/jetbrains-members.txt" <<'PY'
+          import re
+          import sys
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as source, open(sys.argv[2], "w", encoding="utf-8") as out:
+              for line in source:
+                  name = line.strip().lstrip("/")
+                  if re.search(r"JetBrainsMono-[^/]+\.woff2$", name, re.I):
+                      out.write(name + "\n")
+          PY
+              while IFS= read -r member; do
+                [[ -n "$member" ]] || continue
+                safe="$(printf '%s' "$member" | tr '/\\' '__' | tr -cd 'A-Za-z0-9._-')"
+                npx --yes @electron/asar extract-file "$asar" "$member" "$work/$label-font.tmp"
+                printf '%s  %s\n' "$(sha256sum "$work/$label-font.tmp" | cut -d' ' -f1)" "$member" >> "$dir/jetbrains-font-sha256.txt"
+                rm -f "$work/$label-font.tmp"
+              done < "$dir/jetbrains-members.txt"
+              rm -f "$asar"
+            else
+              echo 'No app.asar found' > "$dir/app.asar.listing.txt"
+            fi
+
+            python3 - "$dir" "$url" "$msix_member" <<'PY'
+          import pathlib
+          import sys
+          d = pathlib.Path(sys.argv[1])
+          with (d / "summary.txt").open("w", encoding="utf-8") as out:
+              out.write(f"bundle_url={sys.argv[2]}\n")
+              out.write(f"msix_member={sys.argv[3]}\n")
+              out.write(f"bundle_sha256={(d / 'bundle.sha256').read_text().strip()}\n")
+              out.write(f"msix_sha256={(d / 'msix.sha256').read_text().strip()}\n")
+              out.write(f"outer_candidate_count={sum(1 for _ in (d / 'outer-candidates.txt').open())}\n")
+              out.write(f"asar_candidate_count={sum(1 for _ in (d / 'asar-candidates.txt').open()) if (d / 'asar-candidates.txt').exists() else 0}\n")
+              out.write(f"jetbrains_hashes={(d / 'jetbrains-font-sha256.txt').read_text().strip() if (d / 'jetbrains-font-sha256.txt').exists() else 'none'}\n")
+          PY
+            rm -f "$bundle" "$msix"
+          }
+
+          while IFS= read -r url; do
+            [[ -n "$url" ]] || continue
+            survey_bundle "$url"
+          done < "$out/bundle-urls.txt"
+
+          du -sh "$out" | tee "$out/output-size.txt"
+          size_mb="$(du -sm "$out" | cut -f1)"
+          [[ "$size_mb" -lt 20 ]] || { echo "survey artifact exceeds 20MB" >&2; exit 1; }
+
+      - name: Upload small survey evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: official-notice-survey
+          path: ${{ runner.temp }}/official-notice-survey-output
+          if-no-files-found: warn
+          retention-days: 14
