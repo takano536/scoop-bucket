@@ -30,6 +30,13 @@ JETBRAINS_ASSET_FILE = re.compile(
     r"(?:^|/)JetBrainsMono-(?P<face>Regular|Bold|Italic)(?:-[^/]+)?\.woff2$",
     re.I,
 )
+FIRST_PARTY_NATIVE_ASSETS = {
+    "native/win32-x64/hud-modifier-monitor.exe": (
+        "apps/desktop/electron/native/hud-modifier-monitor-win.cs",
+        "apps/desktop/electron/native/hud-modifier-gesture.cs",
+        "apps/desktop/scripts/build-hud-modifier-monitor.mjs",
+    ),
+}
 
 MIT_LICENSE_TEXT = """MIT License
 
@@ -1114,6 +1121,31 @@ def app_owned_source(source: Path, path: Path) -> bool:
         return True
     return False
 
+def first_party_native_asset_records(
+    source: Path, shipped: set[str]
+) -> dict[str, list[Path]]:
+    """Record generated native outputs whose in-repo sources are verified."""
+    records: dict[str, list[Path]] = {}
+    source_root = source.resolve()
+    for output_name, relative_sources in FIRST_PARTY_NATIVE_ASSETS.items():
+        if output_name not in shipped:
+            continue
+        origins: list[Path] = []
+        for relative in relative_sources:
+            path = (source / relative).resolve()
+            try:
+                path.relative_to(source_root)
+            except ValueError:
+                origins = []
+                break
+            if not path.is_file() or not app_owned_source(source, path):
+                origins = []
+                break
+            origins.append(path)
+        if origins:
+            records[output_name] = origins
+    return records
+
 
 def asset_source_packages(source: Path, records: dict[str, list[Path]]) -> list[tuple[str, Path]]:
     packages: set[tuple[str, Path]] = set()
@@ -1393,7 +1425,12 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
     except RuntimeError as exc:
         audit_limitations.append(f"Asset package evidence unavailable: {exc}")
         unresolved_items.append(f"Unresolved asset evidence: {exc}")
+    first_party_assets: dict[str, list[Path]] = {}
     if pack is not None:
+        shipped_files = shipped_dist_files(pack)
+        first_party_assets = first_party_native_asset_records(source, shipped_files)
+        for output_name, origins in first_party_assets.items():
+            asset_records.setdefault(output_name, []).extend(origins)
         shipped_files = validate_shipped_dist_attribution(
             source,
             pack,
@@ -1406,6 +1443,7 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
         )
     else:
         shipped_files = set()
+        first_party_assets = {}
     if not packages:
         audit_limitations.append("No package modules were resolved from bundle evidence")
         if pack is not None and not shipped_files:
@@ -1427,6 +1465,14 @@ def bundle_module_graph(source: Path, pack: Path | None = None) -> dict:
             name: [path.relative_to(source).as_posix() for path in origins]
             for name, origins in sorted(asset_records.items())
         },
+        "firstPartyAssets": [
+            {
+                "path": output_name,
+                "license": "LICENSE",
+                "sources": [path.relative_to(source).as_posix() for path in origins],
+            }
+            for output_name, origins in sorted(first_party_assets.items())
+        ],
         "shippedFiles": sorted(shipped_files),
         "auditLimitations": sorted(set(audit_limitations)),
         "unresolvedItems": sorted(set(unresolved_items)),
@@ -1717,6 +1763,17 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "",
             ]
         )
+    for asset in bundle_graph.get("firstPartyAssets", []):
+        lines.extend(
+            [
+                f"[First-party asset] {asset['path']}",
+                "License: Upstream LICENSE (MIT)",
+                *[f"Verified source: {path}" for path in asset["sources"]],
+                "",
+                "-" * 78,
+                "",
+            ]
+        )
     for asset in bundle_graph.get("assetAttributions", []):
         lines.extend(
             [
@@ -1796,6 +1853,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "auditLimitations": audit_limitations,
                 "unresolved": unresolved_items,
                 "assets": len(bundle_graph.get("assetAttributions", [])),
+                "firstPartyAssets": len(bundle_graph.get("firstPartyAssets", [])),
             },
         },
     }
