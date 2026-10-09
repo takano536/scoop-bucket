@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import io
 import json
 import re
 import shutil
 import struct
+import tarfile
 import urllib.request
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -22,11 +25,10 @@ BUNDLE_GRAPH_FILE = "hermes-bundle-module-graph.json"
 LICENSE_FILE = re.compile(r"^(?:licen[cs]e|copying)(?:[._ -].*)?$", re.I)
 NOTICE_FILE = re.compile(r"^notice(?:[._ -].*)?$", re.I)
 OVERRIDES_FILE = Path(__file__).with_name("hermes-desktop-light-license-overrides.json")
-REVIEWED_DISTRIBUTION_BLOCKERS = (
-    (
-        re.compile(r"(?:^|/)JetBrainsMono-(?:Regular|Bold|Italic)(?:-[^/]+)?\.woff2$", re.I),
-        "JetBrains Mono is declared Apache-2.0 by the upstream CSS; no exact-version license text, copyright, or source pointer is included",
-    ),
+ASSET_OVERRIDES_FILE = Path(__file__).with_name("hermes-desktop-light-asset-overrides.json")
+JETBRAINS_ASSET_FILE = re.compile(
+    r"(?:^|/)JetBrainsMono-(?P<face>Regular|Bold|Italic)(?:-[^/]+)?\.woff2$",
+    re.I,
 )
 
 MIT_LICENSE_TEXT = """MIT License
@@ -63,17 +65,226 @@ def sha256(path: Path) -> str:
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
-def reviewed_distribution_blockers(bundle_graph: dict) -> list[str]:
+def load_asset_overrides() -> dict[str, dict]:
+    try:
+        data = json.loads(ASSET_OVERRIDES_FILE.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Cannot read asset overrides: {ASSET_OVERRIDES_FILE}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Asset overrides must be an object: {ASSET_OVERRIDES_FILE}")
+    immutable_url = re.compile(
+        r"https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/.+"
+    )
+    for key, entry in data.items():
+        if not isinstance(key, str) or not key:
+            raise RuntimeError(f"Invalid asset override key: {key!r}")
+        if not isinstance(entry, dict):
+            raise RuntimeError(f"Asset override must be an object: {key}")
+        if entry.get("spdx") != "OFL-1.1":
+            raise RuntimeError(f"Unsupported asset override SPDX id: {key}")
+        copyright_line = entry.get("copyright")
+        if not isinstance(copyright_line, str) or not re.search(
+            r"(?i)\bcopyright\b", copyright_line
+        ):
+            raise RuntimeError(f"Asset override has invalid copyright line: {key}")
+        try:
+            pattern = re.compile(entry["pattern"], re.I)
+        except (KeyError, re.error, TypeError) as exc:
+            raise RuntimeError(f"Asset override has invalid filename pattern: {key}") from exc
+        if pattern.groups != 1:
+            raise RuntimeError(f"Asset override pattern must capture one face: {key}")
+        hashes = entry.get("hashes")
+        if not isinstance(hashes, dict) or set(hashes) != {"Regular", "Bold", "Italic"}:
+            raise RuntimeError(f"Asset override must cover all JetBrains faces: {key}")
+        for face, evidence in hashes.items():
+            if not isinstance(evidence, dict):
+                raise RuntimeError(f"Asset override hash evidence is invalid: {key}/{face}")
+            digest = evidence.get("sha256")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise RuntimeError(f"Asset override hash is invalid: {key}/{face}")
+            if not isinstance(evidence.get("url"), str) or not immutable_url.fullmatch(evidence["url"]):
+                raise RuntimeError(f"Asset override source URL is not immutable: {key}/{face}")
+            if not isinstance(evidence.get("path"), str) or not evidence["path"].strip():
+                raise RuntimeError(f"Asset override source path is missing: {key}/{face}")
+            if not isinstance(evidence.get("retrieval"), str) or not evidence["retrieval"].strip():
+                raise RuntimeError(f"Asset override source retrieval is missing: {key}/{face}")
+        license_evidence = entry.get("license")
+        if not isinstance(license_evidence, dict):
+            raise RuntimeError(f"Asset override has no license evidence: {key}")
+        if not isinstance(license_evidence.get("url"), str) or not immutable_url.fullmatch(
+            license_evidence["url"]
+        ):
+            raise RuntimeError(f"Asset override license URL is not immutable: {key}")
+        if not isinstance(license_evidence.get("sha256"), str) or not re.fullmatch(
+            r"[0-9a-f]{64}", license_evidence["sha256"]
+        ):
+            raise RuntimeError(f"Asset override license SHA256 is invalid: {key}")
+        if not isinstance(license_evidence.get("path"), str) or not license_evidence["path"].strip():
+            raise RuntimeError(f"Asset override license path is missing: {key}")
+        if not isinstance(license_evidence.get("retrieval"), str) or not license_evidence["retrieval"].strip():
+            raise RuntimeError(f"Asset override license retrieval is missing: {key}")
+        if not isinstance(entry.get("note"), str) or not entry["note"].strip():
+            raise RuntimeError(f"Asset override has no note: {key}")
+    return data
+
+
+def asar_file_bytes(pack: Path, relative: str) -> bytes | None:
+    """Read one small file from app.asar without extracting the archive."""
+    normalized = relative.replace("\\", "/").lstrip("/")
+    unpacked = pack / "resources" / "app.asar.unpacked" / "dist" / normalized
+    if unpacked.is_file():
+        try:
+            return unpacked.read_bytes()
+        except OSError as exc:
+            raise RuntimeError(f"Cannot read shipped asset: {unpacked}") from exc
+    asar = pack / "resources" / "app.asar"
+    try:
+        with asar.open("rb") as stream:
+            fields = stream.read(16)
+            if len(fields) != 16:
+                raise RuntimeError("ASAR header is truncated")
+            _, _, _, json_size = struct.unpack("<IIII", fields)
+            header_end = 16 + json_size
+            tree = json.loads(stream.read(json_size))
+            node = tree.get("files", {})
+            for part in ("dist", *Path(normalized).parts):
+                node = node.get(part) if isinstance(node, dict) else None
+                if not isinstance(node, dict):
+                    return None
+            offset = node.get("offset")
+            size = node.get("size")
+            if offset is None or size is None or node.get("unpacked"):
+                return None
+            stream.seek(header_end + int(offset))
+            data = stream.read(int(size))
+            if len(data) != int(size):
+                raise RuntimeError(f"ASAR asset is truncated: {normalized}")
+            return data
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, struct.error) as exc:
+        raise RuntimeError(f"Cannot inspect packaged ASAR asset: {normalized}") from exc
+
+
+def reviewed_distribution_blockers(
+    bundle_graph: dict,
+    pack: Path | None = None,
+    asset_overrides: dict[str, dict] | None = None,
+) -> list[str]:
     shipped = bundle_graph.get("shippedFiles", [])
     if not isinstance(shipped, list) or not all(isinstance(item, str) and item for item in shipped):
         raise RuntimeError("Bundle graph shipped file list is invalid")
-    blockers = []
+    candidates: list[tuple[str, re.Match[str], dict]] = []
+    overrides = asset_overrides
     for item in shipped:
         normalized = item.replace("\\", "/")
-        for pattern, reason in REVIEWED_DISTRIBUTION_BLOCKERS:
-            if pattern.search(normalized):
-                blockers.append(f"{normalized}: {reason}")
-                break
+        match = JETBRAINS_ASSET_FILE.search(normalized)
+        if not match:
+            continue
+        if overrides is None:
+            overrides = load_asset_overrides()
+        matching = [
+            entry
+            for entry in overrides.values()
+            if re.search(entry["pattern"], normalized, re.I)
+        ]
+        if len(matching) != 1:
+            candidates.append((normalized, match, {}))
+        else:
+            candidates.append((normalized, match, matching[0]))
+    blockers: list[str] = []
+    attributions: list[dict] = []
+    fetched: dict[str, bytes] = {}
+    if pack is None:
+        blockers.extend(
+            f"{path}: JetBrains Mono asset bytes cannot be hash-verified without the packaged payload"
+            for path, _, _ in candidates
+        )
+    for normalized, match, entry in candidates:
+        if not entry:
+            blockers.append(f"{normalized}: no exact-hash JetBrains Mono asset evidence is configured")
+            continue
+        face = match.group("face").title()
+        evidence = entry["hashes"].get(face)
+        if evidence is None:
+            blockers.append(f"{normalized}: no exact-hash evidence is configured for face {face}")
+            continue
+        try:
+            asset_bytes = asar_file_bytes(pack, normalized) if pack is not None else None
+        except RuntimeError as exc:
+            blockers.append(f"{normalized}: {exc}")
+            continue
+        if asset_bytes is None:
+            blockers.append(f"{normalized}: shipped JetBrains Mono asset bytes are missing")
+            continue
+        actual_digest = sha256_bytes(asset_bytes)
+        if actual_digest != evidence["sha256"]:
+            blockers.append(
+                f"{normalized}: JetBrains Mono SHA256 mismatch "
+                f"{actual_digest} != {evidence['sha256']}"
+            )
+            continue
+        try:
+            if evidence["url"] not in fetched:
+                fetched[evidence["url"]] = fetch_evidence(evidence["url"])
+            source_bytes = fetched[evidence["url"]]
+            source_digest = sha256_bytes(source_bytes)
+            if source_digest != evidence["sha256"]:
+                blockers.append(
+                    f"{normalized}: immutable JetBrains Mono source SHA256 mismatch "
+                    f"{source_digest} != {evidence['sha256']}"
+                )
+                continue
+            license_evidence = entry["license"]
+            if license_evidence["url"] not in fetched:
+                fetched[license_evidence["url"]] = fetch_evidence(license_evidence["url"])
+            license_bytes = fetched[license_evidence["url"]]
+            license_digest = sha256_bytes(license_bytes)
+            if license_digest != license_evidence["sha256"]:
+                blockers.append(
+                    f"{normalized}: OFL license SHA256 mismatch "
+                    f"{license_digest} != {license_evidence['sha256']}"
+                )
+                continue
+            license_text = license_bytes.decode("utf-8").strip()
+            required_markers = (
+                "SIL OPEN FONT LICENSE Version 1.1",
+                "PREAMBLE",
+                "DEFINITIONS",
+                "1) Neither the Font Software",
+                "2) Original or Modified Versions",
+                "3) No Modified Version",
+                "4) The name(s) of the Copyright",
+                "5) The Font Software",
+                "TERMINATION",
+                "DISCLAIMER",
+            )
+            if any(marker not in license_text for marker in required_markers):
+                blockers.append(f"{normalized}: incomplete OFL-1.1 license evidence")
+                continue
+        except (RuntimeError, UnicodeDecodeError) as exc:
+            blockers.append(f"{normalized}: {exc}")
+            continue
+        attributions.append(
+            {
+                "path": normalized,
+                "sha256": actual_digest,
+                "spdx": entry["spdx"],
+                "copyright": entry["copyright"],
+                "source": {
+                    "url": evidence["url"],
+                    "path": evidence["path"],
+                    "sha256": evidence["sha256"],
+                    "retrieval": evidence["retrieval"],
+                },
+                "license": {
+                    "url": entry["license"]["url"],
+                    "path": entry["license"]["path"],
+                    "sha256": entry["license"]["sha256"],
+                    "retrieval": entry["license"]["retrieval"],
+                    "text": license_text,
+                },
+            }
+        )
+    bundle_graph["assetAttributions"] = attributions
     return blockers
 
 
@@ -163,34 +374,73 @@ def load_license_overrides() -> dict[str, dict]:
         raise RuntimeError(f"Cannot read license overrides: {OVERRIDES_FILE}") from exc
     if not isinstance(data, dict):
         raise RuntimeError(f"License overrides must be an object: {OVERRIDES_FILE}")
+    immutable_url = re.compile(
+        r"https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/.+"
+    )
     for key, entry in data.items():
         if not isinstance(key, str) or not key.rpartition("@")[0] or not key.rpartition("@")[2]:
             raise RuntimeError(f"Invalid license override key: {key!r}")
         if not isinstance(entry, dict):
             raise RuntimeError(f"License override must be an object: {key}")
         spdx = entry.get("spdx")
-        copyright_line = entry.get("copyright")
         evidence = entry.get("evidence")
         note = entry.get("note")
         if not isinstance(spdx, str) or not spdx:
             raise RuntimeError(f"License override has no SPDX id: {key}")
+        if not isinstance(evidence, dict):
+            raise RuntimeError(f"License override has no evidence object: {key}")
+        if not isinstance(note, str) or not note.strip():
+            raise RuntimeError(f"License override has no note: {key}")
+        kind = evidence.get("kind")
+        if kind == "declared-license-no-notice":
+            if spdx != "MIT":
+                raise RuntimeError(f"Declared-only override must use MIT: {key}")
+            declared = entry.get("declared")
+            if not isinstance(declared, dict) or declared.get("license") != spdx:
+                raise RuntimeError(f"Declared-only override has invalid package license: {key}")
+            if "author" not in declared or not (
+                declared["author"] is None
+                or isinstance(declared["author"], (str, dict))
+            ):
+                raise RuntimeError(f"Declared-only override has invalid package author: {key}")
+            retrieval = evidence.get("retrieval")
+            if not isinstance(retrieval, str) or not retrieval.strip():
+                raise RuntimeError(f"Declared-only override retrieval is missing: {key}")
+            tarball = evidence.get("tarball")
+            if not isinstance(tarball, dict):
+                raise RuntimeError(f"Declared-only override requires tarball evidence: {key}")
+            if not isinstance(tarball.get("url"), str) or not tarball["url"].startswith(
+                "https://registry.npmjs.org/"
+            ):
+                raise RuntimeError(f"Declared-only tarball URL is invalid: {key}")
+            if not isinstance(tarball.get("integrity"), str) or not re.fullmatch(
+                r"sha512-[A-Za-z0-9+/]+={0,2}", tarball["integrity"]
+            ):
+                raise RuntimeError(f"Declared-only tarball integrity is invalid: {key}")
+            if not isinstance(tarball.get("sha256"), str) or not re.fullmatch(
+                r"[0-9a-f]{64}", tarball["sha256"]
+            ):
+                raise RuntimeError(f"Declared-only tarball SHA256 is invalid: {key}")
+            if not isinstance(tarball.get("path"), str) or not tarball["path"].strip():
+                raise RuntimeError(f"Declared-only tarball path is missing: {key}")
+            for field in ("licenseMembers", "copyrightMembers"):
+                if tarball.get(field) != []:
+                    raise RuntimeError(
+                        f"Declared-only tarball {field} evidence must be empty: {key}"
+                    )
+            continue
+        copyright_line = entry.get("copyright")
         if not isinstance(copyright_line, str) or not re.search(
             r"(?i)\bcopyright\b", copyright_line
         ):
             raise RuntimeError(f"License override has invalid copyright line: {key}")
-        if not isinstance(evidence, dict):
-            raise RuntimeError(f"License override has no evidence object: {key}")
-        kind = evidence.get("kind")
         if kind not in {"attribution", "license"}:
             raise RuntimeError(f"License override evidence kind is invalid: {key}")
         url = evidence.get("url")
         digest = evidence.get("sha256")
         path = evidence.get("path")
         retrieval = evidence.get("retrieval")
-        if not isinstance(url, str) or not re.fullmatch(
-            r"https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/.+",
-            url,
-        ):
+        if not isinstance(url, str) or not immutable_url.fullmatch(url):
             raise RuntimeError(f"License override evidence URL is not immutable: {key}")
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise RuntimeError(f"License override evidence SHA256 is invalid: {key}")
@@ -216,8 +466,6 @@ def load_license_overrides() -> dict[str, dict]:
                 raise RuntimeError(f"License override tarball SHA256 is invalid: {key}")
             if not isinstance(tarball.get("path"), str) or not tarball["path"].strip():
                 raise RuntimeError(f"License override tarball path is missing: {key}")
-        if not isinstance(note, str) or not note.strip():
-            raise RuntimeError(f"License override has no note: {key}")
     return data
 
 
@@ -249,6 +497,8 @@ def override_license_text(
             f"License override SPDX mismatch for shipped package {key}: "
             f"{expected} != {declaration}"
         )
+    if entry["evidence"]["kind"] == "declared-license-no-notice":
+        return None
     if expected != "MIT":
         raise RuntimeError(f"Unsupported license override SPDX id for shipped package {key}: {expected}")
     evidence = entry["evidence"]
@@ -288,6 +538,119 @@ def override_license_text(
             f"Evidence retrieval: {evidence['retrieval']}",
             "",
             terms,
+        ]
+    )
+
+
+def declared_only_license_text(
+    package_dir: Path,
+    metadata: dict,
+    name: str,
+    version: str,
+    entry: dict,
+    used: set[str] | None,
+) -> str:
+    key = f"{name}@{version}"
+    declared = entry["declared"]
+    if metadata.get("license") != declared["license"] or metadata.get("author") != declared["author"]:
+        raise RuntimeError(
+            f"Declared-only package.json evidence mismatch for shipped package {key}"
+        )
+    tarball = entry["evidence"]["tarball"]
+    tarball_bytes = fetch_evidence(tarball["url"])
+    actual_sha256 = sha256_bytes(tarball_bytes)
+    if actual_sha256 != tarball["sha256"]:
+        raise RuntimeError(
+            f"Declared-only tarball SHA256 mismatch for shipped package {key}: "
+            f"{actual_sha256} != {tarball['sha256']}"
+        )
+    actual_integrity = "sha512-" + base64.b64encode(
+        hashlib.sha512(tarball_bytes).digest()
+    ).decode("ascii")
+    if actual_integrity != tarball["integrity"]:
+        raise RuntimeError(
+            f"Declared-only tarball integrity mismatch for shipped package {key}"
+        )
+    try:
+        with tarfile.open(fileobj=io.BytesIO(tarball_bytes), mode="r:gz") as archive:
+            members = [
+                member.name.replace("\\", "/").lstrip("./")
+                for member in archive.getmembers()
+                if member.isfile()
+            ]
+            package_member = next(
+                (member for member in members if member == tarball["path"]),
+                None,
+            )
+            if package_member is None:
+                raise RuntimeError(
+                    f"Declared-only tarball package metadata is missing for shipped package {key}"
+                )
+            package_info_member = archive.getmember(package_member)
+            package_stream = archive.extractfile(package_info_member)
+            if package_stream is None:
+                raise RuntimeError(
+                    f"Declared-only tarball package metadata cannot be read for shipped package {key}"
+                )
+            tarball_metadata = json.loads(package_stream.read().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, tarfile.TarError) as exc:
+        if isinstance(exc, RuntimeError):
+            raise
+        raise RuntimeError(f"Cannot inspect declared-only tarball for shipped package {key}") from exc
+    if (
+        tarball_metadata.get("license") != declared["license"]
+        or tarball_metadata.get("author") != declared["author"]
+    ):
+        raise RuntimeError(
+            f"Declared-only tarball package.json evidence mismatch for shipped package {key}"
+        )
+    license_members = sorted(
+        member
+        for member in members
+        if LICENSE_FILE.fullmatch(Path(member).name)
+        or NOTICE_FILE.fullmatch(Path(member).name)
+    )
+    copyright_members = sorted(
+        member
+        for member in members
+        if re.fullmatch(r"(?i)(?:authors?|copyright)(?:[._ -].*)?", Path(member).name)
+    )
+    if license_members != tarball["licenseMembers"]:
+        raise RuntimeError(
+            f"Declared-only tarball contains license/notice members for shipped package {key}: "
+            f"{license_members}"
+        )
+    if copyright_members != tarball["copyrightMembers"]:
+        raise RuntimeError(
+            f"Declared-only tarball contains copyright members for shipped package {key}: "
+            f"{copyright_members}"
+        )
+    if used is not None:
+        used.add(key)
+    author = declared["author"]
+    if author is None:
+        author_text = "[absent]"
+    elif isinstance(author, str):
+        author_text = author
+    else:
+        author_text = json.dumps(author, ensure_ascii=False, sort_keys=True)
+    return "\n".join(
+        [
+            "Declared-only MIT evidence: the exact npm tarball declares MIT but "
+            "distributed no license file or copyright notice.",
+            "No copyright line is synthesized because the package supplied none.",
+            f"Declared SPDX license: {declared['license']}",
+            f"package.json license (verbatim): {declared['license']}",
+            f"package.json author (verbatim): {author_text}",
+            f"Exact npm tarball: {tarball['url']}",
+            f"Tarball integrity: {tarball['integrity']}",
+            f"Tarball SHA256: {tarball['sha256']}",
+            f"Tarball package metadata path: {tarball['path']}",
+            "Tarball license/notice members: none",
+            "Tarball copyright/author members: none",
+            f"Evidence retrieval: {entry['evidence']['retrieval']}",
+            "",
+            MIT_LICENSE_TEXT,
         ]
     )
 
@@ -396,6 +759,7 @@ def validate_license_text(
     name: str,
     *,
     package_supplied: bool = False,
+    declared_only: bool = False,
 ) -> None:
     identifiers = spdx_identifiers(declaration) or []
     if "MPL-2.0" in identifiers:
@@ -407,7 +771,7 @@ def validate_license_text(
             raise RuntimeError(f"Incomplete MIT license text for shipped package {name}")
         if has_placeholder_copyright(text):
             raise RuntimeError(f"MIT license text has placeholder copyright for shipped package {name}")
-        if not package_supplied and not has_package_copyright(text):
+        if not package_supplied and not declared_only and not has_package_copyright(text):
             raise RuntimeError(f"MIT license text has no package-specific copyright line for shipped package {name}")
 
 
@@ -497,6 +861,25 @@ def license_text(
         return declaration, text
 
     if not license_pieces:
+        if override is not None and override["evidence"]["kind"] == "declared-license-no-notice":
+            if files:
+                raise RuntimeError(
+                    f"Declared-only override cannot replace a shipped LICENSE file for {key}"
+                )
+            if notice_pieces:
+                raise RuntimeError(
+                    f"Declared-only override cannot replace a shipped NOTICE file for {key}"
+                )
+            text = declared_only_license_text(
+                package_dir,
+                metadata,
+                name,
+                version,
+                override,
+                used_overrides,
+            )
+            validate_license_text(declaration, text, name, declared_only=True)
+            return declaration, text
         if not files:
             reconstructed = override_license_text(
                 declaration,
@@ -1228,9 +1611,10 @@ def collect_packages(
     unused_overrides = validate_unused_overrides(overrides, used_overrides)
     if inventory is not None:
         inventory["unusedOverrides"] = unused_overrides
+    asset_blockers = reviewed_distribution_blockers(bundle_graph, pack)
     license_failures.extend(
         f"Reviewed distribution-condition blocker: {item}"
-        for item in reviewed_distribution_blockers(bundle_graph)
+        for item in asset_blockers
     )
     if license_failures:
         details = "\n".join(f"- {failure}" for failure in license_failures)
@@ -1267,6 +1651,11 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
     )
     inventory: dict = {}
     packages = collect_packages(source, pack, bundle_graph, inventory)
+    graph_target.write_text(
+        json.dumps(bundle_graph, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     audit_limitations = bundle_graph.get("auditLimitations", [])
     unresolved_items = bundle_graph.get("unresolvedItems", [])
     if not isinstance(audit_limitations, list) or not all(
@@ -1328,6 +1717,28 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "",
             ]
         )
+    for asset in bundle_graph.get("assetAttributions", []):
+        lines.extend(
+            [
+                f"[Asset] {asset['path']}",
+                f"License: {asset['spdx']}",
+                f"SHA256: {asset['sha256']}",
+                f"Copyright: {asset['copyright']}",
+                f"Immutable source: {asset['source']['url']}",
+                f"Source path: {asset['source']['path']}",
+                f"Source SHA256: {asset['source']['sha256']}",
+                f"Source retrieval: {asset['source']['retrieval']}",
+                f"License source: {asset['license']['url']}",
+                f"License path: {asset['license']['path']}",
+                f"License SHA256: {asset['license']['sha256']}",
+                f"License retrieval: {asset['license']['retrieval']}",
+                "License text:",
+                asset["license"]["text"],
+                "",
+                "-" * 78,
+                "",
+            ]
+        )
     third_party = pack / THIRD_PARTY_FILE
     third_party.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
 
@@ -1384,6 +1795,7 @@ def write_notices(pack: Path, source: Path, source_ref: str, commit: str, bucket
                 "unusedOverrides": inventory["unusedOverrides"],
                 "auditLimitations": audit_limitations,
                 "unresolved": unresolved_items,
+                "assets": len(bundle_graph.get("assetAttributions", [])),
             },
         },
     }

@@ -1,7 +1,10 @@
+import base64
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -60,6 +63,80 @@ class NoticeTests(unittest.TestCase):
         }
         entry.update(changes)
         return {'fixture-package@1.0.0': entry}
+    def declared_override(self, author=None, **changes):
+        tarball = {
+            'url': 'https://registry.npmjs.org/fixture-package/-/fixture-package-1.0.0.tgz',
+            'integrity': 'sha512-fixture',
+            'sha256': '0' * 64,
+            'path': 'package/package.json',
+            'licenseMembers': [],
+            'copyrightMembers': [],
+        }
+        entry = {
+            'spdx': 'MIT',
+            'declared': {'license': 'MIT', 'author': author},
+            'evidence': {
+                'kind': 'declared-license-no-notice',
+                'retrieval': 'fixture tarball listing and package metadata',
+                'tarball': tarball,
+            },
+            'note': 'Fixture declared-only evidence.',
+        }
+        entry.update(changes)
+        return {'fixture-package@1.0.0': entry}
+
+    def declared_tarball(self, metadata):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode='w:gz') as archive:
+            payload = json.dumps(metadata).encode('utf-8')
+            info = tarfile.TarInfo('package/package.json')
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+            readme = b'Fixture package README'
+            info = tarfile.TarInfo('package/README.md')
+            info.size = len(readme)
+            archive.addfile(info, io.BytesIO(readme))
+        return stream.getvalue()
+
+    def asset_override(self, content):
+        font_digest = hashlib.sha256(content).hexdigest()
+        license_text = (
+            'Copyright 2020 Fixture Font Authors\n'
+            'SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n'
+            'PREAMBLE\nDEFINITIONS\n'
+            '1) Neither the Font Software nor any of its individual components,\n'
+            '2) Original or Modified Versions of the Font Software may be bundled,\n'
+            '3) No Modified Version of the Font Software may use the Reserved Font\n'
+            '4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\n'
+            '5) The Font Software, modified or unmodified, in part or in whole,\n'
+            'TERMINATION\nDISCLAIMER\n'
+        ).encode('utf-8')
+        license_digest = hashlib.sha256(license_text).hexdigest()
+        source = 'https://raw.githubusercontent.com/example/font/' + '0' * 40 + '/font.woff2'
+        license_url = 'https://raw.githubusercontent.com/example/font/' + '0' * 40 + '/OFL.txt'
+        return {
+            'FixtureJetBrains': {
+                'pattern': r'(?:^|/)JetBrainsMono-(Regular|Bold|Italic)(?:-[^/]+)?\.woff2$',
+                'spdx': 'OFL-1.1',
+                'copyright': 'Copyright 2020 Fixture Font Authors',
+                'hashes': {
+                    face: {
+                        'sha256': font_digest,
+                        'url': source,
+                        'path': 'font.woff2',
+                        'retrieval': 'fixture font retrieval',
+                    }
+                    for face in ('Regular', 'Bold', 'Italic')
+                },
+                'license': {
+                    'url': license_url,
+                    'path': 'OFL.txt',
+                    'sha256': license_digest,
+                    'retrieval': 'fixture license retrieval',
+                },
+                'note': 'Fixture asset evidence.',
+            }
+        }, license_text, content
 
     def test_mpl_excerpt_fails_closed(self):
         excerpt = (
@@ -452,28 +529,71 @@ class NoticeTests(unittest.TestCase):
             )
             self.assertEqual(graph['unresolvedItems'], ['Unresolved shipped item: assets/unattributed.bin'])
 
-    def test_reviewed_jetbrains_font_blocker_fails_closed(self):
-        with tempfile.TemporaryDirectory() as scratch, patch.object(
-            notices, 'asar_node_modules', return_value=set()
-        ), patch.object(notices, 'unpacked_node_modules', return_value=set()), patch.object(
-            notices, 'load_license_overrides', return_value={}
-        ):
-            source = Path(scratch) / 'source'
-            desktop = source / 'apps' / 'desktop'
-            desktop.mkdir(parents=True)
-            (desktop / 'package.json').write_text(json.dumps({'name': 'desktop'}), encoding='utf-8')
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r'Reviewed distribution-condition blocker: assets/JetBrainsMono-Regular-abc123\.woff2: JetBrains Mono',
-            ):
-                notices.collect_packages(
-                    source,
-                    Path(scratch) / 'pack',
-                    {
-                        'packages': [],
-                        'shippedFiles': ['assets/JetBrainsMono-Regular-abc123.woff2'],
-                    },
+    def test_reviewed_jetbrains_font_matching_hash_emits_ofl_notice(self):
+        content = b'matching font bytes'
+        overrides, license_text, source_bytes = self.asset_override(content)
+        with tempfile.TemporaryDirectory() as scratch:
+            pack = Path(scratch) / 'pack'
+            asset = pack / 'resources' / 'app.asar.unpacked' / 'dist' / 'assets'
+            asset.mkdir(parents=True)
+            (asset / 'JetBrainsMono-Regular-abc123.woff2').write_bytes(content)
+            graph = {'shippedFiles': ['assets/JetBrainsMono-Regular-abc123.woff2']}
+
+            def evidence(url):
+                return license_text if url.endswith('/OFL.txt') else source_bytes
+
+            with patch.object(notices, 'fetch_evidence', side_effect=evidence):
+                blockers = notices.reviewed_distribution_blockers(graph, pack, overrides)
+            self.assertEqual(blockers, [])
+            attribution = graph['assetAttributions'][0]
+            self.assertEqual(attribution['spdx'], 'OFL-1.1')
+            self.assertEqual(attribution['sha256'], hashlib.sha256(content).hexdigest())
+            self.assertIn('SIL OPEN FONT LICENSE Version 1.1', attribution['license']['text'])
+            self.assertIn('Copyright 2020 Fixture Font Authors', attribution['copyright'])
+
+    def test_reviewed_jetbrains_font_same_filename_different_bytes_fails(self):
+        overrides, _, source_bytes = self.asset_override(b'matching font bytes')
+        with tempfile.TemporaryDirectory() as scratch:
+            pack = Path(scratch) / 'pack'
+            asset = pack / 'resources' / 'app.asar.unpacked' / 'dist' / 'assets'
+            asset.mkdir(parents=True)
+            (asset / 'JetBrainsMono-Regular-abc123.woff2').write_bytes(b'different bytes')
+            graph = {'shippedFiles': ['assets/JetBrainsMono-Regular-abc123.woff2']}
+            with patch.object(notices, 'fetch_evidence', return_value=source_bytes):
+                blockers = notices.reviewed_distribution_blockers(graph, pack, overrides)
+            self.assertEqual(len(blockers), 1)
+            self.assertIn('SHA256 mismatch', blockers[0])
+
+    def test_declared_only_override_requires_tarball_evidence_and_no_synthesized_copyright(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', author='Example Author')
+            tarball = self.declared_tarball(metadata)
+            overrides = self.declared_override(author='Example Author')
+            evidence = overrides['fixture-package@1.0.0']['evidence']['tarball']
+            evidence['integrity'] = 'sha512-' + base64.b64encode(
+                hashlib.sha512(tarball).digest()
+            ).decode('ascii')
+            evidence['sha256'] = hashlib.sha256(tarball).hexdigest()
+            with patch.object(notices, 'fetch_evidence', return_value=tarball):
+                license_name, text = notices.license_text(
+                    package, metadata, 'fixture-package', overrides, set()
                 )
+            self.assertEqual(license_name, 'MIT')
+            self.assertIn('package.json author (verbatim): Example Author', text)
+            self.assertIn('distributed no license file or copyright notice', text)
+            self.assertIn('Permission is hereby granted', text)
+            self.assertNotIn('Copyright (c)', text)
+
+            evidence['sha256'] = '0' * 64
+            with patch.object(notices, 'fetch_evidence', return_value=tarball):
+                with self.assertRaisesRegex(RuntimeError, 'tarball SHA256 mismatch'):
+                    notices.license_text(package, metadata, 'fixture-package', overrides)
+
+    def test_package_without_declared_only_override_still_fails_closed(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            package, metadata = self.package(Path(scratch), 'MIT', author='Example Author')
+            with self.assertRaisesRegex(RuntimeError, 'Cannot determine a license text'):
+                notices.license_text(package, metadata, 'fixture-package', {})
 
     def test_bundle_module_graph_records_missing_evidence(self):
         with tempfile.TemporaryDirectory() as scratch:
