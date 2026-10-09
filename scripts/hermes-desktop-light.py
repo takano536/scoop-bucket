@@ -629,7 +629,7 @@ def verify_artifact(root, record, version, source_ref, channel='stable', expecte
                 raise ValueError('Notice digest mismatch')
         if not isinstance(notices['thirdParty'].get('packages'), int) or notices['thirdParty']['packages'] < 1:
             raise ValueError('Third-party notice package count is invalid')
-        audit = record.get('audit')
+        audit = notices.get('audit')
         if not isinstance(audit, dict) or audit.get('status') not in ('complete', 'limited'):
             raise ValueError('Audit evidence is missing')
         limitations = audit.get('limitations')

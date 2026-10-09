@@ -183,8 +183,9 @@ class ReleaseTests(unittest.TestCase):
                     'packages': 1,
                 },
                 'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
+                'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
             }
-            record = dict(schema=1, upstream='NousResearch/hermes-agent', sourceRef='v0.22.0', version='0.22.0-r1', commit='a' * 40, preview=False, artifact=artifact.name, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(), payload='light', updateMechanism='external', executable='Hermes Light.exe', smoke='two native launches; renderer loaded; localStorage retained', notices=notices, audit={'status': 'complete', 'limitations': [], 'unresolved': []})
+            record = dict(schema=1, upstream='NousResearch/hermes-agent', sourceRef='v0.22.0', version='0.22.0-r1', commit='a' * 40, preview=False, artifact=artifact.name, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(), payload='light', updateMechanism='external', executable='Hermes Light.exe', smoke='two native launches; renderer loaded; localStorage retained', notices=notices)
             self.assertEqual(light.verify_artifact(root, record, '0.22.0-r1', 'v0.22.0'), artifact)
             valid_bytes = artifact.read_bytes()
             with zipfile.ZipFile(artifact, 'w') as archive:
@@ -197,9 +198,9 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Invalid Light package contents'):
                 light.verify_artifact(root, {**record, 'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest()}, '0.22.0-r1', 'v0.22.0')
             artifact.write_bytes(valid_bytes)
-            limited = {**record, 'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': []}}
+            limited = {**record, 'notices': {**record['notices'], 'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': []}}}
             self.assertEqual(light.verify_artifact(root, limited, '0.22.0-r1', 'v0.22.0'), artifact)
-            for change in ({'preview': True}, {'sha256': 'b' * 64}, {'version': '0.21.0'}, {'commit': 'b' * 40}, {'artifact': '../escape.zip'}, {'smoke': 'not run'}, {'notices': {}}, {'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': ['Unresolved shipped item: assets/unknown.bin']}}):
+            for change in ({'preview': True}, {'sha256': 'b' * 64}, {'version': '0.21.0'}, {'commit': 'b' * 40}, {'artifact': '../escape.zip'}, {'smoke': 'not run'}, {'notices': {}}, {'notices': {**record['notices'], 'audit': {'status': 'limited', 'limitations': ['source map unavailable'], 'unresolved': ['Unresolved shipped item: assets/unknown.bin']}}}):
                 with self.assertRaises(ValueError):
                     light.verify_artifact(root, {**record, **change}, '0.22.0-r1', 'v0.22.0')
 
@@ -234,6 +235,7 @@ class ReleaseTests(unittest.TestCase):
                     'packages': 1,
                 },
                 'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
+                'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
             }
             with zipfile.ZipFile(artifact, 'w') as archive:
                 archive.writestr(f'hermes-light-{commit[:7]}.exe', b'test fixture')
@@ -251,7 +253,6 @@ class ReleaseTests(unittest.TestCase):
                 smoke='two native launches; renderer loaded; localStorage retained',
                 conditionsFingerprint=conditions,
                 notices=notices,
-                audit={'status': 'complete', 'limitations': [], 'unresolved': []},
                 sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
             )
             self.assertEqual(

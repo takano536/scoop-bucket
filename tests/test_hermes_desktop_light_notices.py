@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-desktop-light-notices.py'
@@ -15,6 +16,12 @@ spec = importlib.util.spec_from_file_location('hermes_desktop_light_notices', SC
 assert spec is not None and spec.loader is not None
 notices = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(notices)
+
+PUBLISH_SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/hermes-desktop-light.py'
+publish_spec = importlib.util.spec_from_file_location('hermes_desktop_light_publish', PUBLISH_SCRIPT)
+assert publish_spec is not None and publish_spec.loader is not None
+publisher = importlib.util.module_from_spec(publish_spec)
+publish_spec.loader.exec_module(publisher)
 
 
 class NoticeTests(unittest.TestCase):
@@ -293,6 +300,84 @@ class NoticeTests(unittest.TestCase):
             self.assertEqual(metadata['thirdParty']['inventory']['unresolved'], [])
             notice_text = (pack / 'THIRD-PARTY-NOTICES.txt').read_text(encoding='utf-8')
             self.assertIn('fixture-package@1.0.0', notice_text)
+
+    def test_notice_metadata_satisfies_publish_artifact_contract(self):
+        version = '0.0.0-alpha.dev.1-r1'
+        commit = 'a' * 40
+        conditions = 'b' * 64
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / 'source'
+            desktop = source / 'apps' / 'desktop'
+            desktop.mkdir(parents=True)
+            (desktop / 'package.json').write_text(
+                json.dumps({'name': 'desktop', 'version': '1.0.0'}), encoding='utf-8'
+            )
+            package = desktop / 'node_modules' / 'fixture-package'
+            package.mkdir(parents=True)
+            (package / 'package.json').write_text(
+                json.dumps({'name': 'fixture-package', 'version': '1.0.0', 'license': 'MIT'}),
+                encoding='utf-8',
+            )
+            (package / 'LICENSE').write_text(
+                notices.MIT_LICENSE_TEXT.replace(
+                    'MIT License\n\n',
+                    'MIT License\n\nCopyright (c) 2025 Fixture\n\n',
+                    1,
+                ),
+                encoding='utf-8',
+            )
+            (source / 'LICENSE').write_text(
+                'MIT License\n\nCopyright (c) 2025 Nous Research\n', encoding='utf-8'
+            )
+            pack = root / 'pack'
+            (pack / 'resources').mkdir(parents=True)
+            with patch.object(
+                notices, 'bundle_module_graph', return_value={
+                    'moduleCount': 1,
+                    'packages': [{'name': 'fixture-package', 'path': 'apps/desktop/node_modules/fixture-package'}],
+                }
+            ), patch.object(notices, 'asar_node_modules', return_value=set()), patch.object(
+                notices, 'unpacked_node_modules', return_value=set()
+            ), patch.object(notices, 'load_license_overrides', return_value={}):
+                metadata = notices.write_notices(
+                    pack, source, 'main', commit, 'example/bucket', 'b' * 40, 'run'
+                )
+            (pack / 'LICENSE.electron.txt').write_text('Electron license', encoding='utf-8')
+            (pack / 'LICENSES.chromium.html').write_text('<html>Chromium</html>', encoding='utf-8')
+            artifact = root / publisher.dev_artifact_name(publisher.APP, version, commit)
+            executable = 'hermes-' + 'light' + f'-{commit[:7]}.exe'
+            with zipfile.ZipFile(artifact, 'w') as archive:
+                archive.writestr(executable, b'fixture')
+                archive.writestr('resources/app.asar', b'fixture')
+                archive.writestr(
+                    'resources/install-stamp.json',
+                    json.dumps({'commit': commit, 'payload': 'light', 'updateMechanism': 'external'}),
+                )
+                for path in (
+                    'LICENSE', 'LICENSE.electron.txt', 'LICENSES.chromium.html',
+                    'THIRD-PARTY-NOTICES.txt', 'UNOFFICIAL-BUILD.txt',
+                ):
+                    archive.writestr(path, (pack / path).read_bytes())
+            record = {
+                'schema': 1, 'upstream': publisher.UPSTREAM, 'version': version,
+                'sourceRef': commit, 'commit': commit, 'preview': False,
+                'development': True, 'channel': 'development', 'payload': 'light',
+                'updateMechanism': 'external', 'artifact': artifact.name,
+                'executable': executable,
+                'smoke': 'two native launches; renderer loaded; localStorage retained',
+                'conditionsFingerprint': conditions, 'notices': metadata,
+                'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            }
+            self.assertEqual(
+                publisher.verify_artifact(root, record, version, commit, 'development', conditions),
+                artifact,
+            )
+            self.assertEqual(metadata['unofficial']['path'], 'UNOFFICIAL-BUILD.txt')
+            self.assertEqual(
+                metadata['unofficial']['sha256'],
+                hashlib.sha256((pack / 'UNOFFICIAL-BUILD.txt').read_bytes()).hexdigest(),
+            )
 
     def test_collect_packages_reports_all_license_failures(self):
         with tempfile.TemporaryDirectory() as scratch:
