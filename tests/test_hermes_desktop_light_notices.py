@@ -529,6 +529,54 @@ class NoticeTests(unittest.TestCase):
             )
             self.assertEqual(graph['unresolvedItems'], ['Unresolved shipped item: assets/unattributed.bin'])
 
+    def test_verified_first_party_native_asset_is_attributed(self):
+        output = "native/win32-x64/hud-modifier-monitor.exe"
+        with tempfile.TemporaryDirectory() as scratch, patch.object(
+            notices, "shipped_dist_files", return_value={output}
+        ):
+            source = Path(scratch) / "source"
+            desktop = source / "apps" / "desktop"
+            (desktop / "package.json").parent.mkdir(parents=True)
+            (desktop / "package.json").write_text(
+                json.dumps({"name": "desktop", "dependencies": {}}),
+                encoding="utf-8",
+            )
+            for relative in notices.FIRST_PARTY_NATIVE_ASSETS[output]:
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("verified source", encoding="utf-8")
+            graph = notices.bundle_module_graph(source, Path(scratch) / "pack")
+            self.assertEqual(graph["unresolvedItems"], [])
+            self.assertEqual(
+                graph["firstPartyAssets"],
+                [
+                    {
+                        "path": output,
+                        "license": "LICENSE",
+                        "sources": list(notices.FIRST_PARTY_NATIVE_ASSETS[output]),
+                    }
+                ],
+            )
+            self.assertEqual(graph["assetSources"][output], list(notices.FIRST_PARTY_NATIVE_ASSETS[output]))
+
+    def test_unknown_native_asset_still_fails_closed(self):
+        output = "native/win32-x64/unknown-helper.exe"
+        with tempfile.TemporaryDirectory() as scratch, patch.object(
+            notices, "shipped_dist_files", return_value={output}
+        ):
+            source = Path(scratch) / "source"
+            desktop = source / "apps" / "desktop"
+            desktop.mkdir(parents=True)
+            (desktop / "package.json").write_text(
+                json.dumps({"name": "desktop", "dependencies": {}}),
+                encoding="utf-8",
+            )
+            graph = notices.bundle_module_graph(source, Path(scratch) / "pack")
+            self.assertEqual(
+                graph["unresolvedItems"],
+                [f"Unresolved shipped item: {output}"],
+            )
+
     def test_reviewed_jetbrains_font_matching_hash_emits_ofl_notice(self):
         content = b'matching font bytes'
         overrides, license_text, source_bytes = self.asset_override(content)

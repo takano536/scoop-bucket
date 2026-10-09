@@ -420,6 +420,28 @@ starts shipping a notice file fails closed. The five package entries and the
 font evidence still require the Windows Light workflow to exercise the actual
 `win-unpacked` inventory.
 
+### First-party Windows HUD helper attribution
+
+The remaining notice-gate failure was the generated
+`native/win32-x64/hud-modifier-monitor.exe`. At both Light pins (`a3ed4a1` and
+`38880bd`) the upstream `apps/desktop/scripts/build-hud-modifier-monitor.mjs:1-24,41-76`
+compiles the in-repository
+`apps/desktop/electron/native/hud-modifier-monitor-win.cs` and
+`hud-modifier-gesture.cs` with the Windows .NET Framework `csc.exe`; it does not
+download or copy a prebuilt helper. The source only uses the Windows
+`System.Windows.Forms`/`user32.dll` APIs, with no Rust crate or third-party C
+library linked into this Windows binary. `stage-native-deps.mjs:735-745` invokes
+that compiler, while `before-pack.mjs:136-143` copies the prepared output.
+
+The build log for the failed verification run
+[`37938735244`](https://github.com/takano536/scoop-bucket/actions/runs/37938735244)
+records the native preparation and `built ...hud-modifier-monitor.exe` before
+electron-builder packages and signs it. The notice generator now records this
+exact output under `firstPartyAssets`, lists its verified upstream source paths,
+and attributes it to the checked-out upstream root `LICENSE` (MIT). The mapping
+is exact; an unknown native executable, or a missing source/build path, remains
+fail-closed.
+
 ## Development channelの公開・transition
 
 development Releaseは`hermes-desktop-light/dev/v<version>-<full SHA>` tag、
