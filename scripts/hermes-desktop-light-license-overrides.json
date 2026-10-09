@@ -178,5 +178,103 @@
       }
     },
     "note": "npm metadata has no gitHead and the tarball has no LICENSE file; the exact version tag 0.1.4 resolves to this immutable upstream commit whose README contains the complete MIT grant and package-specific copyright."
+  },
+  "react-remove-scroll-bar@2.3.8": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2025 Anton Korzunov <thekashey@gmail.com>",
+    "evidence": {
+      "kind": "license",
+      "url": "https://raw.githubusercontent.com/theKashey/react-remove-scroll-bar/7301c160fda44cb8cf2b9fdfde61efad35736196/LICENSE",
+      "path": "LICENSE",
+      "sha256": "a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84",
+      "retrieval": "npm view react-remove-scroll-bar@2.3.8 dist.tarball dist.integrity gitHead repository license; exact gitHead was unavailable from the current repository; curl -fsSL <author-added immutable LICENSE URL> | sha256sum",
+      "tarball": {
+        "url": "https://registry.npmjs.org/react-remove-scroll-bar/-/react-remove-scroll-bar-2.3.8.tgz",
+        "integrity": "sha512-9r+yi9+mgU33AKcj6IbT9oRCO78WriSj6t/cF8DWBZJ9aOGPOTEDvdUDz1FwKim7QXWwmHqtdHnRJfhAxEG46Q==",
+        "sha256": "ccc872d7a2dc007cbf9d755f30d56b8d80eabdbe22c44c95a709129bfdc46f01",
+        "path": "package/package.json"
+      }
+    },
+    "note": "The exact 2.3.8 npm tarball has no license-named member. Its gitHead is unavailable and repository tags stop at v2.3.7, but the package author later added this complete MIT LICENSE on 2025-05-21 in commit 7301c160fda44cb8cf2b9fdfde61efad35736196; the later project-level evidence is recorded without claiming exact source-tree identity."
+  },
+  "@nous-research/ui@0.18.2": {
+    "spdx": "MIT",
+    "declared": {
+      "license": "MIT",
+      "author": null
+    },
+    "evidence": {
+      "kind": "declared-license-no-notice",
+      "retrieval": "npm view @nous-research/ui@0.18.2 dist.tarball dist.integrity gitHead license; tar tf exact registry tarball; inspect package/package.json fields",
+      "tarball": {
+        "url": "https://registry.npmjs.org/@nous-research/ui/-/ui-0.18.2.tgz",
+        "integrity": "sha512-xe//1PjCapafXu5onqnJW50MhAK41LXuHw2KvfHDLiI3TBeqtX4QEm4mTrWZaZ2PRqM6koY/o19fdgisB67LGA==",
+        "sha256": "7a6eae6b82281bb6dc39b0665ca3d8af21cf54d4282f093aaa179532e7ee1434",
+        "path": "package/package.json",
+        "licenseMembers": [],
+        "copyrightMembers": []
+      }
+    },
+    "note": "The exact tarball declares MIT and has no author field, license/notice file, or copyright-named member. The README's design-language repository and npm gitHead source are unavailable; no copyright line is synthesized."
+  },
+  "lazy-val@1.0.5": {
+    "spdx": "MIT",
+    "declared": {
+      "license": "MIT",
+      "author": "Vladimir Krivosheev"
+    },
+    "evidence": {
+      "kind": "declared-license-no-notice",
+      "retrieval": "npm view lazy-val@1.0.5 dist.tarball dist.integrity gitHead repository license; tar tf exact registry tarball; inspect package/package.json fields",
+      "tarball": {
+        "url": "https://registry.npmjs.org/lazy-val/-/lazy-val-1.0.5.tgz",
+        "integrity": "sha512-0/BnGCCfyUMkBpeDgWihanIAF9JmZhHBgUhEqzvf+adhNGLoP6TaiI5oF8oyb3I45P+PcnrqihSf01M0l0G5+Q==",
+        "sha256": "7d8602ad98db3d19fbd5b46fbf3831dd996197a013ef1ff7badc205e41435372",
+        "path": "package/package.json",
+        "licenseMembers": [],
+        "copyrightMembers": []
+      }
+    },
+    "note": "The exact tarball declares MIT and the verbatim package.json author is Vladimir Krivosheev, but no license/notice file or copyright-named member is present; the exact upstream tree also has no license file. The author field is attribution metadata, not a copyright line."
+  },
+  "unicode-animations@1.0.3": {
+    "spdx": "MIT",
+    "declared": {
+      "license": "MIT",
+      "author": null
+    },
+    "evidence": {
+      "kind": "declared-license-no-notice",
+      "retrieval": "npm view unicode-animations@1.0.3 dist.tarball dist.integrity gitHead license; tar tf exact registry tarball; inspect package/package.json fields",
+      "tarball": {
+        "url": "https://registry.npmjs.org/unicode-animations/-/unicode-animations-1.0.3.tgz",
+        "integrity": "sha512-+klB2oWwcYZjYWhwP4Pr8UZffWDFVx6jKeIahE6z0QYyM2dwDeDPyn5nevCYbyotxvtT9lh21cVURO1RX0+YMg==",
+        "sha256": "c3288aa989d22fe5aeb8d9c52be21d94c49282af6fc04b3d72cda3fb99578f6a",
+        "path": "package/package.json",
+        "licenseMembers": [],
+        "copyrightMembers": []
+      }
+    },
+    "note": "The exact tarball declares MIT, has no author field, and has no license/notice file or copyright-named member; the exact upstream tree and nearby history likewise have no license file. No copyright line is synthesized."
+  },
+  "use-composed-ref@1.4.0": {
+    "spdx": "MIT",
+    "declared": {
+      "license": "MIT",
+      "author": null
+    },
+    "evidence": {
+      "kind": "declared-license-no-notice",
+      "retrieval": "npm view use-composed-ref@1.4.0 dist.tarball dist.integrity gitHead repository license; tar tf exact registry tarball; inspect package/package.json fields",
+      "tarball": {
+        "url": "https://registry.npmjs.org/use-composed-ref/-/use-composed-ref-1.4.0.tgz",
+        "integrity": "sha512-djviaxuOOh7wkj0paeO1Q/4wMZ8Zrnag5H6yBvzN7AKKe8beOaED9SF5/ByLqsku8NP4zQqsvM2u3ew/tJK8/w==",
+        "sha256": "e96570f537b0911cfcfdacb026d5680df679edd4747602d027ad451412501cae",
+        "path": "package/package.json",
+        "licenseMembers": [],
+        "copyrightMembers": []
+      }
+    },
+    "note": "The exact tarball declares MIT, has no author field, and has no license/notice file or copyright-named member; the exact v1.4.0 source tree and tag likewise have no license file. No copyright line is synthesized."
   }
 }
