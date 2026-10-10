@@ -466,4 +466,70 @@ updater check/applyを追加した。結果は `native-checks.json` と `provena
 
 ## 配布契約の検証記録
 
-この文書に記録したrunは、PR headとActions checkoutのmerge ref、上流commit、provenance、ZIP SHA256、受入artifactを対応付けている。Actions artifactは一時検証用であり、Scoopの恒久的な配布先ではない。今回のrunではRelease作成、manifest登録、mainへの書き戻しを行っていない。
+（履歴）この段落は公開前のpreviewに対する記録であり、現在の公開状態は末尾の
+「現在のdevelopment公開とpublic Scoop install」を参照する。Actions artifactは一時検証用であり、
+Scoopの恒久的な配布先ではない。
+
+## 現在のdevelopment公開とpublic Scoop install（2026-10-10）
+
+上記の初期preview／公開前の記録（特に「Release・manifest登録・main書き戻しはない」と
+記した箇所）は履歴である。以下が、初回の非公式development公開と、公開bucketからの
+実Windows導入についての現在の検証記録である。
+
+- Release: [`Hermes Desktop Light development release`](https://github.com/takano536/scoop-bucket/releases/tag/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab)。
+  `draft=false`、`prerelease=true`、名前と本文は `DEVELOPMENT BUILD — NOT STABLE` /
+  `Unofficial unsigned Windows x64 Light build` である。
+- publish run: [38008376760](https://github.com/takano536/scoop-bucket/actions/runs/38008376760)。
+  upstreamは`NousResearch/hermes-agent@46d7718a52ff33accb15dc0501736fbdb6833cab`、
+  buildのbucket headは`11b4ead`、書き戻しcommitは
+  [`d6efc008`](https://github.com/takano536/scoop-bucket/commit/d6efc008b37bdfe30204cf6fa0e30b196b559616)である。
+  versionは`0.0.0-alpha.dev.1-r1`、公開ZIP SHA256は
+  `c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23`である。
+- manifest・READMEは公開URLとSHA256をread backしてmainへ書き戻した。現在のdevelopment
+  planを同じupstream commit、同じconditions、revision `1`で**read-only**評価すると、
+  既存Release/asset/conditionsを認識して`build=false`のno-opになる。この評価に対する
+  realな再publish runは実行していない。scheduleとmanual dispatchは
+  `hermes-desktop-light-release` concurrency group（`cancel-in-progress=false`）を共有し、
+  重複runはqueueされる。upstream `main`が進んだ場合は新しいdevelopment versionを作るのが
+  正常な挙動であり、4時間ごとのschedule（development gateだけ有効）がそれを実行し得る。
+
+- [Autoupdate validation run 38009253446](https://github.com/takano536/scoop-bucket/actions/runs/38009253446)で、
+  checkverが`0.0.0-alpha.dev.1-r1`を検出し、development pointerのURL/SHA256を
+  再生成・照合して成功した。
+
+### 公開bucketからの実Windows検証
+
+[Scoop install workflow run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)
+はGitHub-hosted `windows-latest`上で、secretなし・`contents: read`だけのworkflowとして
+公開bucketをalias `takano536-verify`で追加し、`scoop install`、`scoop list`、`scoop info`、
+既存のElectron acceptance driverを実行した。
+
+- public manifestのversionは`0.0.0-alpha.dev.1-r1`、download URLは上記Release asset、
+  SHA256は`c83d...f3c23`で一致した。Scoop cacheの実ダウンロードも同じSHA256で、
+  hash verificationは成功した。
+- `scoop prefix`は`...\\apps\\hermes-desktop-light\\0.0.0-alpha.dev.1-r1`、
+  `current` junctionも同versionを指した。manifestの`shortcuts[0][0]`から7桁hex suffix
+  `46d7718.exe`の実行ファイルを読み取り、その実在とStart-menuの
+  `Hermes Desktop Light (Development).lnk`のtargetを確認した。
+- インストール後の起動はCDP renderer readiness、gatewayへの正しいsecret接続、
+  誤secret拒否、`/api/sessions`のauthenticated 200／誤secret 401、remote設定保持、
+  local backendの`bootstrap-needed`、developmentのexternal updater
+  `commit-build`（check/applyはunsupported/refused、app tree不変）を既存acceptance
+  driverで確認した。
+- [run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)で
+  `Get-AuthenticodeSignature`を20個の`.exe`/`.dll`/`.node`へ実行した。Hermes app exe
+  （manifest targetの7-hex suffix `46d7718`）、HUD helper、およびその他12個の
+  non-Microsoft binaryは`NotSigned`であり、bucketによる署名はない。
+- 一方、次の6個のbundled Microsoft-redistributed binaryは`Valid`を保ち、
+  signerはすべて`CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond,
+  S=Washington, C=US`だった：`d3dcompiler_47.dll`、`dxil.dll`、`node-pty`の
+  build/release `conpty.dll`・`OpenConsole.exe`、およびprebuild側の`conpty.dll`・
+  `OpenConsole.exe`。
+- したがって`unsigned`はHermes app／main exeのbuild label（bucketが署名していない）
+  であり、ZIP内のMicrosoft-redistributed binaryまで未署名という意味ではない。
+  これはGitHub-hosted runnerでの測定であり、cleanな一般Windows環境を保証しない。
+- このrunのrunnerはGitHub-hostedであり、**cleanな一般Windows環境を保証しない**。Releaseは
+  Nous Researchと提携していない非公式development buildであり、stable gateは有効化していない。
+  `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`のままのscheduleは、upstream変更時に
+  新しいdevelopment版を公開し得る。provider credentialを使う実運用、stable upgrade、
+  異なるbinary間のmigration、およびclean consumer machineでの独立性は未確認である。
