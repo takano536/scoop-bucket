@@ -80,12 +80,12 @@ jobs:
           $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
           $historyRoot = Join-Path $env:GITHUB_WORKSPACE 'scoop-history'
           New-Item -ItemType Directory -Force -Path (Join-Path $historyRoot 'shims') | Out-Null
+          $scoopCommand = (Get-Command scoop -ErrorAction Stop).Source
           $originalScoop = $env:SCOOP
           $env:SCOOP = $historyRoot
-
           function Invoke-CapturedScoop {
             param([string]$Name, [string[]]$Arguments)
-            $values = @(& scoop @Arguments 2>&1 | ForEach-Object { [string]$_ })
+            $values = @(& $scoopCommand @Arguments 2>&1 | ForEach-Object { [string]$_ })
             $exitCode = $LASTEXITCODE
             $text = $values -join "`n"
             Set-Content -LiteralPath (Join-Path $output "$Name.log") -Value $text -Encoding utf8NoBOM
