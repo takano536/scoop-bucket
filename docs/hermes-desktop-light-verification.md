@@ -71,12 +71,12 @@ skipと混同しないnon-zero failureである。
 
 ## Current final-head verification
 
-Final head `72d02aa7b640e14c859456bb9a92ebb82e66135f` was verified by
-[Hermes Desktop Light run 38017689568](https://github.com/takano536/scoop-bucket/actions/runs/38017689568):
+Final head `34ad12281a9a585fbe385d04932ade3ac1eb69bb` was verified by
+[Hermes Desktop Light run 38018483429](https://github.com/takanori536/scoop-bucket/actions/runs/38018483429):
 `plan`, exact-source Windows `build`, and Windows `acceptance` all passed; `publish` was skipped
-because this was a branch dispatch and the existing development publish gate was not enabled for
-the run. The acceptance artifact's real Scoop evidence installed the historical
-`0.0.0-alpha.dev.1-r1`, ran `scoop update`, and verified
+because this branch dispatch does not satisfy the required `refs/heads/main` condition. No
+repository publish-gate variable was changed. The acceptance artifact's real Scoop evidence
+installed the historical `0.0.0-alpha.dev.1-r1`, ran `scoop update`, and verified
 `26.1009.7.410-alpha.dev.1-r1`, including manifest/install versions, resolved targets, and
 shortcut targets (`updateAssertion=passed`). This is the Windows evidence for the legacy-to-new
 version migration, not a synthetic test version.
@@ -441,7 +441,7 @@ Windows-only build/acceptance結果はActionsの実runでのみ報告し、ロ�
 
 The publish job remains gated by `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`,
 schedule/dispatch, `refs/heads/main`, and successful exact-source Windows build and acceptance.
-This branch does not enable that variable and does not create or modify a Release.
+This review branch does not satisfy `refs/heads/main` and does not create or modify a Release.
 
 ## Historical distribution record
 

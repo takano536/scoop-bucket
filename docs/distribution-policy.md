@@ -83,7 +83,8 @@ Scoop versionは`<desktop-version>-alpha.dev.1-r<N>`（例:
 third-party notices、native launch/remote gateway acceptance、artifactと公開URLのSHA256
 検証を行う。失敗・unsupported skipでは現在のinstallable versionを保持する。
 Releaseはcanary由来のunofficial prereleaseとして別tagに作成し、既存Release/past versionを
-変更しない。公開gate`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`は既定無効のままである。
+変更しない。公開gateは既存の`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`で制御し、このポリシー
+では設定値を変更しない。
 
 checkver/autoupdateはbucketが実際に公開したLight versionの
 `metadata/hermes-desktop-light-release.json` pointerとimmutable Release URL/SHA256を参照

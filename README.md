@@ -118,9 +118,10 @@ native smoke、remote gateway/Scoop acceptance、artifactと公開URLのSHA256�
 commit、bucket-side build commit、両artifactのhashを記録します。公開済みassetは上書き
 せず、失敗時は現在のinstallable versionを変更しません。
 
-publish gateは初期状態で無効（`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`）です。現在の
-manifest/versionは過去の`0.0.0-alpha.dev.1-r1` Releaseを保持し、新しいDesktop release
-のWindows CIと明示承認済みpublishが完了するまで変更しません。過去Releaseを削除・変更
+publish gateは既存の開発用設定（`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`）で制御し、
+このポリシーでは設定値を変更しません。現在のmanifest/versionは過去の
+`0.0.0-alpha.dev.1-r1` Releaseを保持し、新しいDesktop releaseのWindows CIと明示承認済み
+publishが完了するまで変更しません。過去Releaseを削除・変更
 しません。このポリシーが自動検出する公式配布経路はWindows canary feedだけで、将来の
 official stable Desktop channelは自動検出しません（manifestのcheckver regexも
 `-alpha.dev.`だけに一致します）。upstream sourceがcanary/pre-releaseであることと、
