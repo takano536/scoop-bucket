@@ -184,8 +184,8 @@ def gh(*args: str) -> str:
     return subprocess.check_output(["gh", *args], text=True, encoding="utf-8", stderr=subprocess.PIPE)
 
 
-def api(endpoint: str) -> dict | list:
-    return json.loads(gh("api", endpoint))
+def api(endpoint: str, *args: str) -> dict | list:
+    return json.loads(gh("api", endpoint, *args))
 
 
 def _http(url: str, method: str = "GET") -> tuple[bytes, dict[str, str]]:
@@ -743,26 +743,36 @@ def _publish_desktop() -> None:
     rows = _release_rows(repository)
     existing = next((row for row in rows if row.get("tag_name") == tag), None)
     if not existing:
-        gh(
-            "release", "create", tag, "--repo", repository, "--draft", "--prerelease", "--target", "main",
-            "--title", f"Unofficial Hermes Desktop Light {version}", "--notes",
-            (
-                f"Unofficial Hermes Desktop Light build for officially published Desktop {desktop_version}.\n\n"
-                f"Official Desktop distribution source: {live['desktopSourceUrl']}\n"
-                f"Official Desktop tag: `{upstream_tag}`\n"
-                f"Upstream commit: `{source_ref}`\n"
-                f"Bucket build commit: `{record.get('bucketCommit', 'unknown')}`\n"
-                f"Desktop package SHA256: `{live['desktopArtifactSha256']}`\n"
-                f"Light artifact SHA256: `{record['sha256']}`\n\n"
-                "This is an unofficial unsigned Light build; the upstream source is a published canary and "
-                "the bucket distribution is not an official Light asset. It contains no local Python or agent."
-            ),
-            "--latest=false",
+        notes = (
+            f"Unofficial Hermes Desktop Light build for officially published Desktop {desktop_version}.\n\n"
+            f"Official Desktop distribution source: {live['desktopSourceUrl']}\n"
+            f"Official Desktop tag: `{upstream_tag}`\n"
+            f"Upstream commit: `{source_ref}`\n"
+            f"Bucket build commit: `{record.get('bucketCommit', 'unknown')}`\n"
+            f"Desktop package SHA256: `{live['desktopArtifactSha256']}`\n"
+            f"Light artifact SHA256: `{record['sha256']}`\n\n"
+            "This is an unofficial unsigned Light build; the upstream source is a published canary and "
+            "the bucket distribution is not an official Light asset. It contains no local Python or agent."
         )
-        rows = _release_rows(repository)
-        existing = next((row for row in rows if row.get("tag_name") == tag), None)
-        if existing is None:
-            raise ValueError("Created Light draft release was not returned by the releases list")
+        created = api(
+            f"repos/{repository}/releases",
+            "--method", "POST",
+            "--field", f"tag_name={tag}",
+            "--field", "target_commitish=main",
+            "--field", f"name=Unofficial Hermes Desktop Light {version}",
+            "--field", f"body={notes}",
+            "--field", "draft=true",
+            "--field", "prerelease=true",
+            "--field", "make_latest=false",
+        )
+        if (
+            not isinstance(created, dict)
+            or created.get("tag_name") != tag
+            or created.get("draft") is not True
+            or created.get("prerelease") is not True
+        ):
+            raise ValueError("Created Light draft release response did not match requested release")
+        existing = created
     release_id = existing.get("id")
     if not isinstance(release_id, int):
         raise ValueError("Light draft release has no immutable release id")

@@ -416,6 +416,8 @@ conditions fingerprint into Release body/provenance. Before writeback it re-read
 feed/handoff and verifies the public Light URL SHA256.
 The shipped `provenance.json` uses `desktopTag` and `desktopVersion` as the canonical
 Desktop-release identity fields; the workflow's `upstream_tag` is an internal handoff value.
+The draft Release identity comes directly from the create API response before asset
+uploads; list visibility is not used to discover a just-created draft.
 
 The current branch intentionally leaves the existing `0.0.0-alpha.dev.1-r1` manifest and its
 historical Release untouched until a new Desktop-release build passes Windows CI and an enabled
