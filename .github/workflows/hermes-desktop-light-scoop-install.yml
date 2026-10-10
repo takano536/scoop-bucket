@@ -179,9 +179,11 @@ jobs:
               updatedHash = $newCacheHash
             } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'scoop-update-evidence.json') -Encoding utf8NoBOM
           } finally {
-            if ($null -eq $originalScoop) { Remove-Item Env:SCOOP -ErrorAction SilentlyContinue } else { $env:SCOOP = $originalScoop }
             if (Test-Path -LiteralPath $historyRoot) {
               try { & $scoopCommand uninstall $app 2>&1 | Out-Null } catch {}
+            }
+            if ($null -eq $originalScoop) { Remove-Item Env:SCOOP -ErrorAction SilentlyContinue } else { $env:SCOOP = $originalScoop }
+            if (Test-Path -LiteralPath $historyRoot) {
               Remove-Item -LiteralPath $historyRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
