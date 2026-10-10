@@ -53,7 +53,7 @@ try {
         Write-Host "PASS $($case.Name)"
     }
     $releaseVersion = '26.1009.7.410-alpha.dev.1-r1'
-    $releaseCommit = 'a' * 40
+    $releaseCommit = 'b' * 40
     $releaseTag = 'v0.21.6+canary.20261009T070410Z'
     $releaseManifest = @{
         version = $releaseVersion
