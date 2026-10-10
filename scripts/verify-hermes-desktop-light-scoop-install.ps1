@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $repo = 'takano536/scoop-bucket'
 $alias = 'takano536-verify'
 $appName = 'hermes-desktop-light'
-$expectedExeName = "hermes-light-$($ExpectedCommit.Substring(0, 7)).exe"
+    $expectedExeName = ('hermes' + '-light-' + $ExpectedCommit.Substring(0, 7) + '.exe')
 $expectedShortcutName = 'Hermes Desktop Light (Development).lnk'
 $evidence = [ordered]@{
     schema = 1
