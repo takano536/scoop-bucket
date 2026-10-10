@@ -1,0 +1,87 @@
+name: Hermes Desktop Light public Scoop install
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/hermes-desktop-light-scoop-install.yml
+      - scripts/verify-hermes-desktop-light-scoop-install.ps1
+      - scripts/accept-hermes-desktop-light.cjs
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-scoop-install:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out bucket verifier
+        uses: actions/checkout@v4
+        with:
+          path: bucket
+          persist-credentials: false
+
+      - name: Check out the published upstream commit for the gateway
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 46d7718a52ff33accb15dc0501736fbdb6833cab
+          path: upstream
+          persist-credentials: false
+
+      - name: Set up Python for the upstream gateway
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install the upstream gateway dependencies
+        shell: pwsh
+        working-directory: upstream
+        run: python -m pip install --disable-pip-version-check --no-input -e '.[web]'
+
+      - name: Install Scoop (non-admin)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
+          $env:PATH = "$(Join-Path $scoopRoot 'shims');$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Invoke-RestMethod -Uri 'https://get.scoop.sh' | Invoke-Expression
+          }
+          $env:PATH = "$(Join-Path $scoopRoot 'shims');$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            throw 'The official non-admin Scoop installer did not provide scoop.exe'
+          }
+          scoop --version
+          scoop config cache true
+
+      - name: Install and exercise the public bucket app
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: 0.0.0-alpha.dev.1-r1
+          EXPECTED_COMMIT: 46d7718a52ff33accb15dc0501736fbdb6833cab
+          EXPECTED_HASH: c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23
+          EXPECTED_URL: https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab/hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab-windows-x64.zip
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          & "$env:GITHUB_WORKSPACE/bucket/scripts/verify-hermes-desktop-light-scoop-install.ps1" `
+            -BucketRoot "$env:GITHUB_WORKSPACE/bucket" `
+            -UpstreamDirectory "$env:GITHUB_WORKSPACE/upstream" `
+            -OutputDirectory $output `
+            -ExpectedVersion $env:EXPECTED_VERSION `
+            -ExpectedCommit $env:EXPECTED_COMMIT `
+            -ExpectedHash $env:EXPECTED_HASH `
+            -ExpectedUrl $env:EXPECTED_URL
+
+      - name: Upload small install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-light-scoop-install-evidence
+          path: scoop-install-evidence/*
+          if-no-files-found: warn
+          retention-days: 14
