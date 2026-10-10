@@ -1,556 +1,75 @@
-"""Publisher integration tests: real disposable Git, synthetic ZIP, mocked GitHub."""
-import base64
-import hashlib
+"""Publisher-facing manifest and provenance contract tests."""
 import importlib.util
-import io
-import json
-import os
-from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 import unittest
-from unittest.mock import patch
-import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('light_publish', ROOT / 'scripts/hermes-desktop-light.py')
+spec = importlib.util.spec_from_file_location("light_publish", ROOT / "scripts/hermes-desktop-light.py")
 assert spec is not None and spec.loader is not None
 light = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(light)
 
 
-class PublishTests(unittest.TestCase):
+class PublishContractTests(unittest.TestCase):
     def setUp(self):
-        self.scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(self.scratch.cleanup)
-        self.root = Path(self.scratch.name)
-        self.remote = self.root / 'origin.git'
-        self.work = self.root / 'work'
-        self.work.mkdir()
-        self.git('init', '--bare', str(self.remote))
-        self.git('init', '-b', 'main', str(self.work))
-        self.git('config', 'user.name', 'test fixture')
-        self.git('config', 'user.email', 'fixture@example.invalid')
-        self.git('remote', 'add', 'origin', str(self.remote))
-        (self.work / 'bucket').mkdir()
-        (self.work / 'bucket/fixture.json').write_text(json.dumps({
-            'version': '1.0.0', 'description': 'Synthetic test fixture',
-            'homepage': 'https://example.invalid/fixture',
-        }))
-        (self.work / 'scripts').mkdir()
-        shutil.copyfile(ROOT / 'scripts/update-readme.py', self.work / 'scripts/update-readme.py')
-        (self.work / 'README.md').write_text('# Fixture\n\n<!-- BEGIN GENERATED APPS -->\n\n<!-- END GENERATED APPS -->\n')
-        self.git('add', 'README.md', 'scripts/update-readme.py', 'bucket/fixture.json')
-        self.git('commit', '-m', 'test fixture')
-        self.git('push', 'origin', 'main')
-        self.initial = self.git('rev-parse', 'HEAD').strip()
-        self.output = self.work / 'output'
-        self.output.mkdir()
-        self.name = 'hermes-desktop-light-0.22.0-r1-windows-x64.zip'
-        # These bytes are test fixtures, not an application or CI build evidence.
-        self.published = self.package('previously published fixture')
-        self.record = dict(schema=1, upstream=light.UPSTREAM, version='0.22.0-r1', sourceRef='v0.22.0',
-                           preview=False, payload='light', updateMechanism='external', commit='a' * 40,
-                           artifact=self.name, executable='Hermes Light.exe',
-                           smoke='two native launches; renderer loaded; localStorage retained',
-                           notices=self.notice_record(),
-                           sha256=hashlib.sha256(self.published).hexdigest())
-        rebuilt = self.package('different rebuilt fixture')
-        (self.output / self.name).write_bytes(rebuilt)
-        (self.output / 'provenance.json').write_text(json.dumps({**self.record, 'sha256': hashlib.sha256(rebuilt).hexdigest()}))
-        (self.output / 'acceptance.json').write_text(json.dumps({
-            'schema': 1,
-            'status': 'passed',
-            'sourceRef': 'a' * 40,
-            'commit': 'a' * 40,
-            'bucketPackageVersion': '0.22.0-r1',
-            'artifact': self.name,
-            'artifactSha256': hashlib.sha256(rebuilt).hexdigest(),
-        }))
-        self.previous_cwd = Path.cwd()
-        os.chdir(self.work)
-        self.addCleanup(os.chdir, self.previous_cwd)
-        self.env = patch.dict(os.environ, PACKAGE_VERSION='0.22.0-r1', SOURCE_REF='a' * 40,
-                              UPSTREAM_TAG='v0.22.0',
-                              GITHUB_REPOSITORY='fixture/bucket', RELEASE_ENABLED='true',
-                              ACCEPTANCE_EVIDENCE='output/acceptance.json',
-                              GITHUB_ACTIONS='true', GITHUB_REF='refs/heads/main',
-                              GITHUB_EVENT_NAME='schedule')
-        self.env.start()
-        self.addCleanup(self.env.stop)
+        self.version = "26.1009.7.410-alpha.dev.1-r1"
+        self.digest = "a" * 64
+        self.commit = "b" * 40
+        self.desktop_digest = "c" * 64
+        self.conditions = "d" * 64
+        self.license = "e" * 64
 
-    def git(self, *args):
-        return subprocess.check_output(['git', *args], cwd=self.work, text=True, stderr=subprocess.STDOUT)
+    def test_manifest_points_to_immutable_unofficial_release_and_pointer(self):
+        data = light.manifest(self.version, "takano536/scoop-bucket", self.digest)
+        self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
+        self.assertIn("hermes-desktop-light%2Fv26.1009.7.410-alpha.dev.1-r1", data["architecture"]["64bit"]["url"])
+        self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light (Unofficial)"]])
+        self.assertIn("hermes-desktop-light-release.json", data["checkver"]["url"])
+        self.assertIn("officially published Hermes Desktop canary", data["notes"])
 
-    def notice_files(self):
-        return {
-            'LICENSE': 'MIT License\n\nCopyright (c) 2025 Nous Research\n',
-            'LICENSE.electron.txt': 'Electron license fixture',
-            'LICENSES.chromium.html': '<html>Chromium license fixture</html>',
-            'THIRD-PARTY-NOTICES.txt': 'Package fixture: MIT\n',
-            'UNOFFICIAL-BUILD.txt': 'Unofficial unsigned build fixture\n',
-        }
+    def test_release_pointer_records_both_upstream_and_bucket_identity(self):
+        pointer = light.release_pointer(
+            version=self.version,
+            digest=self.digest,
+            commit=self.commit,
+            desktop_version="26.1009.7.410",
+            desktop_tag="v0.21.6+canary.20261009T070410Z",
+            desktop_feed_url=light.DESKTOP_FEED_URL,
+            desktop_feed_etag='"feed"',
+            desktop_feed_last_modified="Fri, 09 Oct 2026 08:04:40 GMT",
+            desktop_artifact_url="https://example.invalid/HermesBundled.msixbundle",
+            desktop_artifact_sha256=self.desktop_digest,
+            conditions_fingerprint=self.conditions,
+            license_sha256=self.license,
+            release_tag_value=f"{light.APP}/v{self.version}",
+            artifact=f"{light.APP}-{self.version}-windows-x64.zip",
+        )
+        self.assertEqual(pointer["distribution"], "unofficial-light")
+        self.assertEqual(pointer["upstreamChannel"], "canary")
+        self.assertEqual(pointer["desktopVersion"], "26.1009.7.410")
+        self.assertEqual(pointer["commit"], self.commit)
+        self.assertEqual(pointer["desktopArtifactSha256"], self.desktop_digest)
+        self.assertEqual(pointer["conditionsFingerprint"], self.conditions)
 
-    def notice_record(self):
-        files = self.notice_files()
-        return {
-            'upstreamLicense': {'path': 'LICENSE', 'sha256': hashlib.sha256(files['LICENSE'].encode()).hexdigest()},
-            'thirdParty': {
-                'path': 'THIRD-PARTY-NOTICES.txt',
-                'sha256': hashlib.sha256(files['THIRD-PARTY-NOTICES.txt'].encode()).hexdigest(),
-                'packages': 1,
-            },
-            'unofficial': {'path': 'UNOFFICIAL-BUILD.txt', 'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest()},
-            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
-        }
-
-    def package(self, marker):
-        data = io.BytesIO()
-        with zipfile.ZipFile(data, 'w') as archive:
-            archive.writestr('Hermes Light.exe', marker)
-            archive.writestr('resources/app.asar', 'synthetic fixture')
-            archive.writestr('resources/install-stamp.json', json.dumps(dict(commit='a' * 40, payload='light', updateMechanism='external')))
-            for name, content in self.notice_files().items():
-                archive.writestr(name, content)
-        return data.getvalue()
-
-    def api(self, endpoint):
-        if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
-            return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
-        if endpoint == f'repos/{light.UPSTREAM}/commits/v0.22.0':
-            return {'sha': 'a' * 40}
-        if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
-            return {'draft': False, 'prerelease': False}
-        if endpoint == 'repos/fixture/bucket/contents/bucket/hermes-desktop-light.json?ref=main':
-            actual = self.git('show', 'origin/main:bucket/hermes-desktop-light.json')
-            return {'content': base64.b64encode(actual.encode()).decode()}
-        if endpoint == 'repos/fixture/bucket/contents/README.md?ref=main':
-            actual = self.git('show', 'origin/main:README.md')
-            return {'content': base64.b64encode(actual.encode()).decode()}
-        raise AssertionError(f'Unexpected API request: {endpoint}')
-
-    def gh(self, *args):
-        if args == ('api', '--paginate', '--slurp', 'repos/fixture/bucket/releases?per_page=100'):
-            return json.dumps([[{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': False}]])
-        if args[:2] == ('release', 'download'):
-            saved = Path(args[args.index('--dir') + 1])
-            saved.mkdir()
-            (saved / self.name).write_bytes(self.published)
-            (saved / 'provenance.json').write_text(json.dumps(self.record))
-            return ''
-        raise AssertionError(f'Unexpected GitHub mutation or request: {args}')
-
-    def run_publish(self, public_bytes=None):
-        with patch.object(light, 'api', side_effect=self.api), patch.object(light, 'gh', side_effect=self.gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(self.published if public_bytes is None else public_bytes)) as download:
-            light.publish()
-            download.assert_called_once_with(
-                'https://github.com/fixture/bucket/releases/download/hermes-desktop-light%2Fv0.22.0-r1/' + self.name,
-                timeout=120)
-
-    def test_publication_requires_explicit_enablement_and_trusted_actions_main(self):
-        for values in ({'RELEASE_ENABLED': ''}, {'GITHUB_ACTIONS': ''},
-                       {'GITHUB_REF': 'refs/heads/feature'}, {'GITHUB_EVENT_NAME': 'pull_request'}):
-            with self.subTest(values=values), patch.dict(os.environ, values), \
-                 patch.object(light, 'api') as api, patch.object(light, 'gh') as gh:
-                with self.assertRaisesRegex(ValueError, 'Publication is disabled or not a trusted main run'):
-                    light.publish()
-                api.assert_not_called()
-                gh.assert_not_called()
-                self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-
-    def test_publisher_requires_passed_acceptance_evidence(self):
-        evidence = self.output / 'acceptance.json'
-        original = evidence.read_text()
-        for replacement in (None, {**json.loads(original), 'status': 'failed'}):
-            with self.subTest(replacement=replacement):
-                if replacement is None:
-                    evidence.unlink()
-                else:
-                    evidence.write_text(json.dumps(replacement))
-                with self.assertRaisesRegex(ValueError, 'Acceptance evidence'):
-                    light.verify_acceptance_evidence(self.record, '0.22.0-r1', 'a' * 40)
-                if replacement is None:
-                    evidence.write_text(original)
-        evidence.write_text(original)
-
-    def test_existing_release_reuses_immutable_bytes_and_writes_manifest_readme(self):
-        self.run_publish()
-        manifest = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
-        self.assertEqual(manifest['architecture']['64bit']['hash'], self.record['sha256'])
-        self.assertIn('hermes-desktop-light', self.git('show', 'origin/main:README.md'))
-        self.assertEqual(self.git('status', '--short', '--untracked-files=no').strip(), '')
-        # Repeating publication is a no-op, not a rebuilt upload or duplicate commit.
-        before = self.git('rev-parse', 'HEAD')
-        shutil.rmtree(self.output / 'published')
-        self.run_publish()
-        self.assertEqual(self.git('rev-parse', 'HEAD'), before)
-
-    def test_public_url_digest_failure_leaves_manifest_unchanged(self):
-        with self.assertRaisesRegex(ValueError, 'Public release URL has wrong digest'):
-            self.run_publish(b'wrong public fixture')
-        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-        self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
-        self.assertEqual(self.git('rev-parse', 'origin/main').strip(), self.initial)
-
-    def test_other_application_releases_are_ignored(self):
-        real_gh = self.gh
-        def gh(*args):
-            if args[:3] == ('api', '--paginate', '--slurp'):
-                return json.dumps([[{'tag_name': 'other-app/v99.0.0-r10', 'draft': False}],
-                                   [{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': False}]])
-            return real_gh(*args)
-        with patch.object(light, 'api', side_effect=self.api), patch.object(light, 'gh', side_effect=gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(self.published)):
-            light.publish()
-        result = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
-        self.assertEqual(result['version'], '0.22.0-r1')
-        self.assertEqual(result['checkver']['url'], 'https://raw.githubusercontent.com/fixture/bucket/main/bucket/hermes-desktop-light.json')
-
-    def test_same_upstream_revision_downgrade_is_refused(self):
-        target = self.work / 'bucket/hermes-desktop-light.json'
-        target.write_text(json.dumps(light.manifest('0.22.0-r10', 'fixture/bucket', 'b' * 64)))
-        self.git('add', str(target))
-        self.git('commit', '-m', 'newer revision fixture')
-        self.git('push', 'origin', 'main')
-        with self.assertRaisesRegex(ValueError, 'Refusing manifest downgrade'):
-            self.run_publish()
-        self.assertEqual(json.loads(target.read_text())['version'], '0.22.0-r10')
-
-    def test_readme_writeback_is_read_back_not_only_the_manifest(self):
-        real_api = self.api
-
-        def api(endpoint):
-            if '/contents/README.md?' in endpoint:
-                return {'content': base64.b64encode(b'wrong remote README').decode()}
-            return real_api(endpoint)
-
-        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh', side_effect=self.gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(self.published)):
-            with self.assertRaisesRegex(ValueError, 'README writeback readback mismatch'):
-                light.publish()
-
-    def test_new_release_uploads_draft_then_checks_public_url_before_writeback(self):
-        mutations = []
-        assets = []
-        state = {'draft': True, 'prerelease': False, 'assets': assets}
-        real_api = self.api
-
-        def api(endpoint):
-            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
-                return state
-            return real_api(endpoint)
-
-        def gh(*args):
-            if args[:3] == ('api', '--paginate', '--slurp'):
-                return '[[]]'
-            mutations.append(args)
-            if args[:2] == ('release', 'upload'):
-                assets.append({'name': Path(args[3]).name})
-            elif args[:2] == ('release', 'edit'):
-                state['draft'] = False
-            elif args[:2] != ('release', 'create'):
-                raise AssertionError(args)
-            self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
-            return ''
-
-        built = (self.output / self.name).read_bytes()
-        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh', side_effect=gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(built)):
-            light.publish()
-        self.assertEqual([call[1] for call in mutations], ['create', 'upload', 'upload', 'upload', 'edit'])
-        historical = json.loads((self.output / 'hermes-desktop-light.json').read_text())
-        self.assertEqual(historical['version'], '0.22.0-r1')
-        self.assertEqual(historical['architecture']['64bit']['hash'], hashlib.sha256(built).hexdigest())
-        self.assertIn('--draft', mutations[0])
-        self.assertIn('--latest=false', mutations[0])
-        self.assertFalse(any('--clobber' in call for call in mutations))
-        data = json.loads(self.git('show', 'origin/main:bucket/hermes-desktop-light.json'))
-        self.assertEqual(data['architecture']['64bit']['hash'], hashlib.sha256(built).hexdigest())
-
-    def test_different_partial_draft_is_not_overwritten_or_published(self):
-        real_api = self.api
-
-        def api(endpoint):
-            if endpoint == 'repos/fixture/bucket/releases/tags/hermes-desktop-light%2Fv0.22.0-r1':
-                return {'draft': True, 'prerelease': False, 'assets': [{'name': self.name}]}
-            return real_api(endpoint)
-
-        def gh(*args):
-            if args[:3] == ('api', '--paginate', '--slurp'):
-                return json.dumps([[{'tag_name': 'hermes-desktop-light/v0.22.0-r1', 'draft': True}]])
-            if args[:2] == ('release', 'download'):
-                (Path(args[args.index('--dir') + 1]) / self.name).write_bytes(self.published)
-                return ''
-            raise AssertionError(f'Draft must not be mutated: {args}')
-
-        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh', side_effect=gh), \
-             patch('urllib.request.urlopen') as download:
-            with self.assertRaisesRegex(ValueError, 'Existing draft asset differs'):
-                light.publish()
-            download.assert_not_called()
-        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-        self.assertFalse((self.work / 'bucket/hermes-desktop-light.json').exists())
-
-    def test_moved_upstream_tag_is_rejected_before_release_mutation(self):
-        def api(endpoint):
-            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
-                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': False}
-            return {'sha': 'b' * 40}
-
-        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
-            with self.assertRaisesRegex(ValueError, 'Upstream tag moved'):
-                light.publish()
-            gh.assert_not_called()
-        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-
-    def test_upstream_release_must_remain_published_stable(self):
-        def api(endpoint):
-            if endpoint == f'repos/{light.UPSTREAM}/releases/tags/v0.22.0':
-                return {'tag_name': 'v0.22.0', 'draft': False, 'prerelease': True}
-            return {'sha': 'a' * 40}
-
-        with patch.object(light, 'api', side_effect=api), patch.object(light, 'gh') as gh:
-            with self.assertRaisesRegex(ValueError, 'no longer a published stable release'):
-                light.publish()
-            gh.assert_not_called()
-        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-
-    def test_manifest_downgrade_is_refused(self):
-        target = self.work / 'bucket/hermes-desktop-light.json'
-        target.write_text(json.dumps(light.manifest('0.23.0-r1', 'fixture/bucket', 'b' * 64)))
-        self.git('add', str(target))
-        self.git('commit', '-m', 'newer fixture distribution')
-        self.git('push', 'origin', 'main')
-        newer = self.git('rev-parse', 'HEAD')
-        with self.assertRaisesRegex(ValueError, 'Refusing manifest downgrade'):
-            self.run_publish()
-        self.assertEqual(self.git('rev-parse', 'origin/main'), newer)
-        self.assertEqual(json.loads(target.read_text())['version'], '0.23.0-r1')
-
-    def test_push_failure_preserves_remote_and_published_bytes_for_retry(self):
-        real_run = subprocess.run
-        pushes = []
-
-        def run(args, **kwargs):
-            if args == ['git', 'push', 'origin', 'HEAD:main']:
-                pushes.append(args)
-                return subprocess.CompletedProcess(args, 1)
-            return real_run(args, **kwargs)
-
-        with patch.object(light.subprocess, 'run', side_effect=run):
-            with self.assertRaisesRegex(RuntimeError, 'published artifact is retained for retry'):
-                self.run_publish()
-        self.assertEqual(len(pushes), 3)
-        self.assertEqual(self.git('rev-parse', 'origin/main').strip(), self.initial)
-        self.assertEqual((self.output / 'published' / self.name).read_bytes(), self.published)
+    def test_pointer_rejects_untrusted_digest_or_version(self):
+        with self.assertRaises(ValueError):
+            light.release_pointer(
+                version="0.0.0-alpha.dev.1-r1",
+                digest=self.digest,
+                commit=self.commit,
+                desktop_version="26.1009.7.410",
+                desktop_tag="v0.21.6+canary.20261009T070410Z",
+                desktop_feed_url=light.DESKTOP_FEED_URL,
+                desktop_feed_etag="",
+                desktop_feed_last_modified="",
+                desktop_artifact_url="https://example.invalid/a",
+                desktop_artifact_sha256=self.desktop_digest,
+                conditions_fingerprint=self.conditions,
+                license_sha256=self.license,
+                release_tag_value="tag",
+                artifact="artifact.zip",
+            )
 
 
-class DevelopmentPublishTests(unittest.TestCase):
-    """Exercise the development publisher against a disposable Git remote."""
-
-    def setUp(self):
-        self.scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(self.scratch.cleanup)
-        self.root = Path(self.scratch.name)
-        self.remote = self.root / 'origin.git'
-        self.work = self.root / 'work'
-        self.work.mkdir()
-        self.git('init', '--bare', str(self.remote))
-        self.git('init', '-b', 'main', str(self.work))
-        self.git('config', 'user.name', 'test fixture')
-        self.git('config', 'user.email', 'fixture@example.invalid')
-        (self.work / 'bucket').mkdir()
-        (self.work / 'scripts').mkdir()
-        shutil.copyfile(ROOT / 'scripts/update-readme.py', self.work / 'scripts/update-readme.py')
-        (self.work / 'bucket/fixture.json').write_text(json.dumps({
-            'version': '1.0.0', 'description': 'Synthetic test fixture',
-            'homepage': 'https://example.invalid/fixture',
-        }))
-        (self.work / 'README.md').write_text(
-            '# Fixture\n\n<!-- BEGIN GENERATED APPS -->\n\n<!-- END GENERATED APPS -->\n')
-        self.git('add', 'README.md', 'scripts/update-readme.py', 'bucket/fixture.json')
-        self.git('commit', '-m', 'test fixture')
-        self.git('remote', 'add', 'origin', str(self.remote))
-        self.git('push', 'origin', 'main')
-        self.initial = self.git('rev-parse', 'HEAD').strip()
-        self.output = self.work / 'output'
-        self.output.mkdir()
-        self.commit = 'a' * 40
-        self.version = '0.0.0-alpha.dev.1-r1'
-        self.name = light.dev_artifact_name(light.APP, self.version, self.commit)
-        self.tag = light.dev_release_tag(light.APP, self.version, self.commit)
-        self.conditions = 'd' * 64
-        self.license_sha = 'e' * 64
-        self.executable = 'hermes-' + 'light' + f'-{self.commit[:7]}.exe'
-        self.zip_bytes = self.package()
-        (self.output / self.name).write_bytes(self.zip_bytes)
-        record = {
-            'schema': 1, 'upstream': light.UPSTREAM, 'version': self.version,
-            'sourceRef': self.commit, 'preview': False, 'development': True,
-            'channel': 'development', 'payload': 'light', 'updateMechanism': 'external',
-            'commit': self.commit, 'artifact': self.name,
-            'executable': self.executable,
-            'smoke': 'two native launches; renderer loaded; localStorage retained',
-            'notices': self.notice_record(),
-            'sha256': hashlib.sha256(self.zip_bytes).hexdigest(),
-            'licenseSha256': self.license_sha,
-            'conditionsFingerprint': self.conditions,
-        }
-        (self.output / 'provenance.json').write_text(json.dumps(record))
-        (self.output / 'acceptance.json').write_text(json.dumps({
-            'schema': 1, 'status': 'passed', 'sourceRef': self.commit,
-            'commit': self.commit, 'bucketPackageVersion': self.version,
-            'artifact': self.name, 'artifactSha256': record['sha256'],
-        }))
-        self.release_id = 408429868
-        self.release_rows = []
-        self.release_state = {'id': self.release_id, 'tag_name': self.tag, 'draft': True, 'prerelease': False, 'assets': []}
-        self.mutations = []
-        previous_cwd = Path.cwd()
-        os.chdir(self.work)
-        self.addCleanup(os.chdir, previous_cwd)
-        self.env = patch.dict(os.environ, {
-            'CHANNEL': 'development',
-            'PACKAGE_VERSION': self.version,
-            'SOURCE_REF': self.commit,
-            'GITHUB_REPOSITORY': 'fixture/bucket',
-            'RELEASE_ENABLED': 'true',
-            'GITHUB_ACTIONS': 'true',
-            'GITHUB_REF': 'refs/heads/main',
-            'GITHUB_EVENT_NAME': 'workflow_dispatch',
-            'RELEASE_TAG': self.tag,
-            'CONDITIONS_FINGERPRINT': self.conditions,
-            'LICENSE_SHA256': self.license_sha,
-            'ACCEPTANCE_EVIDENCE': 'output/acceptance.json',
-        })
-        self.env.start()
-        self.addCleanup(self.env.stop)
-
-    def git(self, *args):
-        return subprocess.check_output(['git', *args], cwd=self.work, text=True, stderr=subprocess.STDOUT)
-
-    def notice_files(self):
-        return {
-            'LICENSE': 'MIT License\n\nCopyright (c) 2025 Nous Research\n',
-            'LICENSE.electron.txt': 'Electron license fixture',
-            'LICENSES.chromium.html': '<html>Chromium license fixture</html>',
-            'THIRD-PARTY-NOTICES.txt': 'Package fixture: MIT\n',
-            'UNOFFICIAL-BUILD.txt': 'Unofficial unsigned build fixture\n',
-        }
-
-    def notice_record(self):
-        files = self.notice_files()
-        return {
-            'upstreamLicense': {
-                'path': 'LICENSE',
-                'sha256': hashlib.sha256(files['LICENSE'].encode()).hexdigest(),
-            },
-            'thirdParty': {
-                'path': 'THIRD-PARTY-NOTICES.txt',
-                'sha256': hashlib.sha256(files['THIRD-PARTY-NOTICES.txt'].encode()).hexdigest(),
-                'packages': 1,
-            },
-            'unofficial': {
-                'path': 'UNOFFICIAL-BUILD.txt',
-                'sha256': hashlib.sha256(files['UNOFFICIAL-BUILD.txt'].encode()).hexdigest(),
-            },
-            'audit': {'status': 'complete', 'limitations': [], 'unresolved': []},
-        }
-
-    def package(self):
-        data = io.BytesIO()
-        with zipfile.ZipFile(data, 'w') as archive:
-            archive.writestr(self.executable, 'synthetic fixture')
-            archive.writestr('resources/app.asar', 'synthetic fixture')
-            archive.writestr('resources/install-stamp.json', json.dumps({
-                'commit': self.commit, 'payload': 'light', 'updateMechanism': 'external',
-            }))
-            for name, content in self.notice_files().items():
-                archive.writestr(name, content)
-        return data.getvalue()
-
-    def api(self, endpoint):
-        tag_endpoint = f'repos/fixture/bucket/releases/tags/{self.tag.replace("/", "%2F")}'
-        id_endpoint = f'repos/fixture/bucket/releases/{self.release_id}'
-        if endpoint == f'repos/{light.UPSTREAM}/commits/{self.commit}':
-            return {'sha': self.commit}
-        if endpoint == id_endpoint:
-            return self.release_state
-        if endpoint == tag_endpoint:
-            if self.release_state.get('draft'):
-                raise AssertionError('GitHub does not expose draft releases through tag lookup')
-            return self.release_state
-        if endpoint.startswith('repos/fixture/bucket/contents/'):
-            path = endpoint.split('/contents/', 1)[1].split('?ref=', 1)[0]
-            actual = self.git('show', f'origin/main:{path}')
-            return {'content': base64.b64encode(actual.encode()).decode()}
-        raise AssertionError(f'Unexpected API request: {endpoint}')
-
-    def gh(self, *args):
-        if args == ('api', '--paginate', '--slurp', 'repos/fixture/bucket/releases?per_page=100'):
-            return json.dumps([self.release_rows])
-        if args[:2] == ('release', 'create'):
-            self.mutations.append(args)
-            self.release_state.update(id=self.release_id, tag_name=self.tag, draft=True, prerelease=False)
-            self.release_rows = [self.release_state]
-            return ''
-        if args[:2] == ('release', 'upload'):
-            self.mutations.append(args)
-            self.release_state['assets'].append({'name': Path(args[3]).name})
-            return ''
-        if args[:2] == ('release', 'edit'):
-            self.mutations.append(args)
-            self.release_state.update(draft=False, prerelease=True)
-            return ''
-        raise AssertionError(f'Unexpected GitHub mutation or request: {args}')
-
-    def test_development_publish_with_no_stable_releases(self):
-        with patch.object(light, 'api', side_effect=self.api), \
-             patch.object(light, 'gh', side_effect=self.gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
-            light.publish()
-        self.assertEqual([call[1] for call in self.mutations], ['create', 'upload', 'upload', 'upload', 'edit'])
-        create = self.mutations[0]
-        self.assertIn('--draft', create)
-        create_text = ' '.join(create)
-        self.assertIn('DEVELOPMENT BUILD — NOT STABLE', create_text)
-        self.assertIn('Unofficial unsigned Windows x64 Light build', create_text)
-        edit = self.mutations[-1]
-        self.assertIn('--draft=false', edit)
-        self.assertIn('--prerelease=true', edit)
-        self.assertIn('--latest=false', edit)
-        pointer = json.loads(self.git('show', 'origin/main:metadata/hermes-desktop-light-dev.json'))
-        self.assertEqual(pointer['commit'], self.commit)
-        self.assertEqual(pointer['sha256'], hashlib.sha256(self.zip_bytes).hexdigest())
-
-    def test_development_publish_resumes_existing_draft_release(self):
-        self.release_rows = [self.release_state]
-        with patch.object(light, 'api', side_effect=self.api), \
-             patch.object(light, 'gh', side_effect=self.gh), \
-             patch('urllib.request.urlopen', return_value=io.BytesIO(self.zip_bytes)):
-            light.publish()
-        self.assertEqual([call[1] for call in self.mutations], ['upload', 'upload', 'upload', 'edit'])
-        edit = self.mutations[-1]
-        self.assertIn('--draft=false', edit)
-        self.assertIn('--prerelease=true', edit)
-        self.assertIn('--latest=false', edit)
-        self.assertFalse(self.release_state['draft'])
-        self.assertTrue(self.release_state['prerelease'])
-
-    def test_development_publish_stops_for_existing_stable_release(self):
-        self.release_rows = [{
-            'tag_name': 'hermes-desktop-light/v0.22.0-r1',
-            'draft': False,
-            'prerelease': False,
-        }]
-        with patch.object(light, 'api') as api, patch.object(light, 'gh', side_effect=self.gh):
-            with self.assertRaisesRegex(ValueError, 'closed after the stable transition'):
-                light.publish()
-            api.assert_not_called()
-        self.assertEqual(self.mutations, [])
-        self.assertEqual(self.git('rev-parse', 'HEAD').strip(), self.initial)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

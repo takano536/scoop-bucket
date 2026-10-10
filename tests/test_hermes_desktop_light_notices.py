@@ -302,9 +302,10 @@ class NoticeTests(unittest.TestCase):
             self.assertIn('fixture-package@1.0.0', notice_text)
 
     def test_notice_metadata_satisfies_publish_artifact_contract(self):
-        version = '0.0.0-alpha.dev.1-r1'
+        version = '26.1009.7.410-alpha.dev.1-r1'
         commit = 'a' * 40
         conditions = 'b' * 64
+        tag = 'v0.21.6+canary.20261009T070410Z'
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             source = root / 'source'
@@ -341,12 +342,12 @@ class NoticeTests(unittest.TestCase):
                 notices, 'unpacked_node_modules', return_value=set()
             ), patch.object(notices, 'load_license_overrides', return_value={}):
                 metadata = notices.write_notices(
-                    pack, source, 'main', commit, 'example/bucket', 'b' * 40, 'run'
+                    pack, source, tag, commit, 'example/bucket', 'b' * 40, 'run'
                 )
             (pack / 'LICENSE.electron.txt').write_text('Electron license', encoding='utf-8')
             (pack / 'LICENSES.chromium.html').write_text('<html>Chromium</html>', encoding='utf-8')
-            artifact = root / publisher.dev_artifact_name(publisher.APP, version, commit)
-            executable = 'hermes-' + 'light' + f'-{commit[:7]}.exe'
+            artifact = root / publisher.artifact_name(publisher.APP, version)
+            executable = 'hermes-light-canary.exe'
             with zipfile.ZipFile(artifact, 'w') as archive:
                 archive.writestr(executable, b'fixture')
                 archive.writestr('resources/app.asar', b'fixture')
@@ -360,17 +361,19 @@ class NoticeTests(unittest.TestCase):
                 ):
                     archive.writestr(path, (pack / path).read_bytes())
             record = {
-                'schema': 1, 'upstream': publisher.UPSTREAM, 'version': version,
+                'schema': 2, 'upstream': publisher.UPSTREAM, 'version': version,
                 'sourceRef': commit, 'commit': commit, 'preview': False,
-                'development': True, 'channel': 'development', 'payload': 'light',
-                'updateMechanism': 'external', 'artifact': artifact.name,
+                'development': True, 'channel': 'desktop-release',
+                'distribution': 'unofficial-light', 'upstreamChannel': 'canary',
+                'upstreamTag': tag, 'desktopVersion': '26.1009.7.410',
+                'payload': 'light', 'updateMechanism': 'external', 'artifact': artifact.name,
                 'executable': executable,
                 'smoke': 'two native launches; renderer loaded; localStorage retained',
                 'conditionsFingerprint': conditions, 'notices': metadata,
                 'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
             }
             self.assertEqual(
-                publisher.verify_artifact(root, record, version, commit, 'development', conditions),
+                publisher.verify_artifact(root, record, version, commit, 'desktop-release', conditions),
                 artifact,
             )
             self.assertEqual(metadata['unofficial']['path'], 'UNOFFICIAL-BUILD.txt')

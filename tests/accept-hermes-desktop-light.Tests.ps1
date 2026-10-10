@@ -44,6 +44,17 @@ Describe 'Hermes Desktop Light updater channel expectations' {
 
         Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '0.0.0-alpha.dev.1-r1' | Should -BeTrue
     }
+    It 'maps an official canary Desktop release to external non-preview acceptance' {
+        $receipt = [pscustomobject]@{
+            channel = 'desktop-release'
+            development = $true
+            upstreamChannel = 'canary'
+            preview = $false
+        }
+
+        Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '26.1009.7.410-alpha.dev.1-r1' | Should -BeFalse
+    }
+
 
     It 'maps a stable receipt to bundled-not-appinstaller' {
         $receipt = [pscustomobject]@{
