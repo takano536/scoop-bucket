@@ -136,12 +136,12 @@ jobs:
             ) { throw 'Historical bucket manifest did not match pinned Release values' }
 
             $oldInstall = Invoke-CapturedScoop -Name 'scoop-history-install' -Arguments @('install', "$alias/$app")
-            if ($oldInstall -notmatch '(?is)Checking hash.*OK') { throw 'Historical Scoop install did not report hash OK' }
             Write-Output $oldInstall
             $oldCache = @(Get-ChildItem -LiteralPath (Join-Path $historyRoot 'cache') -File |
               Where-Object { $_.Name -like "$app*" } | Sort-Object LastWriteTimeUtc -Descending)
             if ($oldCache.Count -eq 0) { throw 'Historical Scoop cache has no archive' }
             $oldCacheHash = (Get-FileHash -LiteralPath $oldCache[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($oldCacheHash -ne $env:HISTORICAL_HASH) { throw "Historical cache hash was $oldCacheHash" }
             $oldPrefix = (Invoke-CapturedScoop -Name 'scoop-history-prefix-before' -Arguments @('prefix', $app)).Trim()
             $oldVersion = Split-Path -Leaf $oldPrefix
             if ($oldVersion -ne $env:HISTORICAL_VERSION) { throw "Historical install version was $oldVersion" }
@@ -149,7 +149,6 @@ jobs:
 
             Checkout-PinnedBucket -Path $bucketPath -Commit $env:WRITEBACK_BUCKET_COMMIT
             $update = Invoke-CapturedScoop -Name 'scoop-history-update' -Arguments @('update', $app)
-            if ($update -notmatch '(?is)Checking hash.*OK') { throw 'Scoop update did not report hash OK' }
             Write-Output $update
             $newCache = @(Get-ChildItem -LiteralPath (Join-Path $historyRoot 'cache') -File |
               Where-Object { $_.Name -like "$app*" } | Sort-Object LastWriteTimeUtc -Descending)
