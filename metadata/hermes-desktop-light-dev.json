@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "channel": "development",
+  "development": true,
+  "version": "0.0.0-alpha.dev.1-r1",
+  "commit": "46d7718a52ff33accb15dc0501736fbdb6833cab",
+  "shortSha": "46d7718",
+  "releaseTag": "hermes-desktop-light/dev/v0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab",
+  "artifact": "hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab-windows-x64.zip",
+  "sha256": "c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23",
+  "licenseSha256": "821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6",
+  "conditionsFingerprint": "e5a25d09cf98ce2f7f503bd61276f3bbd86f7c3d917b8e215f460a379f784841"
+}
