@@ -25,26 +25,24 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $repo = 'takano536/scoop-bucket'
 $alias = 'takano536-verify'
 $appName = 'hermes-desktop-light'
-    $expectedExeName = ('hermes' + '-light-' + $ExpectedCommit.Substring(0, 7) + '.exe')
 $expectedShortcutName = 'Hermes Desktop Light (Development).lnk'
-$evidence = [ordered]@{
-    schema = 1
-    status = 'failed'
-    runner = 'GitHub-hosted windows-latest; this is not a clean general Windows environment.'
-    repository = $repo
-    bucketAlias = $alias
-    app = $appName
-    expected = [ordered]@{
-        version = $ExpectedVersion
-        commit = $ExpectedCommit
-        hash = $ExpectedHash
-        url = $ExpectedUrl
-        executable = $expectedExeName
-    }
-}
-$appProcess = $null
-$gatewayProcess = $null
-$secret = $null
+ $evidence = [ordered]@{
+     schema = 1
+     status = 'failed'
+     runner = 'GitHub-hosted windows-latest; this is not a clean general Windows environment.'
+     repository = $repo
+     bucketAlias = $alias
+     app = $appName
+     expected = [ordered]@{
+         version = $ExpectedVersion
+         commit = $ExpectedCommit
+         hash = $ExpectedHash
+         url = $ExpectedUrl
+     }
+ }
+ $appProcess = $null
+ $gatewayProcess = $null
+ $secret = $null
 
 function Write-EvidenceJson {
     param(
@@ -119,9 +117,15 @@ try {
         throw "Public bucket manifest was not installed: $bucketManifestPath"
     }
     $manifest = Get-Content -LiteralPath $bucketManifestPath -Raw | ConvertFrom-Json
-    if ($manifest.version -ne $ExpectedVersion) {
-        throw "Public bucket manifest version was $($manifest.version), expected $ExpectedVersion"
+    $manifestVersion = [string]$manifest.version
+    if ($manifestVersion -ne $ExpectedVersion) {
+        throw "Public bucket manifest version was $manifestVersion, expected $ExpectedVersion"
     }
+    $publicShortcutEntries = @($manifest.shortcuts)
+    if ($publicShortcutEntries.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$publicShortcutEntries[0][0])) {
+        throw 'Public bucket manifest has no shortcut executable entry'
+    }
+    $publicExecutableName = [string]$publicShortcutEntries[0][0]
     $manifestUrl = [string]$manifest.architecture.'64bit'.url
     $manifestHash = [string]$manifest.architecture.'64bit'.hash
     if ($manifestUrl -ne $ExpectedUrl -or $manifestHash -ne $ExpectedHash) {
@@ -160,14 +164,34 @@ try {
     if ($prefixResolved -ne $currentTarget) {
         throw "scoop prefix $prefixResolved does not equal current target $currentTarget"
     }
-    if ($currentVersion -ne $ExpectedVersion) {
-        throw "Scoop current target version was $currentVersion, expected $ExpectedVersion"
+    if ($currentVersion -ne $manifestVersion) {
+        throw "Scoop current target version was $currentVersion, expected public manifest version $manifestVersion"
+    }
+    $installedManifest = $null
+    try {
+        $installedManifestText = Invoke-CapturedScoop -Name 'scoop-cat' -Arguments @('cat', "$alias/$appName")
+        $installedManifest = $installedManifestText | ConvertFrom-Json
+    } catch {
+        $installedManifestPath = Join-Path $currentTarget 'manifest.json'
+        if (!(Test-Path -LiteralPath $installedManifestPath)) {
+            throw 'Neither scoop cat nor the installed app manifest.json provided the installed manifest'
+        }
+        $installedManifest = Get-Content -LiteralPath $installedManifestPath -Raw | ConvertFrom-Json
+    }
+    $installedShortcutEntries = @($installedManifest.shortcuts)
+    if ($installedShortcutEntries.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$installedShortcutEntries[0][0])) {
+        throw 'Installed manifest has no shortcut executable entry'
+    }
+    $installedExecutableName = [string]$installedShortcutEntries[0][0]
+    if ($installedExecutableName -ne $publicExecutableName) {
+        throw "Installed manifest executable $installedExecutableName differs from public manifest executable $publicExecutableName"
+    }
+    $evidence.expected['executable'] = $installedExecutableName
+    $exePath = Join-Path $currentTarget $installedExecutableName
+    if (!(Test-Path -LiteralPath $exePath -PathType Leaf)) {
+        throw "Installed executable from manifest is missing: $exePath"
     }
 
-    $exePath = Join-Path $currentTarget $expectedExeName
-    if (!(Test-Path -LiteralPath $exePath -PathType Leaf)) {
-        throw "Installed executable is missing: $exePath"
-    }
     $shortcutPath = Join-Path ([Environment]::GetFolderPath('StartMenu')) "Programs\Scoop Apps\$expectedShortcutName"
     if (!(Test-Path -LiteralPath $shortcutPath -PathType Leaf)) {
         throw "Scoop Start-menu shortcut is missing: $shortcutPath"
