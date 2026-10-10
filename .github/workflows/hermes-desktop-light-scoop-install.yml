@@ -79,9 +79,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $output | Out-Null
           $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
           $historyRoot = Join-Path $env:GITHUB_WORKSPACE 'scoop-history'
+          New-Item -ItemType Directory -Force -Path (Join-Path $historyRoot 'shims') | Out-Null
           $originalScoop = $env:SCOOP
           $env:SCOOP = $historyRoot
-          $env:PATH = "$(Join-Path $scoopRoot 'shims');$env:PATH"
 
           function Invoke-CapturedScoop {
             param([string]$Name, [string[]]$Arguments)
