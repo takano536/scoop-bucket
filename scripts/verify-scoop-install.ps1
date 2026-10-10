@@ -292,7 +292,7 @@ try {
         manifestHash = $manifestHash
         cacheFile = $cacheFile.FullName
         cacheHash = $cacheHash
-        installOutputContainsExpectedUrl = ($installOutput + "`n" + $infoOutput).Contains($ExpectedUrl)
+        manifestContainsExpectedUrl = [bool]$urlObserved
         hashVerifiedFromCache = $cacheHash -eq $ExpectedHash
     }
     $evidence.authenticode = Get-Content -LiteralPath (Join-Path $OutputDirectory 'authenticode.json') -Raw | ConvertFrom-Json
