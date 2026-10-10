@@ -23,7 +23,7 @@ scoop install takano536/<アプリ名>
 
 | アプリ | バージョン | 説明 | リンク |
 | --- | --- | --- | --- |
-| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 0.0.0-alpha.dev.1-r1 | Hermes Desktop Light unofficial legacy development build (retained; new releases use official Desktop canaries) | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
+| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 26.1010.7.26-alpha.dev.1-r1 | Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop canary | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [github.com/yuru7/udev-gothic](https://github.com/yuru7/udev-gothic) |
 
 <!-- END GENERATED APPS -->

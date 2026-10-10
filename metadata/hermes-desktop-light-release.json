@@ -1,0 +1,23 @@
+{
+  "schema": 2,
+  "channel": "desktop-release",
+  "distribution": "unofficial-light",
+  "upstreamChannel": "canary",
+  "version": "26.1010.7.26-alpha.dev.1-r1",
+  "sha256": "dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f",
+  "commit": "dce1e9b37581dd62e480a9064dc04a709c2940d3",
+  "shortSha": "dce1e9b",
+  "desktopVersion": "26.1010.7.26",
+  "desktopTag": "v0.21.6+canary.20261010T070026Z",
+  "desktopFeedUrl": "https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller",
+  "desktopFeedEtag": "\"25ef2617f541c646993913b9df25f913\"",
+  "desktopFeedLastModified": "Sat, 10 Oct 2026 08:05:28 GMT",
+  "desktopArtifactUrl": "https://hermes-assets.nousresearch.com/releases/win32/canary/HermesBundled-26.1010.7.26-win.msixbundle",
+  "desktopArtifactSha256": "5627a2538a1160d1d9757d743a11a60025919ff02cb9c0168075ac650273b274",
+  "releaseTag": "hermes-desktop-light/v26.1010.7.26-alpha.dev.1-r1",
+  "artifact": "hermes-desktop-light-26.1010.7.26-alpha.dev.1-r1-windows-x64.zip",
+  "executable": "hermes-light-canary.exe",
+  "conditionsFingerprint": "dc2719af1b09abeb34a20cbe6dc2e4094a38c195d614b93808642f7ab1f82a81",
+  "bucketCommit": "57d45e9dcd26b1884d258268c0a7640c10fe4638",
+  "licenseSha256": "821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6"
+}
