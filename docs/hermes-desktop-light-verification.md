@@ -486,9 +486,12 @@ Scoopの恒久的な配布先ではない。
   versionは`0.0.0-alpha.dev.1-r1`、公開ZIP SHA256は
   `c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23`である。
 - manifest・READMEは公開URLとSHA256をread backしてmainへ書き戻した。現在のdevelopment
-  planを同じupstream commit、revision `1`でread-only評価すると、既存Release/asset/
-  conditionsを認識して`build=false`のno-opになる。upstream `main`が進んだ場合は、
-  4時間ごとのscheduleが新しいdevelopment buildを作る（gateはdevelopmentだけ有効である）。
+  planを同じupstream commit、同じconditions、revision `1`で**read-only**評価すると、
+  既存Release/asset/conditionsを認識して`build=false`のno-opになる。この評価に対する
+  realな再publish runは実行していない。scheduleとmanual dispatchは
+  `hermes-desktop-light-release` concurrency group（`cancel-in-progress=false`）を共有し、
+  重複runはqueueされる。upstream `main`が進んだ場合は新しいdevelopment versionを作るのが
+  正常な挙動であり、4時間ごとのschedule（development gateだけ有効）がそれを実行し得る。
 
 - [Autoupdate validation run 38009253446](https://github.com/takano536/scoop-bucket/actions/runs/38009253446)で、
   checkverが`0.0.0-alpha.dev.1-r1`を検出し、development pointerのURL/SHA256を
@@ -513,15 +516,18 @@ Scoopの恒久的な配布先ではない。
   local backendの`bootstrap-needed`、developmentのexternal updater
   `commit-build`（check/applyはunsupported/refused、app tree不変）を既存acceptance
   driverで確認した。
-- Authenticodeは同runで`Get-AuthenticodeSignature`を20個の`.exe`/`.dll`/`.node`へ実行した。
-  the manifest-derived main `.exe` (7-hex suffix `46d7718`) and HUD helper, plus 12 other
-  files, were `NotSigned`.
-  一方、次の6ファイルは`Valid`で、signerはすべて
-  `CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US`だった：
-  `d3dcompiler_47.dll`、`dxil.dll`、`node-pty`のbuild/release `conpty.dll`・
-  `OpenConsole.exe`、およびprebuild側の`conpty.dll`・`OpenConsole.exe`。
-  したがって`unsigned`は本プロダクト／main exeのbuild labelであり、ZIP内の全依存
-  binaryが未署名という意味ではない。署名状態はcleanな一般Windowsの保証ではない。
+- [run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)で
+  `Get-AuthenticodeSignature`を20個の`.exe`/`.dll`/`.node`へ実行した。Hermes app exe
+  （manifest targetの7-hex suffix `46d7718`）、HUD helper、およびその他12個の
+  non-Microsoft binaryは`NotSigned`であり、bucketによる署名はない。
+- 一方、次の6個のbundled Microsoft-redistributed binaryは`Valid`を保ち、
+  signerはすべて`CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond,
+  S=Washington, C=US`だった：`d3dcompiler_47.dll`、`dxil.dll`、`node-pty`の
+  build/release `conpty.dll`・`OpenConsole.exe`、およびprebuild側の`conpty.dll`・
+  `OpenConsole.exe`。
+- したがって`unsigned`はHermes app／main exeのbuild label（bucketが署名していない）
+  であり、ZIP内のMicrosoft-redistributed binaryまで未署名という意味ではない。
+  これはGitHub-hosted runnerでの測定であり、cleanな一般Windows環境を保証しない。
 - このrunのrunnerはGitHub-hostedであり、**cleanな一般Windows環境を保証しない**。Releaseは
   Nous Researchと提携していない非公式development buildであり、stable gateは有効化していない。
   `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`のままのscheduleは、upstream変更時に
