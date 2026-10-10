@@ -365,7 +365,7 @@ class NoticeTests(unittest.TestCase):
                 'sourceRef': commit, 'commit': commit, 'preview': False,
                 'development': True, 'channel': 'desktop-release',
                 'distribution': 'unofficial-light', 'upstreamChannel': 'canary',
-                'upstreamTag': tag, 'desktopVersion': '26.1009.7.410',
+                'desktopTag': tag, 'desktopVersion': '26.1009.7.410',
                 'payload': 'light', 'updateMechanism': 'external', 'artifact': artifact.name,
                 'executable': executable,
                 'smoke': 'two native launches; renderer loaded; localStorage retained',
