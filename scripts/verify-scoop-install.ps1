@@ -286,13 +286,13 @@ try {
     }
     $launchResultPath = Join-Path $OutputDirectory 'launch-evidence.json'
     $acceptanceJs = Join-Path $BucketRoot 'scripts/accept-hermes-desktop-light.cjs'
-    & node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $currentTarget --gateway-url "http://127.0.0.1:$gatewayPort" --secret $secret --wrong-secret $wrongSecret --result $launchResultPath --preview
+    & node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $currentTarget --gateway-url "http://127.0.0.1:$gatewayPort" --secret $secret --wrong-secret $wrongSecret --result $launchResultPath
     if ($LASTEXITCODE -ne 0) {
         throw "Existing Electron acceptance driver failed with exit code $LASTEXITCODE"
     }
     $launch = Get-Content -LiteralPath $launchResultPath -Raw | ConvertFrom-Json
-    if ($launch.status -ne 'passed' -or $launch.gateway.authenticated -ne $true -or $launch.updater.check.reason -ne 'commit-build') {
-        throw 'Installed app launch evidence did not prove gateway authentication and commit-build external updater behavior'
+    if ($launch.status -ne 'passed' -or $launch.gateway.authenticated -ne $true -or $launch.updater.check.reason -ne 'bundled-not-appinstaller') {
+        throw 'Installed app launch evidence did not prove gateway authentication and bundled-not-appinstaller external updater behavior'
     }
 
     $evidence.install = [ordered]@{
