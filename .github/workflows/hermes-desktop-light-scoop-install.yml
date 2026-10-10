@@ -113,6 +113,14 @@ jobs:
             if ($actual -ne $Commit) { throw "bucket resolved to $actual, expected $Commit" }
             Write-Output "Bucket checkout pinned to $actual"
           }
+          function Resolve-LinkTarget {
+            param([string]$Path)
+            $item = Get-Item -LiteralPath $Path -Force
+            $target = [string]$item.Target
+            if ([string]::IsNullOrWhiteSpace($target)) { return $item.FullName }
+            if (![IO.Path]::IsPathRooted($target)) { $target = Join-Path $item.DirectoryName $target }
+            return (Get-Item -LiteralPath $target -Force).FullName
+          }
 
           try {
             $historicalResponse = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $env:HISTORICAL_URL -TimeoutSec 120
@@ -142,8 +150,8 @@ jobs:
             if ($oldCache.Count -eq 0) { throw 'Historical Scoop cache has no archive' }
             $oldCacheHash = (Get-FileHash -LiteralPath $oldCache[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($oldCacheHash -ne $env:HISTORICAL_HASH) { throw "Historical cache hash was $oldCacheHash" }
-            $oldPrefix = (Invoke-CapturedScoop -Name 'scoop-history-prefix-before' -Arguments @('prefix', $app)).Trim()
-            $oldVersion = Split-Path -Leaf $oldPrefix
+            $oldCurrent = Join-Path $historyRoot "apps\$app\current"
+            $oldVersion = Split-Path -Leaf (Resolve-LinkTarget -Path $oldCurrent)
             if ($oldVersion -ne $env:HISTORICAL_VERSION) { throw "Historical install version was $oldVersion" }
             Write-Output "Historical install version: $oldVersion; hash check: OK"
 
@@ -155,8 +163,8 @@ jobs:
             if ($newCache.Count -eq 0) { throw 'Updated Scoop cache has no archive' }
             $newCacheHash = (Get-FileHash -LiteralPath $newCache[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($newCacheHash -ne $env:EXPECTED_HASH) { throw "Updated cache hash was $newCacheHash" }
-            $newPrefix = (Invoke-CapturedScoop -Name 'scoop-history-prefix-after' -Arguments @('prefix', $app)).Trim()
-            $newVersion = Split-Path -Leaf $newPrefix
+            $newCurrent = Join-Path $historyRoot "apps\$app\current"
+            $newVersion = Split-Path -Leaf (Resolve-LinkTarget -Path $newCurrent)
             if ($newVersion -ne $env:EXPECTED_VERSION -or $newVersion -eq $oldVersion) {
               throw "Scoop update version was $newVersion, expected $env:EXPECTED_VERSION"
             }
