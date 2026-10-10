@@ -40,6 +40,7 @@ if (Test-Path "$pack/resources/agent-payload") { throw 'Light unexpectedly conta
 $bucket = Join-Path $root 'bucket'
 & $prepared.node "$bucket/scripts/hermes-desktop-light-bundle-graph.mjs" $source $bundleGraphDir $pack
 $repository = $env:GITHUB_REPOSITORY
+$runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
 $bucketCommit = (git -C $bucket rev-parse HEAD).Trim()
 $noticeMetadata = & python "$bucket/scripts/hermes-desktop-light-notices.py" `
     --source $source `
