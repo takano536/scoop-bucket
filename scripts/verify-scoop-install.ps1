@@ -213,9 +213,11 @@ try {
     }
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcutTarget = [Environment]::ExpandEnvironmentVariables([string]$shortcut.TargetPath)
-    $shortcutTarget = (Resolve-Path -LiteralPath $shortcutTarget).Path
-    $expectedExePath = (Resolve-Path -LiteralPath $exePath).Path
+    $shortcutTargetRaw = [Environment]::ExpandEnvironmentVariables([string]$shortcut.TargetPath)
+    $shortcutTargetDirectory = Split-Path -Parent $shortcutTargetRaw
+    $shortcutTargetName = Split-Path -Leaf $shortcutTargetRaw
+    $shortcutTarget = Join-Path (Resolve-LinkTarget -Path $shortcutTargetDirectory) $shortcutTargetName
+    $expectedExePath = (Get-Item -LiteralPath $exePath -Force).FullName
     if ($shortcutTarget -ne $expectedExePath) {
         throw "Shortcut target $shortcutTarget does not match installed executable $expectedExePath"
     }
@@ -301,7 +303,7 @@ try {
         executable = $expectedExePath
         shortcut = $shortcutPath
         shortcutTarget = $shortcutTarget
-        manifestUrl = $manifestUrl
+        shortcutTargetRaw = $shortcutTargetRaw
         manifestHash = $manifestHash
         cacheFile = $cacheFile.FullName
         cacheHash = $cacheHash
