@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/hermes-desktop-light-scoop-install.yml
-      - scripts/verify-hermes-desktop-light-scoop-install.ps1
+      - scripts/verify-scoop-install.ps1
       - scripts/accept-hermes-desktop-light.cjs
 
 permissions:
@@ -68,7 +68,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
           New-Item -ItemType Directory -Force -Path $output | Out-Null
-          & "$env:GITHUB_WORKSPACE/bucket/scripts/verify-hermes-desktop-light-scoop-install.ps1" `
+          & "$env:GITHUB_WORKSPACE/bucket/scripts/verify-scoop-install.ps1" `
             -BucketRoot "$env:GITHUB_WORKSPACE/bucket" `
             -UpstreamDirectory "$env:GITHUB_WORKSPACE/upstream" `
             -OutputDirectory $output `

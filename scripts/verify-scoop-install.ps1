@@ -116,7 +116,8 @@ try {
     if (!(Test-Path -LiteralPath $bucketManifestPath)) {
         throw "Public bucket manifest was not installed: $bucketManifestPath"
     }
-    $manifest = Get-Content -LiteralPath $bucketManifestPath -Raw | ConvertFrom-Json
+    $bucketManifestText = Get-Content -LiteralPath $bucketManifestPath -Raw
+    $manifest = $bucketManifestText | ConvertFrom-Json
     $manifestVersion = [string]$manifest.version
     if ($manifestVersion -ne $ExpectedVersion) {
         throw "Public bucket manifest version was $manifestVersion, expected $ExpectedVersion"
@@ -130,13 +131,6 @@ try {
     $manifestHash = [string]$manifest.architecture.'64bit'.hash
     if ($manifestUrl -ne $ExpectedUrl -or $manifestHash -ne $ExpectedHash) {
         throw 'Public bucket manifest URL or hash does not match the published release'
-    }
-    $scoopOutput = $installOutput + "`n" + $infoOutput
-    $urlObserved = @($ExpectedUrl, $ExpectedUrl.Replace('%2F', '/')) |
-        Where-Object { $scoopOutput.Contains($_) } |
-        Select-Object -First 1
-    if (!$urlObserved) {
-        throw 'Scoop install/info output did not identify the expected published release URL'
     }
 
     $cacheRoot = Join-Path $scoopRoot 'cache'
@@ -176,7 +170,15 @@ try {
         if (!(Test-Path -LiteralPath $installedManifestPath)) {
             throw 'Neither scoop cat nor the installed app manifest.json provided the installed manifest'
         }
-        $installedManifest = Get-Content -LiteralPath $installedManifestPath -Raw | ConvertFrom-Json
+        $installedManifestText = Get-Content -LiteralPath $installedManifestPath -Raw
+        $installedManifest = $installedManifestText | ConvertFrom-Json
+    }
+    $scoopOutput = $installOutput + "`n" + $infoOutput + "`n" + $bucketManifestText + "`n" + $installedManifestText
+    $urlObserved = @($ExpectedUrl, $ExpectedUrl.Replace('%2F', '/')) |
+        Where-Object { $scoopOutput.Contains($_) } |
+        Select-Object -First 1
+    if (!$urlObserved) {
+        throw 'Scoop manifest output did not identify the expected published release URL'
     }
     $installedShortcutEntries = @($installedManifest.shortcuts)
     if ($installedShortcutEntries.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$installedShortcutEntries[0][0])) {
