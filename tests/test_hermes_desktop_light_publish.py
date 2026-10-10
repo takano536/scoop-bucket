@@ -219,6 +219,89 @@ class PublishContractTests(unittest.TestCase):
             )
             writeback.assert_called_once()
 
+    def test_created_draft_is_reused_when_release_list_lags(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            record, live, artifact = self._fixture(root)
+            release_tag = light.release_tag(light.APP, self.version)
+            release_rows = Mock(side_effect=[[], []])
+            api = Mock(
+                side_effect=[
+                    {"id": 42, "tag_name": release_tag, "draft": True, "prerelease": True},
+                    {"assets": []},
+                    {"draft": False, "prerelease": True},
+                ]
+            )
+            gh = Mock(return_value="")
+            writeback = Mock()
+            response = _BytesResponse(artifact.read_bytes())
+            previous = Path.cwd()
+            os.chdir(root)
+            try:
+                with patch.dict(os.environ, self._publish_environment(record, root), clear=False), \
+                     patch.object(light, "_desktop_feed", return_value={}), \
+                     patch.object(light, "_desktop_provenance", return_value=live), \
+                     patch.object(light, "_release_rows", release_rows), \
+                     patch.object(light, "api", api), \
+                     patch.object(light, "gh", gh), \
+                     patch.object(light, "_writeback", writeback), \
+                     patch("urllib.request.urlopen", return_value=response):
+                    light._publish_desktop()
+            finally:
+                os.chdir(previous)
+            release_rows.assert_called_once_with("example/bucket")
+            self.assertEqual(api.call_args_list[0].args[0], "repos/example/bucket/releases")
+            self.assertIn("--method", api.call_args_list[0].args)
+            self.assertIn("POST", api.call_args_list[0].args)
+            self.assertIn(("repos/example/bucket/releases/42",), [call.args for call in api.call_args_list])
+            self.assertFalse(any(call.args[:2] == ("release", "create") for call in gh.call_args_list))
+            gh.assert_any_call(
+                "release",
+                "edit",
+                release_tag,
+                "--repo",
+                "example/bucket",
+                "--draft=false",
+                "--prerelease=true",
+                "--latest=false",
+            )
+            writeback.assert_called_once()
+
+    def test_created_release_response_must_match_requested_identity(self):
+        mismatches = {
+            "tag": lambda created: created.update(tag_name="other/tag"),
+            "draft": lambda created: created.update(draft=False),
+            "prerelease": lambda created: created.update(prerelease=False),
+        }
+        for field, mutate in mismatches.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                record, live, _artifact = self._fixture(root)
+                created = {"id": 42, "tag_name": light.release_tag(light.APP, self.version), "draft": True, "prerelease": True}
+                mutate(created)
+                release_rows = Mock(return_value=[])
+                api = Mock(return_value=created)
+                gh = Mock()
+                writeback = Mock()
+                previous = Path.cwd()
+                os.chdir(root)
+                try:
+                    with patch.dict(os.environ, self._publish_environment(record, root), clear=False), \
+                         patch.object(light, "_desktop_feed", return_value={}), \
+                         patch.object(light, "_desktop_provenance", return_value=live), \
+                         patch.object(light, "_release_rows", release_rows), \
+                         patch.object(light, "api", api), \
+                         patch.object(light, "gh", gh), \
+                         patch.object(light, "_writeback", writeback):
+                        with self.assertRaises(ValueError):
+                            light._publish_desktop()
+                finally:
+                    os.chdir(previous)
+                release_rows.assert_called_once_with("example/bucket")
+                api.assert_called_once()
+                gh.assert_not_called()
+                writeback.assert_not_called()
+
     def test_bound_provenance_mismatch_rejects_before_release_or_writeback(self):
         mismatches = {
             "tag": lambda record: record.update(desktopTag="v0.21.6+canary.20261009T080410Z"),
