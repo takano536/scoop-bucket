@@ -99,6 +99,19 @@ function Add-Summary {
     param([Parameter(Mandatory = $true)] [string]$Text)
     Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $Text -Encoding utf8NoBOM
 }
+function Resolve-LinkTarget {
+    param([Parameter(Mandatory = $true)] [string]$Path)
+    $item = Get-Item -LiteralPath $Path -Force
+    $targets = @($item.Target)
+    if ($targets.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$targets[0])) {
+        return $item.FullName
+    }
+    $target = [string]$targets[0]
+    if (![IO.Path]::IsPathRooted($target)) {
+        $target = Join-Path $item.DirectoryName $target
+    }
+    return (Get-Item -LiteralPath $target -Force).FullName
+}
 
 try {
     $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
@@ -151,12 +164,12 @@ try {
     if (!(Test-Path -LiteralPath $currentPath)) {
         throw "Scoop current junction is missing: $currentPath"
     }
-    $currentTarget = (Resolve-Path -LiteralPath $currentPath).Path
+    $currentTarget = Resolve-LinkTarget -Path $currentPath
     $currentVersion = Split-Path -Leaf $currentTarget
     $prefix = (Invoke-CapturedScoop -Name 'scoop-prefix' -Arguments @('prefix', $appName)).Trim()
-    $prefixResolved = (Resolve-Path -LiteralPath $prefix).Path
+    $prefixResolved = Resolve-LinkTarget -Path $prefix
     if ($prefixResolved -ne $currentTarget) {
-        throw "scoop prefix $prefixResolved does not equal current target $currentTarget"
+        throw "scoop prefix target $prefixResolved does not equal current target $currentTarget"
     }
     if ($currentVersion -ne $manifestVersion) {
         throw "Scoop current target version was $currentVersion, expected public manifest version $manifestVersion"
