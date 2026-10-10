@@ -1,6 +1,8 @@
 """Application-scoped distribution identity and numeric revision ordering."""
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -13,6 +15,8 @@ _LEGACY_IDENTIFIERS = (
     'HERMES_' + 'LIGHT_RELEASE_ENABLED',
     'Hermes ' + 'Light',
 )
+_DEV_MANIFEST_EXECUTABLE = re.compile(
+    r'"' + 'hermes-' + 'light' + r'-(?:[0-9a-f]{7}|\$matchShortsha)\.exe",')
 _UPSTREAM_ALLOWLIST = {
     'scripts/build-hermes-desktop-light.ps1': {
         'hermes-' + 'light': (
@@ -41,9 +45,9 @@ _LEGACY_EXECUTABLE_PATHS = {
 }
 
 
-def _legacy_distribution_occurrences():
+def _legacy_distribution_occurrences(root=ROOT):
     tracked = subprocess.check_output(
-        ['git', '-C', str(ROOT), 'ls-files', '-z'], text=False
+        ['git', '-C', str(root), 'ls-files', '-z'], text=False
     ).split(b'\0')
     violations = []
     for raw_path in tracked:
@@ -54,7 +58,7 @@ def _legacy_distribution_occurrences():
             violations.append(f'{relative} (tracked path)')
             continue
         try:
-            text = (ROOT / relative).read_text(encoding='utf-8')
+            text = (root / relative).read_text(encoding='utf-8')
         except UnicodeDecodeError:
             continue
         for line_number, line in enumerate(text.splitlines(), 1):
@@ -64,6 +68,10 @@ def _legacy_distribution_occurrences():
                     continue
                 allowed = _UPSTREAM_ALLOWLIST.get(relative, {}).get(identifier, ())
                 if stripped in allowed:
+                    continue
+                if (relative == 'bucket/hermes-desktop-light.json' and
+                        identifier == 'hermes-' + 'light' and
+                        _DEV_MANIFEST_EXECUTABLE.fullmatch(stripped)):
                     continue
                 if (identifier == 'hermes-' + 'light' and
                         relative in _LEGACY_EXECUTABLE_PATHS and
@@ -139,6 +147,34 @@ class DistributionTests(unittest.TestCase):
 
     def test_legacy_distribution_names_are_absent(self):
         self.assertEqual(_legacy_distribution_occurrences(), [])
+    def test_manifest_guard_rejects_other_legacy_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            manifest = fixture / 'bucket/hermes-desktop-light.json'
+            manifest.parent.mkdir()
+            legacy_name = 'hermes-' + 'light' + '-not-approved.exe'
+            manifest.write_text(
+                (ROOT / 'bucket/hermes-desktop-light.json').read_text(encoding='utf-8') +
+                f'\n    "{legacy_name}",\n',
+                encoding='utf-8',
+            )
+            subprocess.run(
+                ['git', 'init', '-q'],
+                cwd=fixture,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                ['git', 'add', 'bucket/hermes-desktop-light.json'],
+                cwd=fixture,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            violations = _legacy_distribution_occurrences(fixture)
+        self.assertEqual(len(violations), 1)
+        self.assertIn(legacy_name, violations[0])
 
 
 if __name__ == '__main__':
