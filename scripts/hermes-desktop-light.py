@@ -815,12 +815,20 @@ def publish() -> None:
     _publish_desktop()
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "publish"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         {"plan": plan, "publish": publish}[args.command]()
     except ProvenanceError as exc:
         print(f"::error::{exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
+        return 2
+    except subprocess.CalledProcessError as exc:
+        print(f"::error::GitHub API command failed: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

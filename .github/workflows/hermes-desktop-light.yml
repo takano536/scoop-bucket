@@ -173,7 +173,7 @@ jobs:
       needs.plan.outputs.build == 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/main' &&
-      vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'
+      vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -195,7 +195,7 @@ jobs:
       - name: Publish immutable unofficial Light release and update manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
+          RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
@@ -205,3 +205,18 @@ jobs:
           LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
           ACCEPTANCE_EVIDENCE: acceptance/acceptance.json
         run: python3 scripts/hermes-desktop-light.py publish
+      - name: Record exact written-back commit
+        shell: bash
+        run: |
+          git rev-parse HEAD > written-back-sha.txt
+          target="$(tr -d '\r\n' < written-back-sha.txt)"
+          if [[ ! "$target" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Writeback did not leave an exact lowercase commit SHA" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hermes-desktop-light-written-back-sha
+          path: written-back-sha.txt
+          if-no-files-found: error
+          retention-days: 14

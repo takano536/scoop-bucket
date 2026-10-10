@@ -51,7 +51,9 @@ scheduled runは、公式R2 AppInstaller feed
 をDesktop-release detectorとして読む。feedの`MainBundle/@Version`とMSIX URLが同じ
 4要素product versionであることを確認し、Windows packageのHEAD size/ETagを記録する。
 commit-onlyの`releases/commit/<sha>/`成果物、agent-only GitHub Release、通常のmain進行、
-draftだけのタグ、同じfeedの再観測はDesktop releaseではない。
+draftだけのタグ、同じfeedの再観測はDesktop releaseではない。現在自動検出する公式配布経路は
+Windows canary feedだけであり、将来のofficial stable Desktop channelはこのdetectorでは
+自動検出しない。manifestのcheckver regexも`-alpha.dev.`だけに一致する。
 
 feed versionから、公式のcanary tag timestamp（例:
 `26.1009.7.410` → `v0.21.6+canary.20261009T070410Z`）をupstream tags APIで一意に
@@ -81,7 +83,7 @@ Scoop versionは`<desktop-version>-alpha.dev.1-r<N>`（例:
 third-party notices、native launch/remote gateway acceptance、artifactと公開URLのSHA256
 検証を行う。失敗・unsupported skipでは現在のinstallable versionを保持する。
 Releaseはcanary由来のunofficial prereleaseとして別tagに作成し、既存Release/past versionを
-変更しない。公開gate`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は既定無効のままである。
+変更しない。公開gate`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`は既定無効のままである。
 
 checkver/autoupdateはbucketが実際に公開したLight versionの
 `metadata/hermes-desktop-light-release.json` pointerとimmutable Release URL/SHA256を参照

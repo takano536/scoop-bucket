@@ -51,16 +51,19 @@ python3 -m unittest discover -s tests -p 'test_distribution.py' -v
 
 [`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとの
 schedule、`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Request
-で起動する。`plan`はUbuntuで公式Desktop feedとR2 handoff/tag metadataを検証し、
-new Desktop releaseならexact upstream commitをoutputする。Light contract非対応なら
-`unsupported`（exit 0）でbuild/acceptanceを起動せず、manifestを維持する。
+で起動する。`plan`はUbuntuで公式Windows canary feedとR2 handoff/tag metadataを検証し、
+new Desktop releaseならexact upstream commitをoutputする。現状はこのWindows canary feedだけを
+検出し、将来のofficial stable Desktop channelは自動検出しない。manifestのcheckver regexも
+`-alpha.dev.`だけに一致する。Light contract非対応なら`unsupported`（exit 0）で
+build/acceptanceを起動せず、manifestを維持する。
 
 対象がある場合だけ`build`と`acceptance`がWindows runnerで動き、exact canary tag/source
 からLight build、license/notice gate、native smoke、remote gateway/Scoop acceptanceを実施
-する。`publish`は`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`、scheduleまたはdispatch、
-`refs/heads/main`、verified build/acceptanceをすべて満たす場合だけ実行する。PRとこの変更の
-branchではpublishしない。既存Releaseのassetを上書きせず、公開URL SHA256検証後にのみ
-manifest/READMEをwrite backする。
+する。ここで作るのはbucketによるunofficial Light buildであり、upstream sourceがcanary/
+pre-releaseであることとは別である。`publish`は`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、
+scheduleまたはdispatch、`refs/heads/main`、verified build/acceptanceをすべて満たす場合だけ
+実行する。PRとこの変更のbranchではpublishしない。既存Releaseのassetを上書きせず、公開URL
+SHA256検証後にのみmanifest/READMEをwrite backする。
 
 同一Desktop buildと同一conditions fingerprintを再実行するとidempotent no-opになる。
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
@@ -413,7 +416,7 @@ preview/development evidence.
 
 ## 公開ゲートと検証契約
 
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`、Actionsのschedule/dispatch、`main`、
+`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`が`true`、Actionsのschedule/dispatch、`main`、
 verified exact-source Windows build/acceptanceを全て満たす場合だけpublishする。PR/branchでは
 publishしない。publisherは同じrunのartifact/provenance/acceptanceを突合し、official
 Desktop feed/handoffを再読込し、既存Release assetを上書きせず、公開URLのSHA256を確認する。
@@ -424,7 +427,7 @@ API/unknown provenance（distinct non-zero failure）、Scoop version ordering�
 Windows-only build/acceptance結果はActionsの実runでのみ報告し、ローカルから推測しない。
 ### Current publication gate
 
-The publish job remains gated by `HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`,
+The publish job remains gated by `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`,
 schedule/dispatch, `refs/heads/main`, and successful exact-source Windows build and acceptance.
 This branch does not enable that variable and does not create or modify a Release.
 

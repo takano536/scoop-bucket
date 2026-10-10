@@ -552,8 +552,8 @@ try {
         throw 'Scoop was not available after bootstrap'
     }
 
-    $runtimeVersion = "0.0.0-test-before-$($sourceCommit.Substring(0, 7))"
-    $runtimeAfterVersion = "0.0.1-test-after-$($sourceCommit.Substring(0, 7))"
+    $runtimeVersion = '0.0.0-alpha.dev.1-r1'
+    $runtimeAfterVersion = $PackageVersion
     $cdpPort = Get-Random -Minimum 43000 -Maximum 50000
     $cdpArgument = "--remote-debugging-port=$cdpPort"
     $manifest = [ordered]@{
@@ -711,8 +711,7 @@ try {
         }
         runtime = $runtimeEvidence
         localExecution = 'Light ZIP has no resources/agent-payload; probe observed bootstrap-needed and no local agent was started. The first-run local-install affordance is bootstrap-only, not a bundled local backend.'
-        updater = 'Scoop update used a disposable local bucket with distinct test-only manifests; installed manifest/install versions, resolved current target, and shortcut target were read back and asserted.'
-        retention = 'Settings and tokenSet survived the test-only Scoop update; the post-update app revalidated the same gateway.'
+        updater = "Scoop update migrated the historical $runtimeVersion manifest to the new Desktop-release $runtimeAfterVersion version using a disposable local bucket; installed manifest/install versions, resolved current target, and shortcut target were read back and asserted."
         uninstall = 'App directory and Start-menu shortcut removed; HERMES_HOME/user data remained by design.'
     }
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'acceptance.json') -Value $summary
