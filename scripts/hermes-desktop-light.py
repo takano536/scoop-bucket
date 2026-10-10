@@ -753,11 +753,19 @@ def _publish_development():
                f'DEVELOPMENT BUILD — NOT STABLE. Unofficial unsigned Windows x64 Light build from {UPSTREAM}@{source_ref}. '
                f'Pinned main commit; MIT LICENSE SHA256 {license_digest}; conditions fingerprint {fingerprint}. Remote-only; no Python/local agent. '
                'Scoop owns updates. See provenance.json for build and smoke receipts.', '--latest=false')
-        state = api(f'repos/{repository}/releases/tags/{quote(tag, safe="")}')
+            pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repository}/releases?per_page=100'))
+            existing = next((row for page in pages for row in page
+                             if row.get('tag_name') == tag and row.get('draft') is True), None)
+            if existing is None:
+                raise ValueError('Created development draft release was not returned by the releases list')
+        draft_id = existing.get('id')
+        if not isinstance(draft_id, int):
+            raise ValueError('Development draft release has no immutable release id')
+        state = api(f'repos/{repository}/releases/{draft_id}')
         history_manifest = Path('output') / f'{APP}.json'
         history_manifest.write_text(json.dumps(dev_manifest(version, repository, record['sha256'], record['commit'], fingerprint), indent=4) + '\n', encoding='utf-8')
         for file in (artifact, Path('output/provenance.json'), history_manifest):
-            prior = next((asset for asset in state['assets'] if asset['name'] == file.name), None)
+            prior = next((asset for asset in state.get('assets', []) if asset['name'] == file.name), None)
             if prior:
                 with tempfile.TemporaryDirectory() as scratch:
                     gh('release', 'download', tag, '--repo', repository, '--pattern', file.name, '--dir', scratch)
