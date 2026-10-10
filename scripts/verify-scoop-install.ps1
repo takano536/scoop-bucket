@@ -250,7 +250,7 @@ try {
         schema = 1
         generatedBy = 'Get-AuthenticodeSignature'
         files = $authenticode
-        statusCounts = @($authenticode | Group-Object status | ForEach-Object { [ordered]@{ status = $_.Name; count = $_.Count } })
+        statusCounts = @($authenticode | Group-Object { [string]$_['status'] } | ForEach-Object { [ordered]@{ status = $_.Name; count = $_.Count } })
     })
 
     $gatewayHome = Join-Path $env:RUNNER_TEMP 'hermes-scoop-install-gateway-home'

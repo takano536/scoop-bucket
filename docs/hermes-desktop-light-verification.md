@@ -466,4 +466,64 @@ updater check/applyを追加した。結果は `native-checks.json` と `provena
 
 ## 配布契約の検証記録
 
-この文書に記録したrunは、PR headとActions checkoutのmerge ref、上流commit、provenance、ZIP SHA256、受入artifactを対応付けている。Actions artifactは一時検証用であり、Scoopの恒久的な配布先ではない。今回のrunではRelease作成、manifest登録、mainへの書き戻しを行っていない。
+（履歴）この段落は公開前のpreviewに対する記録であり、現在の公開状態は末尾の
+「現在のdevelopment公開とpublic Scoop install」を参照する。Actions artifactは一時検証用であり、
+Scoopの恒久的な配布先ではない。
+
+## 現在のdevelopment公開とpublic Scoop install（2026-10-10）
+
+上記の初期preview／公開前の記録（特に「Release・manifest登録・main書き戻しはない」と
+記した箇所）は履歴である。以下が、初回の非公式development公開と、公開bucketからの
+実Windows導入についての現在の検証記録である。
+
+- Release: [`Hermes Desktop Light development release`](https://github.com/takano536/scoop-bucket/releases/tag/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab)。
+  `draft=false`、`prerelease=true`、名前と本文は `DEVELOPMENT BUILD — NOT STABLE` /
+  `Unofficial unsigned Windows x64 Light build` である。
+- publish run: [38008376760](https://github.com/takano536/scoop-bucket/actions/runs/38008376760)。
+  upstreamは`NousResearch/hermes-agent@46d7718a52ff33accb15dc0501736fbdb6833cab`、
+  buildのbucket headは`11b4ead`、書き戻しcommitは
+  [`d6efc008`](https://github.com/takano536/scoop-bucket/commit/d6efc008b37bdfe30204cf6fa0e30b196b559616)である。
+  versionは`0.0.0-alpha.dev.1-r1`、公開ZIP SHA256は
+  `c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23`である。
+- manifest・READMEは公開URLとSHA256をread backしてmainへ書き戻した。現在のdevelopment
+  planを同じupstream commit、revision `1`でread-only評価すると、既存Release/asset/
+  conditionsを認識して`build=false`のno-opになる。upstream `main`が進んだ場合は、
+  4時間ごとのscheduleが新しいdevelopment buildを作る（gateはdevelopmentだけ有効である）。
+
+- [Autoupdate validation run 38009253446](https://github.com/takano536/scoop-bucket/actions/runs/38009253446)で、
+  checkverが`0.0.0-alpha.dev.1-r1`を検出し、development pointerのURL/SHA256を
+  再生成・照合して成功した。
+
+### 公開bucketからの実Windows検証
+
+[Scoop install workflow run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)
+はGitHub-hosted `windows-latest`上で、secretなし・`contents: read`だけのworkflowとして
+公開bucketをalias `takano536-verify`で追加し、`scoop install`、`scoop list`、`scoop info`、
+既存のElectron acceptance driverを実行した。
+
+- public manifestのversionは`0.0.0-alpha.dev.1-r1`、download URLは上記Release asset、
+  SHA256は`c83d...f3c23`で一致した。Scoop cacheの実ダウンロードも同じSHA256で、
+  hash verificationは成功した。
+- `scoop prefix`は`...\\apps\\hermes-desktop-light\\0.0.0-alpha.dev.1-r1`、
+  `current` junctionも同versionを指した。manifestの`shortcuts[0][0]`から7桁hex suffix
+  `46d7718.exe`の実行ファイルを読み取り、その実在とStart-menuの
+  `Hermes Desktop Light (Development).lnk`のtargetを確認した。
+- インストール後の起動はCDP renderer readiness、gatewayへの正しいsecret接続、
+  誤secret拒否、`/api/sessions`のauthenticated 200／誤secret 401、remote設定保持、
+  local backendの`bootstrap-needed`、developmentのexternal updater
+  `commit-build`（check/applyはunsupported/refused、app tree不変）を既存acceptance
+  driverで確認した。
+- Authenticodeは同runで`Get-AuthenticodeSignature`を20個の`.exe`/`.dll`/`.node`へ実行した。
+  the manifest-derived main `.exe` (7-hex suffix `46d7718`) and HUD helper, plus 12 other
+  files, were `NotSigned`.
+  一方、次の6ファイルは`Valid`で、signerはすべて
+  `CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US`だった：
+  `d3dcompiler_47.dll`、`dxil.dll`、`node-pty`のbuild/release `conpty.dll`・
+  `OpenConsole.exe`、およびprebuild側の`conpty.dll`・`OpenConsole.exe`。
+  したがって`unsigned`は本プロダクト／main exeのbuild labelであり、ZIP内の全依存
+  binaryが未署名という意味ではない。署名状態はcleanな一般Windowsの保証ではない。
+- このrunのrunnerはGitHub-hostedであり、**cleanな一般Windows環境を保証しない**。Releaseは
+  Nous Researchと提携していない非公式development buildであり、stable gateは有効化していない。
+  `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`のままのscheduleは、upstream変更時に
+  新しいdevelopment版を公開し得る。provider credentialを使う実運用、stable upgrade、
+  異なるbinary間のmigration、およびclean consumer machineでの独立性は未確認である。
