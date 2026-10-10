@@ -80,7 +80,10 @@ jobs:
           $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
           $historyRoot = Join-Path $env:GITHUB_WORKSPACE 'scoop-history'
           New-Item -ItemType Directory -Force -Path (Join-Path $historyRoot 'shims') | Out-Null
-          $scoopCommand = (Get-Command scoop -ErrorAction Stop).Source
+          $scoopCommand = Join-Path $scoopRoot 'apps\scoop\current\bin\scoop.ps1'
+          if (!(Test-Path -LiteralPath $scoopCommand)) {
+            $scoopCommand = Join-Path $scoopRoot 'shims\scoop.ps1'
+          }
           $originalScoop = $env:SCOOP
           $env:SCOOP = $historyRoot
           function Invoke-CapturedScoop {
