@@ -23,7 +23,7 @@ scoop install takano536/<アプリ名>
 
 | アプリ | バージョン | 説明 | リンク |
 | --- | --- | --- | --- |
-| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 0.0.0-alpha.dev.1-r1 | Hermes Desktop Light DEVELOPMENT BUILD — NOT STABLE from upstream main | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
+| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 0.0.0-alpha.dev.1-r1 | Hermes Desktop Light unofficial legacy development build (retained; new releases use official Desktop canaries) | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [github.com/yuru7/udev-gothic](https://github.com/yuru7/udev-gothic) |
 
 <!-- END GENERATED APPS -->
@@ -93,54 +93,39 @@ Latest Releaseや他アプリの公開順には依存しません。
 
 ## Hermes Desktop Light
 
-`Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）は、4時間ごとに
-公式`NousResearch/hermes-agent`の`main`を完全なcommit SHAへ固定します。stable gateが有効で
-Light対応stable admissionを満たす場合はstable buildをtransition候補として計画し、それ以外は
-Light対応managed builder contractを持つmainをWindows x64のリモート専用開発版としてビルドします。
-展開済みElectronアプリをZIPにし、実際の起動・再起動、ユーザーデータの保持、Desktop Lightの
-構成・更新所有者・SHA256を検証してから、選択されたchannelのReleaseへ公開します。
+`Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）はupstream
+`main`の進行を追従しません。4時間ごとのscheduleは、公式Desktop Windows canary feed
+[`canary.appinstaller`](https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller)
+を検出対象とします。feedの4要素product version、MSIX URL/HEAD、upstream annotated
+canary tag、R2のimmutable handoff/metadataを突き合わせ、Desktop releaseに対応する
+exact source commitを決めます。agent-only GitHub Release、main commit、commit-only build、
+draftだけのtag、同じpublished buildの再観測は更新を起こしません。
 
-**DEVELOPMENT BUILD — NOT STABLE** です。開発版のScoop versionは
-`0.0.0-alpha.dev.<devSeq>-r<revision>`、tagは
-`hermes-desktop-light/dev/v<version>-<upstreamの完全なcommit SHA>`、ZIPは
-`hermes-desktop-light-dev-<version>-<upstreamの完全なcommit SHA>-windows-x64.zip`です。
-`devSeq`はこのアプリの公開済み開発Releaseからだけ算出し、同じcommit・同じbuild
-conditions fingerprintの再実行では番号を増やさず、同じcommitの配布修正だけを
-明示的なworkflow_dispatchで`r2`以降にします。scheduleは`r1`以外を生成せず、stable gateが
-無効なら開発gateが有効な場合だけ開発版をbuildします。両gateが無効なscheduleは、Windows
-runnerを起動せずskipします。PRはbucket Release一覧を参照せず、pinしたmain commitの
-開発版build/smoke・license・conditions検証だけを行い、publishしません。
-過去のRelease・ZIP・manifest・`metadata/hermes-desktop-light-dev.json`は保持し、
-manifestのcheckver/autoupdateはこのpointerと検証済みReleaseだけを参照します。
+source commitのLight contractが無い場合は理由付きで成功skipし、現在のmanifestを保持します。
+API障害やtag/handoff provenance不明はunsupportedとは区別して失敗します。upstream sourceの
+canary性と、このbucketの**unofficial Light build**は別属性です。
 
-publish gateは初期状態で無効です。開発版を公開するには管理者が
-`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`を設定する必要があります（このPRでは設定しません）。
-stable gateが有効でstable admissionを満たすscheduleはstable buildを計画しますが、dev manifestを
-自動で切り替えません。Light対応の安定版をこのアプリ用にbuild・Windows検証・公開し、公開URLと
-SHA256を再検証したstable manifestの更新まで完了した時点で初めて開発追従を一方向に終了し、
-`metadata/hermes-desktop-light-channel.json`へ遷移を記録します。stable Releaseだけ、または
-stable buildの失敗・skipではdev manifestを維持し、channelをbounceしません。その後は
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`のstableだけを追従し、開発publisherは一致する
-stable Releaseとmanifest、または遷移記録が存在すると即時拒否します。stable gateもこのPRでは設定しません。
+新しいDesktop releaseのversionは
+`<Desktop product>-alpha.dev.1-r<N>`（例
+`26.1009.7.410-alpha.dev.1-r1`）。既存の`0.0.0-alpha.dev.1-r1`より通常のScoop updateで
+大きくなり、同じDesktop releaseの`r1 < r2`、将来stable versionよりalpha.devが小さく
+なります。同じpublished build/conditionsの再実行は同じRelease/assetsを再利用して
+idempotent no-opにし、r2以降は承認済みmanual dispatchのみで指定します。
 
-`v2026.9.24`はLight非対応ですが、Light対応の`main`開発commitを公開すれば現在でも
-インストールできます。Release title/body、manifest description/notes、READMEには常に
-`development build`/`not stable`を明記します。ReleaseはGitHub prereleaseかつ`latest=false`です。
-各Releaseには上流commit、MIT LICENSEのSHA256、build conditions fingerprint、artifact SHA256、
-provenance.jsonとその版のScoop manifestを添付します。公開URLとSHA256を再検証してから
-`bucket/hermes-desktop-light.json`とアプリ一覧を`main`へ更新し、失敗時はmanifestを変更しません。
-公開jobは同じrunのWindows acceptance artifactを取得し、`acceptance.json`のstatus・
-source commit/version・ZIP SHA256をbuild provenanceと突合します。missing/failedまたは
-別成果物の受入証拠は公開を拒否します。
+build/acceptanceはWindows Actionsでのみ実行し、Light payload、MIT/license notices、
+native smoke、remote gateway/Scoop acceptance、artifactと公開URLのSHA256を検証します。
+公開Release本文とprovenanceには公式Desktop version、distribution source URL、upstream tag/
+commit、bucket-side build commit、両artifactのhashを記録します。公開済みassetは上書き
+せず、失敗時は現在のinstallable versionを変更しません。
 
-配布は非公式・未署名のx64ビルドで、ローカルのPython・agentは含まず、既存のHermes gatewayへの
-接続が必要です。gateway接続、必要なランタイム、接続・認証情報の実アップグレード移行は、
-stable公開を有効化する前にWindowsで受け入れ確認が必要です。
+publish gateは初期状態で無効（`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`）です。現在の
+manifest/versionは過去の`0.0.0-alpha.dev.1-r1` Releaseを保持し、新しいDesktop release
+のWindows CIと明示承認済みpublishが完了するまで変更しません。過去Releaseを削除・変更
+しません。
 
-[実Windows CIの検証結果と画面](docs/hermes-desktop-light-verification.md)を記録しています。
-起動検証はgateway接続や認証移行の証明ではありません。
-検証版の初回画面にはローカルインストールの選択肢も表示されるため、LightのUI/実行制約は
-stable版での追加確認が必要です。
+[実Windows CIの検証結果](docs/hermes-desktop-light-verification.md)と
+[配布ポリシー](docs/distribution-policy.md)に検出・provenance・skip/failureの契約を記録
+しています。
 
 ## 🛠️ メンテナンス
 

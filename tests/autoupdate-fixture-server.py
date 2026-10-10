@@ -12,21 +12,24 @@ with zipfile.ZipFile(buffer, 'w') as archive:
     archive.writestr('app-2.0.0/fixture.txt', 'autoupdate regression fixture\n')
 payload = buffer.getvalue()
 
-dev_version = '0.0.0-alpha.dev.2-r1'
+dev_version = '26.1009.7.410-alpha.dev.1-r1'
 dev_commit = 'b' * 40
-dev_short_sha = dev_commit[:7]
-dev_name = f'hermes-desktop-light-dev-{dev_version}-{dev_commit}-windows-x64.zip'
+dev_tag = 'v0.21.6+canary.20261009T070410Z'
+dev_name = f'hermes-desktop-light-{dev_version}-windows-x64.zip'
 dev_buffer = io.BytesIO()
 with zipfile.ZipFile(dev_buffer, 'w') as archive:
-    archive.writestr(f'hermes-light-{dev_short_sha}.exe', 'development fixture')
+    archive.writestr('hermes-light-canary.exe', 'Desktop-release fixture')
 dev_payload = dev_buffer.getvalue()
 dev_pointer = json.dumps({
-    'channel': 'development',
-    'development': True,
+    'channel': 'desktop-release',
+    'distribution': 'unofficial-light',
+    'upstreamChannel': 'canary',
     'version': dev_version,
     'commit': dev_commit,
-    'shortSha': dev_short_sha,
+    'desktopTag': dev_tag,
+    'desktopVersion': '26.1009.7.410',
     'sha256': hashlib.sha256(dev_payload).hexdigest(),
+    'executable': 'hermes-light-canary.exe',
 })
 
 

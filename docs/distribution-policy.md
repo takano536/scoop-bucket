@@ -27,13 +27,10 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 - ビルド前に、対象アプリの契約で定めた上流tag/commit、version形式、source/build条件、
   claimまたはadmission条件、外部サービスなどの実行条件を確認する。これらを他の
   アプリへ推測で適用しない。
-- `scripts/distribution.py`の現行version helperは、数値3要素の上流版と`rN`を使う
-  契約だけを受け付ける。これは現在対応している形式の実装であり、CalVerや4要素版を
-  含むすべてのアプリに使える汎用parserではない。別形式のアプリは固有parserと回帰
-  テストを持つ。
-- 公開用workflowは計画後にも、各アプリの契約に従ってRelease状態、タグcommit、
-  source/build identity、claim/admission記録を再検証する。計画後に対象が動いた成果物は
-  公開しない。対象外または契約不成立は、理由を記録した明示的なskipまたは失敗にする。
+- `scripts/distribution.py`のHermes Desktop Light helperは、公式Desktopの4要素product
+  version（例`26.1009.7.410`）を受け取り、`<desktop>-alpha.dev.1-r<N>`を生成する。
+  既存の`0.0.0-alpha.dev.1-r1`も比較でき、通常のScoop更新で新形式へ進める。
+  他のアプリ・CalVer・stable versionを推測でこのhelperへ渡さない。
 
 ## 複数アプリ
 
@@ -46,53 +43,50 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 各アプリのcheckverは公開URL・SHA256検証後に書き戻された自身のmain manifestを参照する。
 APIのRelease一覧のページ数・他アプリの公開順・未公開上流版には依存しない。
 
-## Hermes Desktop Lightの改訂
+## Hermes Desktop LightのDesktop-release policy
 
-通常の安定版追従は`r1`。公開済みの同じ上流版を修正する場合、信頼済みmainの手動workflowの`revision`に`2`などを指定する。
-対象はその時点の最新対応安定版。過去上流版を指定してのバックポートビルドは現在の自動化の対象外。
-改訂番号は正の整数で、先頭ゼロを許可しない。既存manifest以上の版がなければskipし、定期実行が`r2`を`r1`へ戻すことはない。
-番号は承認済み修正のために管理者が指定するもので、CI再実行数から自動採番しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は引き続き既定で無効。
+Hermes Desktop Lightは、upstreamのGitHub `main` commitを追従する配布ではない。
+scheduled runは、公式R2 AppInstaller feed
+`https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller`
+をDesktop-release detectorとして読む。feedの`MainBundle/@Version`とMSIX URLが同じ
+4要素product versionであることを確認し、Windows packageのHEAD size/ETagを記録する。
+commit-onlyの`releases/commit/<sha>/`成果物、agent-only GitHub Release、通常のmain進行、
+draftだけのタグ、同じfeedの再観測はDesktop releaseではない。
 
-## Hermes Desktop Lightの開発channel（policy A）
+feed versionから、公式のcanary tag timestamp（例:
+`26.1009.7.410` → `v0.21.6+canary.20261009T070410Z`）をupstream tags APIで一意に
+検索する。そのannotated tagの`git/ref/tags/<tag>`、`git/tags/<object-sha>`が同じ
+完全commitへ解決することを必須とする。さらにR2のimmutable
+`releases/tag/<tag>/handoff-windows-universal.json`、`metadata-windows-x64.json`、
+tag archive packageを読み、feedのversion/sizeとcommitを突き合わせる。いずれかを
+一意に結び付けられないAPI/metadataエラーは、unsupportedとは別の失敗（non-zero）である。
+公式配布源URL、Desktop version、canary tag、upstream commit、package SHA/ETag、
+bucket-side build commitをRelease bodyと`provenance.json`へ記録する。
 
-- `bucket/hermes-desktop-light.json`は、Light対応stable Releaseがこのアプリ用に初めて
-  build・Windows検証・公開されるまで、単一の開発channelを追従する。開発版は必ず
-  **DEVELOPMENT BUILD — NOT STABLE** と表示する。開発publisherのゲートは
-  `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`で、stable gateとは別に既定で無効。
-- 開発版は upstream `main`をworkflow開始時に解決した完全なcommit SHAへpinし、
-  そのSHAにidentityとmanaged builderのLight contractがある場合だけbuildする。
-  exact commitのMIT LICENSE本文を検査し、SHA256を`provenance.json`とRelease bodyに記録する。
-- versionは`0.0.0-alpha.dev.<devSeq>-r<revision>`。開発tagは`<app>/dev/v<version>-<40桁SHA>`（Hermesでは
-  `hermes-desktop-light/dev/v<version>-<40桁SHA>`）、ZIPは
-  `hermes-desktop-light-dev-<version>-<40桁SHA>-windows-x64.zip`とする。これは安定版の
-  `<app>/v<ver>-rN`ルールとは別namespaceであり、同じアプリのdev prereleaseとstable Releaseを
-  同時に保持できる。Scoopの`Compare-Version`でdevSeq・revisionは数値順になり、全dev versionは
-  `0.0.0-r1`および将来のstable versionより小さい。`devSeq`は公開済みの
-  `hermes-desktop-light/dev/` Releaseから最大値+1として算出する（mutableな外部counterは持たない）。
-  Scoopのnamed capture placeholderは実装の`ToTitleCase`に合わせ、camel-caseの`shortSha`を
-  `$matchShortsha`として記述する（pointer JSONのキーは`shortSha`のまま）。`$matchVersion`、
-  `$matchCommit`、`$matchShortsha`はpointerの検証済み値だけから生成する。
-- 同一upstream commit・同一build conditions fingerprint（bucketのbuild/verify workflowと
-  scripts、upstream ref/variant/target、runner/Python、builder args、compression、signing、
-  local payload、bundle環境ハッシュを含む）のschedule再実行は同じversion/tag/assetsを再利用し、
-  revisionを増やさない。条件が変わった同じ`commit`の配布修正は、同じ`devSeq`の新しい
-  `r2`以降として、明示的な`workflow_dispatch`だけを許可する。定期`schedule`は失敗せず
-  `build=false`のno-opを記録し、承認済みdispatchを待つ。既存の`r1` Release/assetを
-  上書きせず、pointerを低いrevisionへ戻さない（r2+をscheduleから生成しない）。異なるcommitはr1から開始する。
-- conditions fingerprintは`scripts/*hermes-desktop-light*`、`scripts/distribution.py`、
-  およびHermes workflowの全実ファイルを含み、必須入力が欠ける場合はskipせず失敗する。
-- scheduleはstable gateが有効で、upstream stableがLight identity、managed builder、annotated
-  claim admissionを満たす場合だけstable buildを計画する。それ以外はdevelopmentを計画し、
-  選択channelのgateが無効ならbuildをskipしてrunnerを起動しない。stable buildが失敗/skipして
-  stable Releaseがまだ公開されているわけでない場合、dev manifestは維持する。
-- PRはbucket Release一覧を参照せず、pinしたupstream main commitのdevelopment build/smoke、
-  exact MIT gate、conditions fingerprintをread-onlyで検証する。publish/writebackはしない。
-- Light stable Releaseが公開されるtransitionは一方向で、公開URL/SHA256を再検証した
-  `bucket/hermes-desktop-light.json`のmanifestがそのReleaseを指すことを確認してから
-  `metadata/hermes-desktop-light-channel.json`へstable version/tag、upstream commit、artifact
-  SHA256を記録する。以後、stable publisherだけがmanifestを更新し、開発publisherは一致する
-  stable Releaseとmanifestまたはそのmarkerを検出してhard-refuseする。stable Releaseだけ、
-  またはstable buildの失敗/skipだけではchannelを停止せず、manifestを自動bounceしない。
+Desktop sourceが`apps/desktop/product-identity.cjs`のLight identityとmanaged builderの
+Light contractを持つかは、Desktop-release detectionの後にexact commitで判定する。
+対応しないsourceは理由付き`unsupported` skip（exit 0）とし、current manifestを変更せず、
+mainへフォールバックしない。API障害、tag ambiguity、handoff不整合は必ず失敗させる。
+upstream sourceのcanary/development性と、bucketが配布する**unofficial Light build**で
+あることは別の属性である。
+
+Scoop versionは`<desktop-version>-alpha.dev.1-r<N>`（例:
+`26.1009.7.410-alpha.dev.1-r1`）。これは既存の`0.0.0-alpha.dev.1-r1`より大きく、
+同じDesktop versionでは`r1 < r2`、未来のstable product versionよりalpha.dev buildが
+小さい。初回Desktop releaseはr1、同じpublished Desktop buildと同じbuild conditionsの
+再実行は同じversion/tag/assetsを再利用してno-opにする。r2以降は同じsourceを修正する
+承認済み手動dispatchだけで指定し、公開済みassetを上書きしない。
+
+保持する条件は既存と同じである。exact Windows build、Light payload、MIT license、
+third-party notices、native launch/remote gateway acceptance、artifactと公開URLのSHA256
+検証を行う。失敗・unsupported skipでは現在のinstallable versionを保持する。
+Releaseはcanary由来のunofficial prereleaseとして別tagに作成し、既存Release/past versionを
+変更しない。公開gate`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は既定無効のままである。
+
+checkver/autoupdateはbucketが実際に公開したLight versionの
+`metadata/hermes-desktop-light-release.json` pointerとimmutable Release URL/SHA256を参照
+する。公開前のbuild/acceptanceと公開/writebackは分離し、公開後にのみmain manifestとREADME
+を更新する。
 
 ## 公開と過去版
 

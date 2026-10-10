@@ -18,9 +18,10 @@ bucket-built distributionを変更する場合、アプリ固有の契約に従�
 | 公開安全性 | read-only検証、Draft/Releaseのimmutable扱い、公開URLの再検証 |
 | README・main書き戻し | 書き戻しを行った場合のcommitとreadback、行わない場合の理由 |
 
-`scripts/distribution.py`の現行helperを使う場合は、数値3要素の上流版と`rN`を採用
-するアプリ固有契約であることを確認する。CalVer、4要素版、その他のversion形式は
-このhelperの対応範囲外であり、該当アプリのparserと回帰テストを別に記録する。
+Hermes Desktop Light uses the four-component official Desktop product version and derives
+`<desktop>-alpha.dev.1-r<N>`; the legacy `0.0.0-alpha.dev.1-r1` remains recognized only so
+normal Scoop update ordering can move to the new format. Other applications keep their own
+version parser and comparison tests.
 
 ## 成果物と上流commitの対応
 

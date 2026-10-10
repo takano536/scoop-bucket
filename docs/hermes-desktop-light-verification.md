@@ -2,12 +2,35 @@
 
 共通の[配布ルール](distribution-policy.md)と[検証記録](distribution-validation.md)を前提に、Hermes Desktop Light固有の上流・Light・gateway契約と、実行済みCIの結果を記録する。
 
-## Hermes Desktop Light固有の契約
+- Hermes LightのDesktop-release detectorは、公式R2 AppInstaller feed
+  `https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller`。
+  `MainBundle/@Version`、package URL/HEAD、R2 `handoff-windows-universal.json`、
+  `metadata-windows-x64.json`、annotated canary tagを突き合わせ、published Desktop
+  product versionからexact source commitを決める。
+- agentのGitHub Release、通常の`main` commit、commit-only R2 build、draftだけのtag、
+  同一feedの再観測はnew Desktop releaseではない。API/metadataのunknown provenanceは
+  unsupported skipではなくnon-zero failureである。
+- sourceのLight identity/managed builderをexact commitで検査し、非対応なら理由付き
+  skip（exit 0）とする。skipではcurrent manifestを変更せず、mainへfallbackしない。
+- 配布物はupstream canary sourceから作る**unofficial Light build**である。upstreamの
+  canary/development性とbucket distributionの非公式性を同一視しない。
+- versionは`<Desktop product>-alpha.dev.1-rN`（例
+  `26.1009.7.410-alpha.dev.1-r1`）。旧`0.0.0-alpha.dev.1-r1`から通常のScoop updateで
+  上がる。same published Desktop build/conditionsはidempotent、r2+はmanual fix専用。
 
-- 安定版として扱う上流タグは、上流の`STABLE_TAG_RE`と同じ`vX.Y.Z`形式のSemVerだけとする。Draft・Prerelease・canary・歴史的CalVerは対象外である。
-- 上流のstable-release toolingが作るclaimと、公開時の安定タグ本文に入るreceiptを検証する。Release状態、タグから解決したcommit、claimのversion・commit・tag情報が一致しないものはadmissionしない。
-- sourceのLight identityと管理されたLight builderの対応ファイルを検査し、非対応や必要ファイルのないcommitは理由を記録してskipする。API障害や権限エラーはskipと混同せず失敗させる。
-- 配布物はリモート専用のLight構成で、既存のHermes gatewayへの接続を必要とする。起動smokeだけではgateway接続、認証・接続設定の移行、Lightのローカル実行可否を証明しない。これらはWindowsで別途受入確認する。
+## 実際に観測した公式canary publication
+
+調査時点のfeedは`Version=26.1009.7.410`、package URL
+`https://hermes-assets.nousresearch.com/releases/win32/canary/HermesBundled-26.1009.7.410-win.msixbundle`
+（HEAD size `4336848216`、ETag
+`"df0b57be726808fd1abd0e75729d71fa-65"`）だった。version timestampから
+`v0.21.6+canary.20261009T070410Z`を一意に解決し、GitHub tag commitは
+`1744a19e0df568c647e4f3ff9c37f2a284a282fb`。R2 handoff
+[`handoff-windows-universal.json`](https://hermes-assets.nousresearch.com/releases/tag/v0.21.6%2Bcanary.20261009T070410Z/handoff-windows-universal.json)
+は同じtag/commit、package size `4336848216`、Desktop package SHA256
+`5b1ccae5cf64fb1ad5917bf54f801f9a88ffd45e936b3d8212eaea5071ab3e98`を記録し、
+`metadata-windows-x64.json`もversion/commit/Windows x64を一致させた。4.3GBの公式MSIX
+本体はダウンロードしていない。
 
 ## 個別検証の入口
 
@@ -26,47 +49,42 @@ python3 -m unittest discover -s tests -p 'test_distribution.py' -v
 
 ## Hermes Desktop Light workflow
 
-[`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとのschedule、`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Requestで起動する。`plan`はUbuntuで個別テストと`hermes-desktop-light.py plan`をread-only実行し、Light対応と対象を決める。対象がある場合だけ`build`がWindows runnerでビルド・smokeを実行し、`hermes-desktop-light-windows-x64` artifactを作る。
+[`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとの
+schedule、`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Request
+で起動する。`plan`はUbuntuで公式Desktop feedとR2 handoff/tag metadataを検証し、
+new Desktop releaseならexact upstream commitをoutputする。Light contract非対応なら
+`unsupported`（exit 0）でbuild/acceptanceを起動せず、manifestを維持する。
 
-`publish`はchannelごとの明示gate（developmentは`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、stableは
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`）、scheduleまたは`workflow_dispatch`、
-`refs/heads/main`、build対象をすべて満たす場合だけ実行する。PRではdevelopment plan/buildの
-read-only検証だけを行い、publishは実行しない。公開済みassetの再検証とRelease公開、
-manifest・READMEのmain書き戻しを行うpublishの詳細なゲートと未確認事項は、この文書の公開ゲート節に従う。
+対象がある場合だけ`build`と`acceptance`がWindows runnerで動き、exact canary tag/source
+からLight build、license/notice gate、native smoke、remote gateway/Scoop acceptanceを実施
+する。`publish`は`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`、scheduleまたはdispatch、
+`refs/heads/main`、verified build/acceptanceをすべて満たす場合だけ実行する。PRとこの変更の
+branchではpublishしない。既存Releaseのassetを上書きせず、公開URL SHA256検証後にのみ
+manifest/READMEをwrite backする。
 
-### 改訂
+同一Desktop buildと同一conditions fingerprintを再実行するとidempotent no-opになる。
+同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
+skipと混同しないnon-zero failureである。
 
-stableの通常追従は`r1`から始める。公開済みの同じ上流版を修正する場合は、信頼済みmainの手動workflowの`revision`に`2`などを指定する。対象はその時点の最新対応安定版であり、過去上流版を指定してのバックポートビルドは現在の自動化の対象外である。
-developmentの新しい上流commitも`r1`から始める。developmentは実行時のupstream `main`を完全な40桁commitへ解決し、同じcommit・同じ
-conditions fingerprintなら既存Release/assetを再利用する。条件が変わった同じcommitは
-scheduleでは`build=false`のno-opとし、明示的なworkflow_dispatchでのみ`r2`以降を許可する。
-改訂番号は正の整数で先頭ゼロを許可せず、CI再実行数から自動採番しない。Stableのtag/claim
-admission、gateway接続・認証移行などの阻害条件は、改訂番号を増やしただけでは解消したと扱わない。公開ゲートは既定で無効のままとする。
+## 過去の実Windows CI記録
 
-## 実Windows CI
-以下の既存preview記録はPR #7/#8およびPR #6導入前の履歴であり、現在のdevelopment
-channelのlicense/notice gateを通過した成果物の証拠ではない。
+以下の記録は旧preview/development policy時代の履歴であり、現行Desktop-release detector
+の成功、現行versionの公開、または新policy下のWindows acceptanceを証明しない。現行変更の
+CI run URLと結果はPull Request本文および最終報告へ追記する。
 
-## 実Windows CI: run 37738844817
+### 旧run 37738844817
 
-[Hermes Desktop Light run 37738844817](https://github.com/takano536/scoop-bucket/actions/runs/37738844817)を、PR #8のhead `90b05923687d846397fbab287b91b51d9ab60f81`に対する`pull_request`イベントで実行した。`plan`・`build`・`acceptance`はsuccess、`publish`はskippedだった。
+[Hermes Desktop Light run 37738844817](https://github.com/takano536/scoop-bucket/actions/runs/37738844817)
+は旧workflowの`pull_request` runで、`plan`・`build`・`acceptance`はsuccess、
+`publish`はskippedだった。上流checkoutは
+`NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`。
 
-Actionsのcheckoutログで、ビルドjobが実際にcheckoutしたbucketのPR merge refは`3acdfc472b635fac6a382c51c1b5e03e6963dc10`（`90b05923687d846397fbab287b91b51d9ab60f81`を`1bccbc5ec3f093348c2e13b1fd09b32a8ecae91e`へmergeしたcommit）である。したがって、runのhead SHAと、PR検証用のmerge refを区別して記録する。上流checkoutは`NousResearch/hermes-agent@a3ed4a173070e981332e4d879ff6cc8b9efd57ab`だった。
+### 旧development run 37779700289
 
-### 成果物とprovenance
-
-## Development channelの現在の計画結果
-
-- [Hermes Desktop Light run 37779700289](https://github.com/takano536/scoop-bucket/actions/runs/37779700289)では、
-  planが`development`を選び、上流`NousResearch/hermes-agent@25a71a744cb9ef06950a91638e6229b4f808d461`
-  を完全な40桁SHAへ解決した。versionは`0.0.0-alpha.dev.1-r1`、conditions fingerprintは
-  `9223aa09872794c9b7ceac52d7c871c0fbbfaeaceddad19a1ce20908f3801309`である。
-- buildはPR #6のstrict license/notice gateで停止した。未解決は
-  `lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、`unicode-animations@1.0.3`、
-  `use-composed-ref@1.4.0`で、acceptanceとpublishは実行されなかった。このrunから
-  Windows受入成功やRelease公開を推論しない。
-- 同じupstream commit・同じconditions fingerprintの再実行は既存成果物を再利用し、
-  条件変更時のscheduleはno-op、明示的なworkflow_dispatchだけが`r2+`を作る。
+[Hermes Desktop Light run 37779700289](https://github.com/takano536/scoop-bucket/actions/runs/37779700289)
+は旧`main` trackingのdevelopment planであり、strict license/notice gate停止のため
+Windows acceptanceとRelease公開は実行されなかった。旧`0.0.0-alpha.dev.*`値は新policyの
+Desktop product versionではない。
 
 
 ## 成果物の保存先とskip条件
@@ -113,7 +131,9 @@ PR #8のmerge commitは`2c4f4298160912f53faefd7b40cdc97f42a133f6`。このcommit
 - [CI run 37740115916](https://github.com/takano536/scoop-bucket/actions/runs/37740115916): `Test (pwsh)`、`Test (powershell)`ともsuccess。
 - [Autoupdate validation run 37740115767](https://github.com/takano536/scoop-bucket/actions/runs/37740115767): `validate`がsuccess。
 
-現時点の`main`はstable channelのみを含む。開発channelは別PRのままmainへ未マージのため、この文書ではその機能や挙動を検証済みとは扱わない。
+現行mainが保持するinstallable manifestは、過去の`0.0.0-alpha.dev.1-r1` Releaseを
+維持している。新policyのDesktop-release build/acceptanceは、このbranchのActions runで
+のみ検証し、旧development channelの有無から推測しない。
 
 ## ライセンス通知・名称/ロゴの公開条件（PR #6）
 
@@ -372,164 +392,52 @@ output under `firstPartyAssets`, lists its verified upstream source paths, and a
 the checked-out upstream root `LICENSE` (MIT). The mapping is exact; an unknown native
 executable, or a missing source/build path, remains fail-closed.
 
-## Development channelの公開・transition
+## Desktop-release publication and open verification
 
-development Releaseは`hermes-desktop-light/dev/v<version>-<full SHA>` tag、
-`prerelease=true`、`latest=false`で公開し、同じupstream commit・conditions fingerprintの
-Release/assetを上書きしない。公開前にWindows acceptanceの`acceptance.json`をbuild provenance
-と突合し、public URLのSHA256を再取得してからmanifest・READMEを書き戻す。
+The publisher creates a prerelease tag `<app>/v<Desktop>-alpha.dev.1-rN`, never mutates an
+existing Release asset, and writes the official feed URL, product version, canary tag, exact
+upstream commit, Desktop package digest, bucket build commit, Light digest, license digest, and
+conditions fingerprint into Release body/provenance. Before writeback it re-reads the official
+feed/handoff and verifies the public Light URL SHA256.
 
-stable Releaseが存在するだけではdevelopmentを停止しない。stableのtag/claim admission、
-build、Windows acceptance、Release公開、manifestのRelease URL/SHA256 readbackがすべて確認され、
-`metadata/hermes-desktop-light-channel.json`へ記録された場合だけ、次回planがdevelopmentを
-hard-refuseする。stable buildのfailure/skipではdevelopmentを継続する。
+The current branch intentionally leaves the existing `0.0.0-alpha.dev.1-r1` manifest and its
+historical Release untouched until a new Desktop-release build passes Windows CI and an enabled
+publish gate. The old release remains installable and is not evidence that a new Desktop source
+was detected. Unsupported source and failed/unknown provenance both leave that manifest intact,
+but only unsupported is a successful skip.
 
-## 未確認事項と配布開始条件
+The new policy does not claim a clean consumer Windows machine, provider credentials, or
+cross-binary migration without a corresponding Actions acceptance artifact. Those results must
+be recorded from the current branch's Windows build/acceptance run, not inferred from old
+preview/development evidence.
 
-今回のrunはPR用previewであり、次は未確認である。
+## 公開ゲートと検証契約
 
-次の受入結果はPR #8時点の履歴である。Light ZIPに`resources/agent-payload`がなく、
-restricted PATH下のlocal backend probeが`bootstrap-needed`を返し、bootstrap/local agentを
-起動しないこと、同一upstream commitのgatewayへの認証、誤secret拒否、Scoop update後の
-接続設定保持を確認した。ただしrunnerはクリーンなWindowsではなく、安定版の実アップグレード
-や配布を証明しない。現行development run 37779700289はlicense gateでacceptance未実行である。
-- 対応安定版でのtag/claim admission、安定版の実ビルド、安定版のScoop version。
-- 異なるバイナリ間の実migration。今回確認したのは同じpreview ZIPのtest-only version bumpだけである。
-- GitHub Releases公開、manifest/READMEのmain書き戻し、安定版の実アップグレード。
-- クリーンなWindows consumer machineでのruntime独立性。
-- provider/LLM credentialを使う実運用。
+`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`、Actionsのschedule/dispatch、`main`、
+verified exact-source Windows build/acceptanceを全て満たす場合だけpublishする。PR/branchでは
+publishしない。publisherは同じrunのartifact/provenance/acceptanceを突合し、official
+Desktop feed/handoffを再読込し、既存Release assetを上書きせず、公開URLのSHA256を確認する。
 
-初回manifestは、Light対応の安定版を実際にビルド・受入確認・公開できた後に生成する。main由来のコードを過去安定版の名前で配布しない。公開ゲート`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`は有効化せず、PRからReleasesへ公開しない。
+回帰テストは、mainだけの進行（no update）、new published Desktop build（exact tag/commit）、
+unsupported Light（exit 0/current manifest unchanged）、同一published build（idempotent）、
+API/unknown provenance（distinct non-zero failure）、Scoop version orderingを対象とする。
+Windows-only build/acceptance結果はActionsの実runでのみ報告し、ローカルから推測しない。
+### Current publication gate
 
-## 公開ゲート
+The publish job remains gated by `HERMES_DESKTOP_LIGHT_RELEASE_ENABLED=true`,
+schedule/dispatch, `refs/heads/main`, and successful exact-source Windows build and acceptance.
+This branch does not enable that variable and does not create or modify a Release.
 
-### Development公開ゲートと自動化の追加検証
+## Historical distribution record
 
-development公開は`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、stable公開は
-`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`の場合だけ実行する。両変数は未設定で、
-今回の作業では有効化しない。対応stableが出ても、stableのtag/claim admission、build、
-Windows acceptance、Release公開、公開URL/SHA256照合、manifest readbackが終わるまで
-developmentを停止しない。stable buildのfailure/skipだけではtransitionしない。
-検出・read-only buildは公開gateと分離する。
+The existing `0.0.0-alpha.dev.1-r1` Release and manifest are retained as the last installable
+bucket version. Its old provenance identifies an earlier main-tracking development build; it is
+not a current Desktop-release detection result. The new publisher will create a separate
+`hermes-desktop-light/v<Desktop>-alpha.dev.1-rN` prerelease only after the official feed,
+annotated tag, R2 handoff, exact Light source, license/notice checks, Windows acceptance, and
+public URL SHA256 all pass.
 
-publisher自身もActionsのschedule/workflow_dispatchかつmainとchannel固有gateを要求する。
-ローカル開発checkoutやPRで誤って実行しても、API操作やhard resetの前に停止する。
-成果物取得に必要な`actions: read`を公開jobへ明示する。publishは同じrunのbuild・Windows
-acceptanceを要求し、`acceptance.json`のpassed status、source commit/version、ZIP名/SHA256、
-license/notice provenanceを突合する。公開済みassetは上書きしない。
-
-`GITHUB_TOKEN`によるpush後の検証は、Desktop Light成功後の`workflow_run`でScoop標準CIと
-Autoupdate validationを起動する。元runが同一リポジトリのmainで成功した場合だけread-onlyで
-書き戻し済みの正確な40桁SHAをcheckoutし、元runの成果物は実行しない。README生成・検証は
-publisher内で完了させる。このmain連携の実運転はマージ前には未検証である。
-
-公開処理の回帰テストは、合成ZIP・mock GitHub API・使い捨ての実Gitリポジトリを使う。
-初回Draft作成から公開URL照合後のmanifest/README更新、公開済みアセットの再利用と
-冪等再実行、異なる部分Draftの拒否、タグ移動、ハッシュ不一致、downgrade、push失敗、
-README書き戻しのreadback不一致、公開ゲートを検証する。本番公開の証明ではない。
-
-Windows smokeには、ビルド用Python/Node/Gitを含まないPATHでの起動と、実preloadからの
-updater check/applyを追加した。結果は `native-checks.json` と `provenance.json` に残す。
-これは初期起動とexternal updaterの確認であり、リモートgateway接続、PATH以外の
-インストール済みランタイムからの独立性、安定版の実アップグレードを保証しない。
-実CI結果はPRに記録する。
-
-### Development channelの配布契約の検証記録
-
-対象PR #10 head `b99383e8ed48f4301bf8542a6ba651692de337e1`について、次の検証を記録する。
-
-| 検証 | 結果 |
-| --- | --- |
-| Python回帰テスト | 74件成功。Hermesのexact commit/Light contract、conditions fingerprint、revision no-op、license/notice admission、publish/acceptance gateを含む |
-| ローカル静的検証 | README生成チェック、Node構文、git diff --check、legacy-name guard成功 |
-| [CI](https://github.com/takano536/scoop-bucket/actions/runs/37779700306) | 成功。Windows PowerShell / PowerShell 7、Scoop Compare-Versionのpin検証を含む |
-| [Autoupdate](https://github.com/takano536/scoop-bucket/actions/runs/37779700250) | 成功 |
-| [README](https://github.com/takano536/scoop-bucket/actions/runs/37779700251) | 成功 |
-| [Hermes Desktop Light](https://github.com/takano536/scoop-bucket/actions/runs/37779700289) | plan成功。上流`25a71a744cb9ef06950a91638e6229b4f808d461`を解決したが、buildは4 packageのlicense gateで失敗し、acceptance/publishはskip |
-
-### 成果物と上流commit
-
-- planが解決した上流commit: `NousResearch/hermes-agent@25a71a744cb9ef06950a91638e6229b4f808d461`。
-- version: `0.0.0-alpha.dev.1-r1`。条件fingerprint: `9223aa09872794c9b7ceac52d7c871c0fbbfaeaceddad19a1ce20908f3801309`。
-- license gateでbuildが完了しなかったため、公開ZIP、acceptance artifact、Release、manifest/README書き戻しはない。
-- license gateの未解決packageは`lazy-val@1.0.5`、`react-remove-scroll-bar@2.3.8`、
-  `unicode-animations@1.0.3`、`use-composed-ref@1.4.0`である。
-
-これは固定commitのpreviewであり、対応安定版の更新所有・gateway接続・認証移行の
-証明ではない。対象安定版、ライセンス通知の同梱、実gateway接続、実更新時の設定保持、
-過去版のScoop導入/固定は未確認である。公開実運転はマージと明示的承認後にのみ確認
-可能で、公開ゲート未設定、マージ・実Release作成なし。
-差分レビューはHermes自身で実施、独立モデルレビューは未実施。
-### Stable公開ゲート
-
-公開jobは`HERMES_DESKTOP_LIGHT_RELEASE_ENABLED`が`true`、scheduleまたは`workflow_dispatch`、`main`、build対象のすべてを満たす場合だけ実行する。公開前に、対象tagと同梱物のライセンス・著作権表示・第三者通知、名称と非公式配布表示、Windows実行・必要runtime・更新移行・外部サービス接続を再検証する。公開済みassetを上書きせず、manifest・READMEは公開URLからSHA256を再検証した後に書き戻す。
-
-## 配布契約の検証記録
-
-（履歴）この段落は公開前のpreviewに対する記録であり、現在の公開状態は末尾の
-「現在のdevelopment公開とpublic Scoop install」を参照する。Actions artifactは一時検証用であり、
-Scoopの恒久的な配布先ではない。
-
-## 現在のdevelopment公開とpublic Scoop install（2026-10-10）
-
-上記の初期preview／公開前の記録（特に「Release・manifest登録・main書き戻しはない」と
-記した箇所）は履歴である。以下が、初回の非公式development公開と、公開bucketからの
-実Windows導入についての現在の検証記録である。
-
-- Release: [`Hermes Desktop Light development release`](https://github.com/takano536/scoop-bucket/releases/tag/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab)。
-  `draft=false`、`prerelease=true`、名前と本文は `DEVELOPMENT BUILD — NOT STABLE` /
-  `Unofficial unsigned Windows x64 Light build` である。
-- publish run: [38008376760](https://github.com/takano536/scoop-bucket/actions/runs/38008376760)。
-  upstreamは`NousResearch/hermes-agent@46d7718a52ff33accb15dc0501736fbdb6833cab`、
-  buildのbucket headは`11b4ead`、書き戻しcommitは
-  [`d6efc008`](https://github.com/takano536/scoop-bucket/commit/d6efc008b37bdfe30204cf6fa0e30b196b559616)である。
-  versionは`0.0.0-alpha.dev.1-r1`、公開ZIP SHA256は
-  `c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23`である。
-- manifest・READMEは公開URLとSHA256をread backしてmainへ書き戻した。現在のdevelopment
-  planを同じupstream commit、同じconditions、revision `1`で**read-only**評価すると、
-  既存Release/asset/conditionsを認識して`build=false`のno-opになる。この評価に対する
-  realな再publish runは実行していない。scheduleとmanual dispatchは
-  `hermes-desktop-light-release` concurrency group（`cancel-in-progress=false`）を共有し、
-  重複runはqueueされる。upstream `main`が進んだ場合は新しいdevelopment versionを作るのが
-  正常な挙動であり、4時間ごとのschedule（development gateだけ有効）がそれを実行し得る。
-
-- [Autoupdate validation run 38009253446](https://github.com/takano536/scoop-bucket/actions/runs/38009253446)で、
-  checkverが`0.0.0-alpha.dev.1-r1`を検出し、development pointerのURL/SHA256を
-  再生成・照合して成功した。
-
-### 公開bucketからの実Windows検証
-
-[Scoop install workflow run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)
-はGitHub-hosted `windows-latest`上で、secretなし・`contents: read`だけのworkflowとして
-公開bucketをalias `takano536-verify`で追加し、`scoop install`、`scoop list`、`scoop info`、
-既存のElectron acceptance driverを実行した。
-
-- public manifestのversionは`0.0.0-alpha.dev.1-r1`、download URLは上記Release asset、
-  SHA256は`c83d...f3c23`で一致した。Scoop cacheの実ダウンロードも同じSHA256で、
-  hash verificationは成功した。
-- `scoop prefix`は`...\\apps\\hermes-desktop-light\\0.0.0-alpha.dev.1-r1`、
-  `current` junctionも同versionを指した。manifestの`shortcuts[0][0]`から7桁hex suffix
-  `46d7718.exe`の実行ファイルを読み取り、その実在とStart-menuの
-  `Hermes Desktop Light (Development).lnk`のtargetを確認した。
-- インストール後の起動はCDP renderer readiness、gatewayへの正しいsecret接続、
-  誤secret拒否、`/api/sessions`のauthenticated 200／誤secret 401、remote設定保持、
-  local backendの`bootstrap-needed`、developmentのexternal updater
-  `commit-build`（check/applyはunsupported/refused、app tree不変）を既存acceptance
-  driverで確認した。
-- [run 38013077481](https://github.com/takano536/scoop-bucket/actions/runs/38013077481)で
-  `Get-AuthenticodeSignature`を20個の`.exe`/`.dll`/`.node`へ実行した。Hermes app exe
-  （manifest targetの7-hex suffix `46d7718`）、HUD helper、およびその他12個の
-  non-Microsoft binaryは`NotSigned`であり、bucketによる署名はない。
-- 一方、次の6個のbundled Microsoft-redistributed binaryは`Valid`を保ち、
-  signerはすべて`CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond,
-  S=Washington, C=US`だった：`d3dcompiler_47.dll`、`dxil.dll`、`node-pty`の
-  build/release `conpty.dll`・`OpenConsole.exe`、およびprebuild側の`conpty.dll`・
-  `OpenConsole.exe`。
-- したがって`unsigned`はHermes app／main exeのbuild label（bucketが署名していない）
-  であり、ZIP内のMicrosoft-redistributed binaryまで未署名という意味ではない。
-  これはGitHub-hosted runnerでの測定であり、cleanな一般Windows環境を保証しない。
-- このrunのrunnerはGitHub-hostedであり、**cleanな一般Windows環境を保証しない**。Releaseは
-  Nous Researchと提携していない非公式development buildであり、stable gateは有効化していない。
-  `HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED=true`のままのscheduleは、upstream変更時に
-  新しいdevelopment版を公開し得る。provider credentialを使う実運用、stable upgrade、
-  異なるbinary間のmigration、およびclean consumer machineでの独立性は未確認である。
+Old Actions artifacts and public-install records below are historical evidence only. They must
+not be read as proof of the new canary feed mapping, new version ordering, or current Windows
+acceptance. The current branch's CI URLs and results are recorded in the Pull Request and final
+change report.

@@ -5,20 +5,16 @@ on:
     - cron: '23 */4 * * *'
   workflow_dispatch:
     inputs:
-      channel:
-        description: 'Build channel (development follows pinned upstream main; stable requires a Light stable release)'
-        type: choice
-        options: [development, stable]
-        default: development
-        required: true
       revision:
-        description: 'Distribution revision (r1 initially; r2+ only for an approved same-commit rebuild)'
+        description: 'Distribution revision (r1 for a new Desktop release; r2+ only for an approved same-release fix)'
         type: string
         default: '1'
+        required: true
   pull_request:
     paths:
       - '.github/workflows/hermes-desktop-light.yml'
       - 'scripts/*hermes-desktop-light*'
+      - 'scripts/build-hermes-desktop-light.ps1'
       - 'scripts/distribution.py'
       - 'tests/test_distribution.py'
       - 'tests/test_hermes_desktop_light*.py'
@@ -34,10 +30,12 @@ concurrency:
 jobs:
   plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       build: ${{ steps.plan.outputs.build }}
       channel: ${{ steps.plan.outputs.channel }}
+      status: ${{ steps.plan.outputs.status }}
+      skip_reason: ${{ steps.plan.outputs.skip_reason }}
       ref: ${{ steps.plan.outputs.ref }}
       upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
       version: ${{ steps.plan.outputs.version }}
@@ -46,8 +44,13 @@ jobs:
       short_sha: ${{ steps.plan.outputs.short_sha }}
       license_sha: ${{ steps.plan.outputs.license_sha }}
       conditions_fingerprint: ${{ steps.plan.outputs.conditions_fingerprint }}
-      claim: ${{ steps.plan.outputs.claim }}
-      claim_object: ${{ steps.plan.outputs.claim_object }}
+      desktop_version: ${{ steps.plan.outputs.desktop_version }}
+      desktop_feed_url: ${{ steps.plan.outputs.desktop_feed_url }}
+      desktop_feed_etag: ${{ steps.plan.outputs.desktop_feed_etag }}
+      desktop_feed_last_modified: ${{ steps.plan.outputs.desktop_feed_last_modified }}
+      desktop_artifact_url: ${{ steps.plan.outputs.desktop_artifact_url }}
+      desktop_artifact_sha256: ${{ steps.plan.outputs.desktop_artifact_sha256 }}
+      desktop_handoff_url: ${{ steps.plan.outputs.desktop_handoff_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,12 +60,18 @@ jobs:
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'development' }}
           BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
           REVISION_EXPLICIT: ${{ github.event_name == 'workflow_dispatch' }}
-          DEV_RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED }}
-          STABLE_RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
         run: python3 scripts/hermes-desktop-light.py plan
+      - name: Record unsupported-source reason
+        if: steps.plan.outputs.status == 'unsupported'
+        run: |
+          {
+            echo '## Official Desktop release skipped';
+            echo;
+            echo "Reason: \\`${{ steps.plan.outputs.skip_reason }}\\`";
+            echo 'The current installable manifest was not changed.';
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: plan
@@ -71,8 +80,6 @@ jobs:
     timeout-minutes: 90
     env:
       PYTHONUTF8: '1'
-      RELEASE_CLAIM_TAG: ${{ needs.plan.outputs.claim }}
-      RELEASE_CLAIM_OBJECT: ${{ needs.plan.outputs.claim_object }}
       CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
       LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
     steps:
@@ -91,14 +98,19 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - name: Build and smoke-test remote-only unpacked application
+      - name: Build and smoke-test pinned Desktop release source
         shell: pwsh
         env:
-          CHANNEL: ${{ needs.plan.outputs.channel }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
-          PREVIEW: ${{ github.event_name == 'pull_request' }}
+          DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
+          DESKTOP_FEED_URL: ${{ needs.plan.outputs.desktop_feed_url }}
+          DESKTOP_FEED_ETAG: ${{ needs.plan.outputs.desktop_feed_etag }}
+          DESKTOP_FEED_LAST_MODIFIED: ${{ needs.plan.outputs.desktop_feed_last_modified }}
+          DESKTOP_ARTIFACT_URL: ${{ needs.plan.outputs.desktop_artifact_url }}
+          DESKTOP_ARTIFACT_SHA256: ${{ needs.plan.outputs.desktop_artifact_sha256 }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: ./bucket/scripts/build-hermes-desktop-light.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -131,7 +143,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
-      - name: Install the exact-commit Hermes gateway (no provider extras)
+      - name: Install the exact-release Hermes gateway (no provider extras)
         shell: pwsh
         working-directory: upstream
         run: python -m pip install --disable-pip-version-check --no-input -e '.[web]'
@@ -159,13 +171,11 @@ jobs:
     needs: [plan, build, acceptance]
     if: >-
       needs.plan.outputs.build == 'true' &&
-
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/main' &&
-      ((needs.plan.outputs.channel == 'development' && vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED == 'true') ||
-       (needs.plan.outputs.channel == 'stable' && vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'))
+      vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
       actions: read
@@ -182,24 +192,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name hermes-desktop-light-windows-acceptance --dir acceptance
-      - name: Publish immutable release and update manifest
+      - name: Publish immutable unofficial Light release and update manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          CHANNEL: ${{ needs.plan.outputs.channel }}
-          RELEASE_ENABLED: ${{ needs.plan.outputs.channel == 'development' && vars.HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED || vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
+          RELEASE_ENABLED: ${{ vars.HERMES_DESKTOP_LIGHT_RELEASE_ENABLED }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
-          RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+          DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
+          DESKTOP_FEED_URL: ${{ needs.plan.outputs.desktop_feed_url }}
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}
           LICENSE_SHA256: ${{ needs.plan.outputs.license_sha }}
           ACCEPTANCE_EVIDENCE: acceptance/acceptance.json
         run: python3 scripts/hermes-desktop-light.py publish
-      - name: Record exact written-back commit
-        run: git rev-parse HEAD > written-back-sha.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: hermes-desktop-light-written-back-sha
-          path: written-back-sha.txt
-          if-no-files-found: error
-          retention-days: 14

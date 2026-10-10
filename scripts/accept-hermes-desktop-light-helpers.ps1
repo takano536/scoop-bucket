@@ -131,6 +131,12 @@ function Get-HermesAcceptanceDevelopmentMode {
 
     $channel = [string]$Receipt.channel
     if ($channel) {
+        if ($channel -eq 'desktop-release') {
+            if ($Receipt.development -ne $true -or [string]$Receipt.upstreamChannel -ne 'canary') {
+                throw 'Desktop-release provenance must be an unofficial Light canary build'
+            }
+            return $false
+        }
         if ($channel -notin @('development', 'stable')) {
             throw "Unsupported Hermes Desktop Light provenance channel: $channel"
         }
