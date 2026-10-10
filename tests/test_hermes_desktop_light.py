@@ -291,7 +291,8 @@ class PlannerTests(unittest.TestCase):
         assert_not_unsupported()
 
         self.result.reset_mock()
-        with patch.object(light, "_desktop_feed", return_value=self.fixture.feed), \
+        with patch.object(light, "_current_version", return_value=None), \
+             patch.object(light, "_desktop_feed", return_value=self.fixture.feed), \
              patch.object(light, "_desktop_provenance", return_value=self.fixture.provenance), \
              patch.object(light, "supports_light", return_value=False), \
              patch.object(light, "output", self.result):

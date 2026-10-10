@@ -302,6 +302,67 @@ class PublishContractTests(unittest.TestCase):
                 gh.assert_not_called()
                 writeback.assert_not_called()
 
+
+    def test_reused_draft_refreshes_notes_but_published_release_stays_unchanged(self):
+        for draft in (True, False):
+            with self.subTest(draft=draft), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                record, live, artifact = self._fixture(root)
+                release_tag = light.release_tag(light.APP, self.version)
+                release_rows = Mock(
+                    return_value=[{"tag_name": release_tag, "id": 42, "draft": draft, "prerelease": True, "assets": []}]
+                )
+                events = []
+
+                def fake_api(*args):
+                    events.append(("api", args))
+                    if "--method" in args:
+                        return {"id": 42, "tag_name": release_tag, "draft": True, "prerelease": True}
+                    if args[0].endswith("/releases/42"):
+                        return {"assets": []}
+                    return {"draft": False, "prerelease": True}
+
+                def fake_gh(*args):
+                    events.append(("gh", args))
+                    return ""
+
+                api = Mock(side_effect=fake_api)
+                gh = Mock(side_effect=fake_gh)
+                writeback = Mock()
+                response = _BytesResponse(artifact.read_bytes())
+                previous = Path.cwd()
+                os.chdir(root)
+                try:
+                    with patch.dict(os.environ, self._publish_environment(record, root), clear=False), \
+                         patch.object(light, "_desktop_feed", return_value={}), \
+                         patch.object(light, "_desktop_provenance", return_value=live), \
+                         patch.object(light, "_release_rows", release_rows), \
+                         patch.object(light, "api", api), \
+                         patch.object(light, "gh", gh), \
+                         patch.object(light, "_writeback", writeback), \
+                         patch("urllib.request.urlopen", return_value=response):
+                        light._publish_desktop()
+                finally:
+                    os.chdir(previous)
+                upload_index = next(
+                    index for index, (kind, args) in enumerate(events) if kind == "gh" and args[:2] == ("release", "upload")
+                )
+                patch_events = [
+                    (index, args) for index, (kind, args) in enumerate(events)
+                    if kind == "api" and "--method" in args
+                ]
+                if draft:
+                    self.assertEqual(patch_events[0][1][0], "repos/example/bucket/releases/42")
+                    self.assertIn("PATCH", patch_events[0][1])
+                    self.assertTrue(any(argument.startswith("name=Unofficial Hermes Desktop Light") for argument in patch_events[0][1]))
+                    body = next(argument for argument in patch_events[0][1] if argument.startswith("body="))
+                    self.assertIn(record["sha256"], body)
+                    self.assertIn(record["bucketCommit"], body)
+                    self.assertLess(patch_events[0][0], upload_index)
+                else:
+                    self.assertFalse(patch_events)
+                writeback.assert_called_once()
+
     def test_bound_provenance_mismatch_rejects_before_release_or_writeback(self):
         mismatches = {
             "tag": lambda record: record.update(desktopTag="v0.21.6+canary.20261009T080410Z"),

@@ -180,6 +180,20 @@ def provenance_manifest(record: dict, repository: str) -> dict:
     return manifest(record["version"], repository, record["sha256"], executable=record["executable"])
 
 
+def _release_notes(record: dict, live: dict, upstream_tag: str, source_ref: str, desktop_version: str) -> str:
+    return (
+        f"Unofficial Hermes Desktop Light build for officially published Desktop {desktop_version}.\n\n"
+        f"Official Desktop distribution source: {live['desktopSourceUrl']}\n"
+        f"Official Desktop tag: `{upstream_tag}`\n"
+        f"Upstream commit: `{source_ref}`\n"
+        f"Bucket build commit: `{record.get('bucketCommit', 'unknown')}`\n"
+        f"Desktop package SHA256: `{live['desktopArtifactSha256']}`\n"
+        f"Light artifact SHA256: `{record['sha256']}`\n\n"
+        "This is an unofficial unsigned Light build; the upstream source is a published canary and "
+        "the bucket distribution is not an official Light asset. It contains no local Python or agent."
+    )
+
+
 def gh(*args: str) -> str:
     return subprocess.check_output(["gh", *args], text=True, encoding="utf-8", stderr=subprocess.PIPE)
 
@@ -742,18 +756,9 @@ def _publish_desktop() -> None:
     tag = release_tag(APP, version)
     rows = _release_rows(repository)
     existing = next((row for row in rows if row.get("tag_name") == tag), None)
-    if not existing:
-        notes = (
-            f"Unofficial Hermes Desktop Light build for officially published Desktop {desktop_version}.\n\n"
-            f"Official Desktop distribution source: {live['desktopSourceUrl']}\n"
-            f"Official Desktop tag: `{upstream_tag}`\n"
-            f"Upstream commit: `{source_ref}`\n"
-            f"Bucket build commit: `{record.get('bucketCommit', 'unknown')}`\n"
-            f"Desktop package SHA256: `{live['desktopArtifactSha256']}`\n"
-            f"Light artifact SHA256: `{record['sha256']}`\n\n"
-            "This is an unofficial unsigned Light build; the upstream source is a published canary and "
-            "the bucket distribution is not an official Light asset. It contains no local Python or agent."
-        )
+    reusing = existing is not None
+    if not reusing:
+        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
         created = api(
             f"repos/{repository}/releases",
             "--method", "POST",
@@ -776,6 +781,14 @@ def _publish_desktop() -> None:
     release_id = existing.get("id")
     if not isinstance(release_id, int):
         raise ValueError("Light draft release has no immutable release id")
+    if reusing and existing.get("draft") is True:
+        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
+        api(
+            f"repos/{repository}/releases/{release_id}",
+            "--method", "PATCH",
+            "--field", f"name=Unofficial Hermes Desktop Light {version}",
+            "--field", f"body={notes}",
+        )
     state = api(f"repos/{repository}/releases/{release_id}")
     history_manifest = root / f"{APP}.json"
     history_manifest.write_text(json.dumps(provenance_manifest(record, repository), indent=4) + "\n", encoding="utf-8")
