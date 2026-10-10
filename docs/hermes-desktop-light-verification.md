@@ -63,7 +63,8 @@ build/acceptanceを起動せず、manifestを維持する。
 pre-releaseであることとは別である。`publish`は`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`、
 scheduleまたはdispatch、`refs/heads/main`、verified build/acceptanceをすべて満たす場合だけ
 実行する。PRとこの変更のbranchではpublishしない。既存Releaseのassetを上書きせず、公開URL
-SHA256検証後にのみmanifest/READMEをwrite backする。
+SHA256検証後にのみmanifest/READMEをwrite backする。既存のdraftを新しいbytesで再利用する場合は、
+upload前にcurrent provenanceからtitle/bodyを更新する。published releaseはこの経路で編集しない。
 
 同一Desktop buildと同一conditions fingerprintを再実行するとidempotent no-opになる。
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
