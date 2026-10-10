@@ -80,7 +80,13 @@ jobs:
           $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
           $historyRoot = Join-Path $env:GITHUB_WORKSPACE 'scoop-history'
           if (Test-Path -LiteralPath $historyRoot) { Remove-Item -LiteralPath $historyRoot -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path (Join-Path $historyRoot 'shims') | Out-Null
+          New-Item -ItemType Directory -Force -Path @(
+            (Join-Path $historyRoot 'shims'),
+            (Join-Path $historyRoot 'buckets'),
+            (Join-Path $historyRoot 'apps'),
+            (Join-Path $historyRoot 'cache'),
+            (Join-Path $historyRoot 'persist')
+          ) | Out-Null
           $scoopCommand = Join-Path $scoopRoot 'apps\scoop\current\bin\scoop.ps1'
           if (!(Test-Path -LiteralPath $scoopCommand)) {
             $scoopCommand = Join-Path $scoopRoot 'shims\scoop.ps1'
