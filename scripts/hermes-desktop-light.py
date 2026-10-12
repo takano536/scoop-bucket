@@ -838,12 +838,43 @@ def publish() -> None:
     _publish_desktop()
 
 
+def published_expectations(bucket_root: Path, repository: str) -> dict:
+    """Derive install expectations from one published bucket checkout.
+
+    Normal publishes rewrite the manifest and release pointer together, so the
+    public verifier reads both from the exact bucket commit Scoop installs
+    instead of carrying hand-copied version, hash, URL, or upstream pins.
+    """
+    pointer = _read_json(bucket_root / RELEASE_POINTER)
+    published = _read_json(bucket_root / "bucket" / f"{APP}.json")
+    if not isinstance(pointer, dict) or not isinstance(published, dict):
+        raise ValueError("Published bucket has no Light manifest and release pointer")
+    version = pointer.get("version", "")
+    expected = manifest(version, repository, pointer.get("sha256", ""), executable=pointer.get("executable", ""))
+    if pointer.get("releaseTag") != release_tag(APP, version) or pointer.get("artifact") != artifact_name(APP, version):
+        raise ValueError("Published release pointer does not name its own immutable Release asset")
+    for key in ("version", "architecture", "shortcuts"):
+        if published.get(key) != expected[key]:
+            raise ValueError(f"Published manifest {key} disagrees with the release pointer")
+    return {
+        "version": version,
+        "sha256": expected["architecture"]["64bit"]["hash"],
+        "url": expected["architecture"]["64bit"]["url"],
+        "upstream_commit": _commit(pointer.get("commit", "")),
+    }
+
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("plan", "publish"))
+    parser.add_argument("command", choices=("plan", "publish", "published-expectations"))
+    parser.add_argument("--bucket-root", type=Path, default=Path("."), help="bucket checkout for published-expectations")
     args = parser.parse_args(argv)
     try:
-        {"plan": plan, "publish": publish}[args.command]()
+        if args.command == "published-expectations":
+            output(**published_expectations(args.bucket_root, _repository(os.environ["GITHUB_REPOSITORY"])))
+        else:
+            {"plan": plan, "publish": publish}[args.command]()
     except ProvenanceError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 2

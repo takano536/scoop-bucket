@@ -7,6 +7,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
     [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9a-f]{40}$')]
+    [string]$BucketCommit,
+    [Parameter(Mandatory = $true)]
     [string]$ExpectedVersion,
     [Parameter(Mandatory = $true)]
     [string]$ExpectedCommit,
@@ -32,6 +35,7 @@ $expectedShortcutName = 'Hermes Desktop Light (Unofficial).lnk'
      runner = 'GitHub-hosted windows-latest; this is not a clean general Windows environment.'
      repository = $repo
      bucketAlias = $alias
+     bucketCommit = $BucketCommit
      app = $appName
      expected = [ordered]@{
          version = $ExpectedVersion
@@ -121,7 +125,18 @@ try {
     }
 
     Invoke-CapturedScoop -Name 'scoop-bucket-add' -Arguments @('bucket', 'add', $alias, "https://github.com/$repo") | Out-Null
+    # Install from the exact published commit the expectations were derived
+    # from, so a writeback landing mid-run cannot mismatch them.
+    $bucketClone = Join-Path $scoopRoot "buckets\$alias"
+    & git -C $bucketClone fetch --no-tags origin $BucketCommit
+    if ($LASTEXITCODE -ne 0) { throw "fetch failed for bucket commit $BucketCommit" }
+    & git -C $bucketClone checkout --detach $BucketCommit
+    if ($LASTEXITCODE -ne 0) { throw "checkout failed for bucket commit $BucketCommit" }
     $installOutput = Invoke-CapturedScoop -Name 'scoop-install' -Arguments @('install', "$alias/$appName")
+    $bucketHead = (& git -C $bucketClone rev-parse HEAD).Trim()
+    if ($bucketHead -ne $BucketCommit) {
+        throw "Scoop bucket moved to $bucketHead during install; expected $BucketCommit"
+    }
     $listOutput = Invoke-CapturedScoop -Name 'scoop-list' -Arguments @('list')
     $infoOutput = Invoke-CapturedScoop -Name 'scoop-info' -Arguments @('info', "$alias/$appName")
 

@@ -70,6 +70,20 @@ upload前にcurrent provenanceからtitle/bodyを更新する。published releas
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
 skipと混同しないnon-zero failureである。
 
+## 公開Scoop install verifier
+
+[`hermes-desktop-light-scoop-install.yml`](../.github/workflows/hermes-desktop-light-scoop-install.yml)
+は`contents: read`だけで動き、secretを使わない。二つの検証を分けている。
+
+- **固定履歴の回帰**: pre-writeback commit `57d45e9`の`0.0.0-alpha.dev.1-r1`から最初の
+  desktop-release writeback commit `daf8678`の`26.1010.7.26-alpha.dev.1-r1`へ実際に
+  `scoop update`する。commitとRelease assetはimmutableなので、以後のpublishで値を更新しない。
+- **更新追従**: publish後（`workflow_run`で書き戻したcommit）またはdispatch/PR時の公開`main`
+  commitを解決し、そのcommitの`bucket/hermes-desktop-light.json`と
+  `metadata/hermes-desktop-light-release.json`から`published-expectations`で
+  version/hash/URL/upstream commitを導出する。manifestとpointerの不一致は失敗にする。
+  Scoopのbucket cloneも同じcommitへ固定し、gatewayも同じupstream commitを使う。
+
 ## Current final-head verification
 
 Final head `a4446ff9b9becd87edd7333121e33fc581ef27aa` was verified by
