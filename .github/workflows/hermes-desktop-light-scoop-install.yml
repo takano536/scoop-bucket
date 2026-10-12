@@ -2,17 +2,67 @@ name: Hermes Desktop Light public Scoop install
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [Hermes Desktop Light]
+    types: [completed]
   pull_request:
     paths:
       - .github/workflows/hermes-desktop-light-scoop-install.yml
       - scripts/verify-scoop-install.ps1
       - scripts/accept-hermes-desktop-light.cjs
+      - scripts/hermes-desktop-light.py
+      - scripts/distribution.py
 
 permissions:
   contents: read
 
 jobs:
+  resolve-published:
+    name: Resolve published bucket commit
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          # Follow the bucket users actually install: the exact publisher
+          # writeback after a release, otherwise the current public main.
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-written-back-sha" and .expired == false)][0].id // empty')"
+            if [[ -z "$artifact_id" ]]; then
+              echo "The triggering run published nothing; no new public state to verify."
+              exit 0
+            fi
+            scratch="$(mktemp -d)"
+            gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name hermes-desktop-light-written-back-sha --dir "$scratch"
+            target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
+          else
+            target="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)"
+          fi
+          if [[ ! "$target" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Resolved bucket commit is not an exact lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          echo "sha=$target" >> "$GITHUB_OUTPUT"
+
   verify-public-scoop-install:
+    needs: resolve-published
+    if: needs.resolve-published.outputs.sha != ''
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -22,18 +72,30 @@ jobs:
           path: bucket
           persist-credentials: false
 
-      - name: Check out the published upstream commit for the gateway
+      - name: Check out the published bucket state
         uses: actions/checkout@v4
         with:
-          repository: NousResearch/hermes-agent
-          ref: dce1e9b37581dd62e480a9064dc04a709c2940d3
-          path: upstream
+          ref: ${{ needs.resolve-published.outputs.sha }}
+          path: published
           persist-credentials: false
 
       - name: Set up Python for the upstream gateway
         uses: actions/setup-python@v5
         with:
           python-version: '3.14'
+
+      - name: Derive expectations from the published manifest and release pointer
+        id: published
+        shell: pwsh
+        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published
+
+      - name: Check out the published upstream commit for the gateway
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ steps.published.outputs.upstream_commit }}
+          path: upstream
+          persist-credentials: false
 
       - name: Install the upstream gateway dependencies
         shell: pwsh
@@ -57,20 +119,23 @@ jobs:
           scoop --version
           scoop config cache true
 
-      - name: Verify published historical Scoop update
+      - name: Regression - historical published Scoop update
         shell: pwsh
         env:
-          # Historical pins from metadata/hermes-desktop-light-dev.json and
-          # bucket/hermes-desktop-light.json at pre-writeback commit 57d45e9dcd26b1884d258268c0a7640c10fe4638.
+          # Fixed regression history, not the current release: both bucket
+          # commits and both Release assets are immutable, so these pins never
+          # need to follow later publishes. Values come from
+          # metadata/hermes-desktop-light-dev.json and bucket/hermes-desktop-light.json
+          # at pre-writeback commit 57d45e9dcd26b1884d258268c0a7640c10fe4638.
           HISTORICAL_BUCKET_COMMIT: 57d45e9dcd26b1884d258268c0a7640c10fe4638
           HISTORICAL_VERSION: 0.0.0-alpha.dev.1-r1
           HISTORICAL_COMMIT: 46d7718a52ff33accb15dc0501736fbdb6833cab
           HISTORICAL_HASH: c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23
           HISTORICAL_URL: https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab/hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab-windows-x64.zip
-          # Pinned writeback commit containing the current published manifest.
+          # First desktop-release writeback (the dev -> desktop-release transition).
           WRITEBACK_BUCKET_COMMIT: daf867860d79f73b9dc6c3088c6b03809c27b54e
-          EXPECTED_VERSION: 26.1010.7.26-alpha.dev.1-r1
-          EXPECTED_HASH: dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f
+          WRITEBACK_VERSION: 26.1010.7.26-alpha.dev.1-r1
+          WRITEBACK_HASH: dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f
         run: |
           $ErrorActionPreference = 'Stop'
           $app = 'hermes-desktop-light'
@@ -162,11 +227,11 @@ jobs:
               Where-Object { $_.Name -like "$app*" } | Sort-Object LastWriteTimeUtc -Descending)
             if ($newCache.Count -eq 0) { throw 'Updated Scoop cache has no archive' }
             $newCacheHash = (Get-FileHash -LiteralPath $newCache[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($newCacheHash -ne $env:EXPECTED_HASH) { throw "Updated cache hash was $newCacheHash" }
+            if ($newCacheHash -ne $env:WRITEBACK_HASH) { throw "Updated cache hash was $newCacheHash" }
             $newCurrent = Join-Path $historyRoot "apps\$app\current"
             $newVersion = Split-Path -Leaf (Resolve-LinkTarget -Path $newCurrent)
-            if ($newVersion -ne $env:EXPECTED_VERSION -or $newVersion -eq $oldVersion) {
-              throw "Scoop update version was $newVersion, expected $env:EXPECTED_VERSION"
+            if ($newVersion -ne $env:WRITEBACK_VERSION -or $newVersion -eq $oldVersion) {
+              throw "Scoop update version was $newVersion, expected $env:WRITEBACK_VERSION"
             }
             Write-Output "Scoop update: $oldVersion -> $newVersion; hash check: OK"
             [ordered]@{
@@ -188,16 +253,16 @@ jobs:
             }
           }
 
-      - name: Install and exercise the current public bucket app
+      - name: Install and exercise the published bucket app
         shell: pwsh
         env:
-          # Current pins from provenance.json and metadata/hermes-desktop-light-release.json
-          # at writeback commit daf867860d79f73b9dc6c3088c6b03809c27b54e; URL/hash also
-          # match bucket/hermes-desktop-light.json at that commit.
-          EXPECTED_VERSION: 26.1010.7.26-alpha.dev.1-r1
-          EXPECTED_COMMIT: dce1e9b37581dd62e480a9064dc04a709c2940d3
-          EXPECTED_HASH: dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f
-          EXPECTED_URL: https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fv26.1010.7.26-alpha.dev.1-r1/hermes-desktop-light-26.1010.7.26-alpha.dev.1-r1-windows-x64.zip
+          # Update-following: expectations are derived from the same bucket
+          # commit Scoop is pinned to, so a normal publish needs no edit here.
+          BUCKET_COMMIT: ${{ needs.resolve-published.outputs.sha }}
+          EXPECTED_VERSION: ${{ steps.published.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.published.outputs.upstream_commit }}
+          EXPECTED_HASH: ${{ steps.published.outputs.sha256 }}
+          EXPECTED_URL: ${{ steps.published.outputs.url }}
         run: |
           $ErrorActionPreference = 'Stop'
           $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
@@ -206,6 +271,7 @@ jobs:
             -BucketRoot "$env:GITHUB_WORKSPACE/bucket" `
             -UpstreamDirectory "$env:GITHUB_WORKSPACE/upstream" `
             -OutputDirectory $output `
+            -BucketCommit $env:BUCKET_COMMIT `
             -ExpectedVersion $env:EXPECTED_VERSION `
             -ExpectedCommit $env:EXPECTED_COMMIT `
             -ExpectedHash $env:EXPECTED_HASH `
