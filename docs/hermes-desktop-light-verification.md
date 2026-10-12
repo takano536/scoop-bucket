@@ -65,6 +65,10 @@ scheduleまたはdispatch、`refs/heads/main`、verified build/acceptanceをす�
 実行する。PRとこの変更のbranchではpublishしない。既存Releaseのassetを上書きせず、公開URL
 SHA256検証後にのみmanifest/READMEをwrite backする。既存のdraftを新しいbytesで再利用する場合は、
 upload前にcurrent provenanceからtitle/bodyを更新する。published releaseはこの経路で編集しない。
+Release作成/更新のrequest bodyは`gh api --input -`へJSONとして渡す。`gh api --field`は
+`false`等をJSON booleanへ変換するため、文字列enumの`make_latest`が422で拒否される
+（run 38149344242・38172087903の原因）。コマンド失敗時は`gh`のstderr（APIのエラー本文）を
+1行の`::error::`へ出し、request bodyは出力しない。
 
 同一Desktop buildと同一conditions fingerprintを再実行するとidempotent no-opになる。
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
