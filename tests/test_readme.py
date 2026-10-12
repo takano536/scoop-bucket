@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import re
 import tempfile
 import unittest
 import json
@@ -77,6 +78,22 @@ class ReadmeTests(unittest.TestCase):
                         'version': '1', 'homepage': homepage,
                     }), encoding='utf-8')
                     self.assertIn(expected, module.generate(root, before))
+
+    def test_repository_links_name_the_owning_account(self):
+        # A mistyped owner (e.g. `takanori536`) points at an unregistered account
+        # that anyone could claim; evidence links must stay on this repository.
+        root = Path(__file__).resolve().parents[1]
+        pattern = re.compile(r'github\.com/([A-Za-z0-9-]+)/scoop-bucket\b')
+        wrong = []
+        for path in sorted(root.rglob('*')):
+            if '.git' in path.relative_to(root).parts or not path.is_file():
+                continue
+            if path.suffix not in {'.md', '.yml', '.yaml', '.json', '.ps1', '.py', '.cjs', '.mjs'}:
+                continue
+            for owner in pattern.findall(path.read_text(encoding='utf-8', errors='replace')):
+                if owner != 'takano536':
+                    wrong.append(f'{path.relative_to(root)}: {owner}')
+        self.assertEqual(wrong, [])
 
 
 if __name__ == '__main__':
