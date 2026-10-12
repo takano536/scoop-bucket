@@ -194,12 +194,32 @@ def _release_notes(record: dict, live: dict, upstream_tag: str, source_ref: str,
     )
 
 
-def gh(*args: str) -> str:
-    return subprocess.check_output(["gh", *args], text=True, encoding="utf-8", stderr=subprocess.PIPE)
+def gh(*args: str, stdin: str | None = None) -> str:
+    return subprocess.check_output(
+        ["gh", *args], text=True, encoding="utf-8", stderr=subprocess.PIPE, input=stdin
+    )
 
 
 def api(endpoint: str, *args: str) -> dict | list:
     return json.loads(gh("api", endpoint, *args))
+
+
+def api_write(endpoint: str, method: str, payload: dict) -> dict | list:
+    # Send the exact JSON body. `gh api --field` infers JSON types from text
+    # (`false` becomes a boolean), which the Releases API rejects for string
+    # enums such as `make_latest`.
+    return json.loads(gh("api", endpoint, "--method", method, "--input", "-", stdin=json.dumps(payload)))
+
+
+def _command_failure(error: subprocess.CalledProcessError) -> str:
+    command = [str(part) for part in error.cmd] if isinstance(error.cmd, (list, tuple)) else [str(error.cmd)]
+    summary = " ".join(command[:3])
+    if "--method" in command[:-1]:
+        summary += f" --method {command[command.index('--method') + 1]}"
+    detail = " ".join((error.stderr or "").split())[-2000:]
+    message = f"{summary} exited with status {error.returncode}" + (f": {detail}" if detail else "")
+    # Whitespace is collapsed above; escape `%` for the workflow-command parser.
+    return message.replace("%", "%25")
 
 
 def _http(url: str, method: str = "GET") -> tuple[bytes, dict[str, str]]:
@@ -759,16 +779,18 @@ def _publish_desktop() -> None:
     reusing = existing is not None
     if not reusing:
         notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
-        created = api(
+        created = api_write(
             f"repos/{repository}/releases",
-            "--method", "POST",
-            "--field", f"tag_name={tag}",
-            "--field", "target_commitish=main",
-            "--field", f"name=Unofficial Hermes Desktop Light {version}",
-            "--field", f"body={notes}",
-            "--field", "draft=true",
-            "--field", "prerelease=true",
-            "--field", "make_latest=false",
+            "POST",
+            {
+                "tag_name": tag,
+                "target_commitish": "main",
+                "name": f"Unofficial Hermes Desktop Light {version}",
+                "body": notes,
+                "draft": True,
+                "prerelease": True,
+                "make_latest": "false",
+            },
         )
         if (
             not isinstance(created, dict)
@@ -783,11 +805,10 @@ def _publish_desktop() -> None:
         raise ValueError("Light draft release has no immutable release id")
     if reusing and existing.get("draft") is True:
         notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
-        api(
+        api_write(
             f"repos/{repository}/releases/{release_id}",
-            "--method", "PATCH",
-            "--field", f"name=Unofficial Hermes Desktop Light {version}",
-            "--field", f"body={notes}",
+            "PATCH",
+            {"name": f"Unofficial Hermes Desktop Light {version}", "body": notes},
         )
     state = api(f"repos/{repository}/releases/{release_id}")
     history_manifest = root / f"{APP}.json"
@@ -848,7 +869,7 @@ def main(argv=None) -> int:
         print(f"::error::{exc}", file=sys.stderr)
         return 2
     except subprocess.CalledProcessError as exc:
-        print(f"::error::GitHub API command failed: {exc}", file=sys.stderr)
+        print(f"::error::Command failed: {_command_failure(exc)}", file=sys.stderr)
         return 2
     return 0
 
