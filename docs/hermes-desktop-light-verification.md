@@ -87,7 +87,7 @@ skipと混同しないnon-zero failureである。
 ## Current final-head verification
 
 Final head `a4446ff9b9becd87edd7333121e33fc581ef27aa` was verified by
-[Hermes Desktop Light run 38019322147](https://github.com/takanori536/scoop-bucket/actions/runs/38019322147):
+[Hermes Desktop Light run 38019322147](https://github.com/takano536/scoop-bucket/actions/runs/38019322147):
 `plan`, exact-source Windows `build`, and Windows `acceptance` all passed; `publish` was skipped
 because this branch dispatch does not satisfy the required `refs/heads/main` condition. No
 repository publish-gate variable was changed. The acceptance artifact's real Scoop evidence
