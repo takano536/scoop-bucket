@@ -79,9 +79,14 @@ skipと混同しないnon-zero failureである。
 [`hermes-desktop-light-scoop-install.yml`](../.github/workflows/hermes-desktop-light-scoop-install.yml)
 は`contents: read`だけで動き、secretを使わない。二つの検証を分けている。
 
-- **固定履歴の回帰**: pre-writeback commit `57d45e9`の`0.0.0-alpha.dev.1-r1`から最初の
-  desktop-release writeback commit `daf8678`の`26.1010.7.26-alpha.dev.1-r1`へ実際に
-  `scoop update`する。commitとRelease assetはimmutableなので、以後のpublishで値を更新しない。
+- **固定履歴の回帰**: 公開を維持しているcommit `daf8678`の
+  `26.1010.7.26-alpha.dev.1-r1`からcommit `dd55951`の
+  `26.1011.7.142-alpha.dev.1-r1`へ実際に`scoop update`する。manifestとrelease pointerの
+  version/hash/upstream commitを確認し、インストール後と更新後のcache SHA256および
+  `current`の実リンク先versionを検証する。通常のpublishでは固定ペアを変更しない。
+  Releaseを意図的に削除する場合は公開が残るペアへ差し替える。404をskipや成功扱いにはしない。
+  旧`0.0.0-alpha.dev.1-r1`のReleaseは版番号修正後に削除されたため、現在の回帰テストでは
+  使用しない。下記の旧版からの移行記録は当時の実行結果として保持する。
 - **更新追従**: publish後（`workflow_run`で書き戻したcommit）またはdispatch/PR時の公開`main`
   commitを解決し、そのcommitの`bucket/hermes-desktop-light.json`と
   `metadata/hermes-desktop-light-release.json`から`published-expectations`で

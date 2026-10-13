@@ -122,20 +122,19 @@ jobs:
       - name: Regression - historical published Scoop update
         shell: pwsh
         env:
-          # Fixed regression history, not the current release: both bucket
-          # commits and both Release assets are immutable, so these pins never
-          # need to follow later publishes. Values come from
-          # metadata/hermes-desktop-light-dev.json and bucket/hermes-desktop-light.json
-          # at pre-writeback commit 57d45e9dcd26b1884d258268c0a7640c10fe4638.
-          HISTORICAL_BUCKET_COMMIT: 57d45e9dcd26b1884d258268c0a7640c10fe4638
-          HISTORICAL_VERSION: 0.0.0-alpha.dev.1-r1
-          HISTORICAL_COMMIT: 46d7718a52ff33accb15dc0501736fbdb6833cab
-          HISTORICAL_HASH: c83d413c6599827a82cf881bb90bdf7e395056ae36f3e79e6b2b4b59a71f3c23
-          HISTORICAL_URL: https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fdev%2Fv0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab/hermes-desktop-light-dev-0.0.0-alpha.dev.1-r1-46d7718a52ff33accb15dc0501736fbdb6833cab-windows-x64.zip
-          # First desktop-release writeback (the dev -> desktop-release transition).
-          WRITEBACK_BUCKET_COMMIT: daf867860d79f73b9dc6c3088c6b03809c27b54e
-          WRITEBACK_VERSION: 26.1010.7.26-alpha.dev.1-r1
-          WRITEBACK_HASH: dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f
+          # Fixed regression pair from retained desktop-release publications.
+          # Normal publishes do not move these pins. If either Release is
+          # intentionally retired, replace the pair with retained publications;
+          # a missing asset must fail rather than silently skip the update test.
+          # Values match each pinned manifest and desktop-release pointer.
+          HISTORICAL_BUCKET_COMMIT: daf867860d79f73b9dc6c3088c6b03809c27b54e
+          HISTORICAL_VERSION: 26.1010.7.26-alpha.dev.1-r1
+          HISTORICAL_COMMIT: dce1e9b37581dd62e480a9064dc04a709c2940d3
+          HISTORICAL_HASH: dff7b40c58abf0effa1f0a4110c11683e934f699ae282cd8c38bac863888276f
+          HISTORICAL_URL: https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fv26.1010.7.26-alpha.dev.1-r1/hermes-desktop-light-26.1010.7.26-alpha.dev.1-r1-windows-x64.zip
+          WRITEBACK_BUCKET_COMMIT: dd55951e75a3cf962a81c62a93c3a91fbd32e37c
+          WRITEBACK_VERSION: 26.1011.7.142-alpha.dev.1-r1
+          WRITEBACK_HASH: 46ea1c97e436821f925d6b50c3ef0dbf6dfd9de9e2627a9378b049310aba063d
         run: |
           $ErrorActionPreference = 'Stop'
           $app = 'hermes-desktop-light'
@@ -199,13 +198,16 @@ jobs:
             $bucketPath = Join-Path $historyRoot "buckets\$alias"
             Checkout-PinnedBucket -Path $bucketPath -Commit $env:HISTORICAL_BUCKET_COMMIT
             $manifest = Get-Content -LiteralPath (Join-Path $bucketPath "bucket\$app.json") -Raw | ConvertFrom-Json
+            $pointer = Get-Content -LiteralPath (Join-Path $bucketPath 'metadata/hermes-desktop-light-release.json') -Raw | ConvertFrom-Json
             $manifestUrl = [string]$manifest.architecture.'64bit'.url
             $manifestHash = [string]$manifest.architecture.'64bit'.hash
             if (
               [string]$manifest.version -ne $env:HISTORICAL_VERSION -or
               $manifestUrl -ne $env:HISTORICAL_URL -or
               $manifestHash -ne $env:HISTORICAL_HASH -or
-              !$manifestUrl.Contains($env:HISTORICAL_COMMIT)
+              [string]$pointer.commit -ne $env:HISTORICAL_COMMIT -or
+              [string]$pointer.version -ne $env:HISTORICAL_VERSION -or
+              [string]$pointer.sha256 -ne $env:HISTORICAL_HASH
             ) { throw 'Historical bucket manifest did not match pinned Release values' }
 
             $oldInstall = Invoke-CapturedScoop -Name 'scoop-history-install' -Arguments @('install', "$alias/$app")
