@@ -207,7 +207,8 @@ async function findTarget() {
       const targets = await withTimeout(
         response.json(),
         DEFAULT_TIMEOUTS.cdpHttpRequestMs,
-        'Electron CDP target-list body'
+        'Electron CDP target-list body',
+        () => response.body?.cancel()
       )
       const target = targets.find(item => item.type === 'page' && item.webSocketDebuggerUrl)
       if (target) {
@@ -388,7 +389,8 @@ async function writeDiagnostics(error, { client, target }) {
       const targets = await withTimeout(
         response.json(),
         3000,
-        'diagnostic Electron CDP target-list body'
+        'diagnostic Electron CDP target-list body',
+        () => response.body?.cancel()
       )
       fs.writeFileSync(path.join(diagnosticsDirectory, 'cdp-targets.json'), `${safeJson(targets)}\n`, 'utf8')
     } catch (targetError) {
