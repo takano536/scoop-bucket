@@ -165,6 +165,12 @@ class CdpClient {
     return withTimeout(response, this.callTimeoutMs, operation, () => this.close())
   }
 
+  async sendWithoutResponse(method, params = {}) {
+    await this.opened
+    if (this.closed) throw new Error('CDP connection is closed')
+    this.socket.send(JSON.stringify({ id: this.nextId++, method, params }))
+  }
+
   close() {
     if (this.closed) return
     this.closed = true
@@ -596,7 +602,11 @@ async function run() {
     if (client) {
       writeStage('electron-shutdown-start')
       try {
-        await client.call('Browser.close', {}, 'Electron Browser.close response')
+        // Browser.close intentionally terminates Chromium without replying to
+        // the request. Send it as a notification and allow the app a bounded
+        // flush window before the PowerShell parent enforces process cleanup.
+        await client.sendWithoutResponse('Browser.close')
+        await sleep(1000)
       } catch {
         // The parent process also terminates the Electron process tree.
       }

@@ -14,6 +14,7 @@ class NeverRespondingWebSocket {
   constructor() {
     this.listeners = new Map()
     this.closed = false
+    this.sent = []
     NeverRespondingWebSocket.instances.push(this)
     queueMicrotask(() => this.emit('open'))
   }
@@ -35,7 +36,8 @@ class NeverRespondingWebSocket {
     }
   }
 
-  send() {
+  send(payload) {
+    this.sent.push(JSON.parse(payload))
     // Deliberately never emit a CDP response.
   }
 
@@ -62,6 +64,25 @@ test('CDP response timeout names the operation and closes the socket', async () 
     assert.equal(client.pending.size, 0)
     assert.equal(NeverRespondingWebSocket.instances.length, 1)
     assert.equal(NeverRespondingWebSocket.instances[0].closed, true)
+  } finally {
+    global.WebSocket = previousWebSocket
+  }
+})
+
+test('Browser.close is sent without waiting for a response', async () => {
+  const previousWebSocket = global.WebSocket
+  NeverRespondingWebSocket.instances = []
+  global.WebSocket = NeverRespondingWebSocket
+  try {
+    const client = new CdpClient('ws://127.0.0.1:1/devtools/page/close', {
+      connectTimeoutMs: 100,
+      callTimeoutMs: 30
+    })
+    await client.sendWithoutResponse('Browser.close')
+    const socket = NeverRespondingWebSocket.instances[0]
+    assert.deepEqual(socket.sent[0].method, 'Browser.close')
+    assert.equal(client.pending.size, 0)
+    client.close()
   } finally {
     global.WebSocket = previousWebSocket
   }
