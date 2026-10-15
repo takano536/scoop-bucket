@@ -43,6 +43,11 @@ $installedRoot = $null
 $hermesHome = Join-Path $scratch 'hermes-home'
 $userData = Join-Path $scratch 'desktop-user-data'
 $gatewayHome = Join-Path $scratch 'gateway-home'
+$stageLog = Join-Path $OutputDirectory 'stages.log'
+$acceptanceProcess = $null
+$electronProcessIds = [Collections.Generic.HashSet[int]]::new()
+$cdpPort = $null
+$nodeTimeoutSeconds = 180
 
 function Write-EvidenceJson {
     param(
@@ -63,6 +68,18 @@ function Redact {
         $text = $text.Replace($secret, '[REDACTED]')
     }
     return $text
+}
+function Write-Stage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [AllowNull()]
+        [string]$Details = ''
+    )
+
+    $suffix = if ($Details) { " $(Redact $Details)" } else { '' }
+    $line = "[acceptance] $([DateTime]::UtcNow.ToString('o')) stage=$Name$suffix"
+    $line | Tee-Object -FilePath $stageLog -Append
 }
 
 function Invoke-Scoop {
@@ -128,22 +145,48 @@ function Wait-Path {
     throw "Timed out waiting for path: $Path"
 }
 
+
+function Get-AppProcessIds {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $roots = @(
+        $Root,
+        (Split-Path -Parent $Root)
+    ) | Where-Object { $_ } |
+        ForEach-Object { ([IO.Path]::GetFullPath($_)).TrimEnd('\') + '\' }
+    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $process = $_
+            $process.ExecutablePath -and
+            @($roots | Where-Object {
+                $_.Length -gt 0 -and $process.ExecutablePath.StartsWith($_, [StringComparison]::OrdinalIgnoreCase)
+            }).Count -gt 0
+        } |
+        ForEach-Object { [int]$_.ProcessId })
+}
+
 function Stop-OwnProcesses {
     param([switch]$KeepServices)
+
+    if ($acceptanceProcess -and !$acceptanceProcess.HasExited) {
+        Stop-ProcessTree -ProcessId $acceptanceProcess.Id
+    }
     if (!$KeepServices -and $gatewayProcess -and !$gatewayProcess.HasExited) {
-        Stop-Process -Id $gatewayProcess.Id -Force -ErrorAction SilentlyContinue
+        Stop-ProcessTree -ProcessId $gatewayProcess.Id
     }
     if (!$KeepServices -and $httpProcess -and !$httpProcess.HasExited) {
-        Stop-Process -Id $httpProcess.Id -Force -ErrorAction SilentlyContinue
+        Stop-ProcessTree -ProcessId $httpProcess.Id
     }
 
     # Start-Process on a .lnk does not return the Electron child. Restrict the
-    # cleanup to processes whose executable is inside this run's Scoop tree.
-    if ($env:SCOOP) {
-        $appsRoot = Join-Path $env:SCOOP 'apps'
-        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($appsRoot, [StringComparison]::OrdinalIgnoreCase) } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    # cleanup to processes whose executable is inside this run's installed app.
+    if ($installedRoot -and (Test-Path -LiteralPath $installedRoot)) {
+        foreach ($processId in @(Get-AppProcessIds -Root $installedRoot)) {
+            [void]$electronProcessIds.Add($processId)
+        }
+    }
+    foreach ($processId in @($electronProcessIds)) {
+        Stop-ProcessTree -ProcessId $processId
     }
 }
 
@@ -163,6 +206,171 @@ function Start-AppFromShortcut {
         Start-Process -FilePath $Shortcut | Out-Null
     } finally {
         $env:PATH = $savedPath
+    }
+}
+function Write-RedactedArtifact {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    if (!(Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+        return
+    }
+    try {
+        $contents = Get-Content -LiteralPath $SourcePath -Raw -ErrorAction Stop
+        if ($null -eq $contents) {
+            $contents = ''
+        }
+        if ($contents.Length -gt 2000000) {
+            $contents = $contents.Substring(0, 2000000) + "`n[truncated]"
+        }
+        (Redact $contents) | Set-Content -LiteralPath $DestinationPath -Encoding utf8NoBOM
+    } catch {
+        "Unable to collect $([IO.Path]::GetFileName($SourcePath)): $(Redact $_.Exception.Message)" |
+            Set-Content -LiteralPath $DestinationPath -Encoding utf8NoBOM
+    }
+}
+
+function Write-Diagnostics {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Reason
+    )
+
+    $diagnosticsDirectory = Join-Path $OutputDirectory 'diagnostics'
+    New-Item -ItemType Directory -Force -Path $diagnosticsDirectory | Out-Null
+    Write-EvidenceJson -Path (Join-Path $diagnosticsDirectory 'diagnostics.json') -Value ([ordered]@{
+        schema = 1
+        status = 'failed'
+        reason = Redact $Reason
+        cdpPort = $cdpPort
+        appRoot = $installedRoot
+        timestamp = [DateTime]::UtcNow.ToString('o')
+    })
+
+    try {
+        $processRows = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Sort-Object ProcessId |
+                ForEach-Object {
+                    [ordered]@{
+                        processId = [int]$_.ProcessId
+                        parentProcessId = [int]$_.ParentProcessId
+                        name = [string]$_.Name
+                        executablePath = [string]$_.ExecutablePath
+                        commandLine = Redact $_.CommandLine
+                    }
+                }
+        )
+        Write-EvidenceJson -Path (Join-Path $diagnosticsDirectory 'processes.json') -Value $processRows
+    } catch {
+        "Unable to collect process list: $(Redact $_.Exception.Message)" |
+            Set-Content -LiteralPath (Join-Path $diagnosticsDirectory 'processes.error.txt') -Encoding utf8NoBOM
+    }
+
+    if ($cdpPort) {
+        try {
+            $targetResponse = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$cdpPort/json/list" -TimeoutSec 5
+            (Redact $targetResponse.Content) |
+                Set-Content -LiteralPath (Join-Path $diagnosticsDirectory 'cdp-targets.json') -Encoding utf8NoBOM
+        } catch {
+            "Unable to collect CDP targets: $(Redact $_.Exception.Message)" |
+                Set-Content -LiteralPath (Join-Path $diagnosticsDirectory 'cdp-targets.error.txt') -Encoding utf8NoBOM
+        }
+    }
+
+    foreach ($logPath in @($gatewayLog, $gatewayErrorLog, $httpLog, $httpErrorLog)) {
+        if ($logPath) {
+            $destination = Join-Path $diagnosticsDirectory ([IO.Path]::GetFileName($logPath))
+            Write-RedactedArtifact -SourcePath $logPath -DestinationPath $destination
+        }
+    }
+    foreach ($streamLog in @(
+        (Join-Path $OutputDirectory 'electron-before.stdout.log'),
+        (Join-Path $OutputDirectory 'electron-before.stderr.log'),
+        (Join-Path $OutputDirectory 'electron-after.stdout.log'),
+        (Join-Path $OutputDirectory 'electron-after.stderr.log')
+    )) {
+        Write-RedactedArtifact -SourcePath $streamLog -DestinationPath (Join-Path $diagnosticsDirectory ([IO.Path]::GetFileName($streamLog)))
+    }
+    if (Test-Path -LiteralPath $userData) {
+        Get-ChildItem -LiteralPath $userData -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @('.log', '.txt') } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 20 |
+            ForEach-Object {
+                $safeName = "user-data-$([Math]::Abs($_.FullName.GetHashCode()))-$($_.Name)"
+                Write-RedactedArtifact -SourcePath $_.FullName -DestinationPath (Join-Path $diagnosticsDirectory $safeName)
+            }
+    }
+}
+
+function Invoke-NodeAcceptance {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Phase,
+        [Parameter(Mandatory = $true)]
+        [string]$Node,
+        [Parameter(Mandatory = $true)]
+        [string]$AcceptanceJs,
+        [Parameter(Mandatory = $true)]
+        [string]$ResultPath,
+        [AllowNull()]
+        [string]$PreviewSwitch
+    )
+
+    $stdoutPath = Join-Path $OutputDirectory "electron-$Phase.stdout.log"
+    $stderrPath = Join-Path $OutputDirectory "electron-$Phase.stderr.log"
+    $arguments = @(
+        $AcceptanceJs,
+        '--phase', $Phase,
+        '--cdp-port', [string]$cdpPort,
+        '--app-root', $installedRoot,
+        '--gateway-url', $gatewayUri,
+        '--secret', $secret,
+        '--wrong-secret', $wrongSecret,
+        '--result', $ResultPath,
+        '--diagnostics-directory', $OutputDirectory,
+        '--stage-log', $stageLog
+    )
+    if ($PreviewSwitch) {
+        $arguments += $PreviewSwitch
+    }
+
+    Write-Stage "electron-$Phase-start" "timeoutSeconds=$nodeTimeoutSeconds"
+    $script:acceptanceProcess = Start-Process `
+        -FilePath $Node `
+        -ArgumentList $arguments `
+        -WorkingDirectory $PSScriptRoot `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath `
+        -PassThru `
+        -WindowStyle Hidden
+    try {
+        $deadline = [DateTime]::UtcNow.AddSeconds($nodeTimeoutSeconds)
+        while (!$script:acceptanceProcess.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+        }
+        if (!$script:acceptanceProcess.HasExited) {
+            Write-Stage "electron-$Phase-timeout" "timeoutSeconds=$nodeTimeoutSeconds"
+            Write-Diagnostics -Reason "Timed out waiting for Electron acceptance ($Phase) after $nodeTimeoutSeconds seconds"
+            Stop-ProcessTree -ProcessId $script:acceptanceProcess.Id
+            throw "Timed out waiting for Electron acceptance ($Phase) after $nodeTimeoutSeconds seconds"
+        }
+        $nodeExitCode = $script:acceptanceProcess.ExitCode
+        Write-Stage "electron-$Phase-exit" "exitCode=$nodeExitCode"
+        if ($nodeExitCode -ne 0) {
+            $errorTail = ''
+            if (Test-Path -LiteralPath $stderrPath) {
+                $errorTail = (Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue)
+            }
+            throw "Electron acceptance ($Phase) failed with exit code ${nodeExitCode}: $(Redact $errorTail)"
+        }
+    } finally {
+        $script:acceptanceProcess = $null
     }
 }
 
@@ -484,6 +692,7 @@ function New-EphemeralSecret {
 $httpErrorLog = Join-Path $scratch 'artifact-http-error.log'
 
 try {
+    Write-Stage 'acceptance-start'
     $zip = Get-ChildItem -LiteralPath $ArtifactDirectory -Filter '*.zip' -File | Select-Object -First 1
     if (!$zip) {
         throw "No ZIP artifact found in $ArtifactDirectory"
@@ -523,6 +732,9 @@ try {
     $wrongSecret = "$secret-wrong"
     $env:HERMES_DASHBOARD_SESSION_TOKEN = $secret
     $env:HERMES_DESKTOP = '1'
+    # The upstream desktop shows an active-work quit dialog unless automated
+    # teardown opts out; CDP has nobody that can answer that modal.
+    $env:HERMES_DESKTOP_SKIP_QUIT_CONFIRM = '1'
     foreach ($name in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'HF_TOKEN', 'HUGGINGFACE_TOKEN')) {
         Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
     }
@@ -532,15 +744,18 @@ try {
     $gatewayPort = Get-Random -Minimum 22000 -Maximum 32000
     $artifactPort = Get-Random -Minimum 32000 -Maximum 42000
     $gatewayUri = "http://127.0.0.1:$gatewayPort"
+    Write-Stage 'gateway-start' "port=$gatewayPort"
     $env:HERMES_HOME = $gatewayHome
     $gatewayProcess = Start-Process -FilePath $python -ArgumentList @('-m', 'hermes_cli.main', 'serve', '--host', '127.0.0.1', "--port=$gatewayPort", '--skip-build') -WorkingDirectory $UpstreamDirectory -RedirectStandardOutput $gatewayLog -RedirectStandardError $gatewayErrorLog -PassThru -WindowStyle Hidden
     Wait-Http -Uri "$gatewayUri/api/status" -TimeoutSeconds 120 | Out-Null
+    Write-Stage 'gateway-ready'
     $env:HERMES_HOME = $hermesHome
     $env:HERMES_DESKTOP_USER_DATA_DIR = $userData
 
     $httpProcess = Start-Process -FilePath $python -ArgumentList @('-m', 'http.server', $artifactPort, '--bind', '127.0.0.1', '--directory', $ArtifactDirectory) -RedirectStandardOutput $httpLog -RedirectStandardError $httpErrorLog -PassThru -WindowStyle Hidden
     $artifactUri = "http://127.0.0.1:$artifactPort/$([Uri]::EscapeDataString($zip.Name))"
     Wait-Http -Uri $artifactUri -TimeoutSeconds 30 | Out-Null
+    Write-Stage 'artifact-http-ready' "port=$artifactPort"
 
     $env:SCOOP = Join-Path $scratch 'scoop'
     New-Item -ItemType Directory -Force -Path $env:SCOOP | Out-Null
@@ -551,6 +766,7 @@ try {
     if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
         throw 'Scoop was not available after bootstrap'
     }
+    Write-Stage 'scoop-ready'
 
     $runtimeVersion = '0.0.0-alpha.dev.1-r1'
     $runtimeAfterVersion = $PackageVersion
@@ -570,7 +786,9 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $bucketDirectory 'bucket') | Out-Null
     Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
+    Write-Stage 'scoop-install-start' "version=$runtimeVersion"
     Invoke-Scoop -Arguments @('install', $appName)
+    Write-Stage 'scoop-install-complete'
     $installedRoot = Get-AppRoot
     $beforeInstall = Get-ScoopInstalledState -AppName $appName -BucketManifestPath $bucketManifestPath
     $shortcutPath = Get-ShortcutPath
@@ -583,9 +801,12 @@ try {
     if ($beforeInstall.version -ne $runtimeVersion) {
         throw "Scoop installed unexpected initial version: $($beforeInstall.version)"
     }
+    Write-Stage 'scoop-install-state-verified'
+    Write-Stage 'runtime-evidence-start'
 
     $runtimeEvidence = Get-PEImportEvidence -Root $installedRoot -ExecutableName $executableName
     Write-EvidenceJson -Path (Join-Path $OutputDirectory 'runtime-evidence.json') -Value $runtimeEvidence
+    Write-Stage 'runtime-evidence-written'
     if (!$runtimeEvidence.accepted) {
         $runtimeFailure = "Bundled PE runtime acceptance failed: $($runtimeEvidence.conclusion)"
     }
@@ -595,12 +816,10 @@ try {
     $beforeJson = Join-Path $OutputDirectory 'before.json'
     $isDevelopment = Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion $PackageVersion
     $previewSwitch = if ($isDevelopment) { '--preview' } else { $null }
+    Write-Stage 'electron-launch-before'
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
-    & $node $acceptanceJs --phase before --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $beforeJson $previewSwitch
-    if ($LASTEXITCODE -ne 0) {
-        throw "Electron acceptance (before update) failed with exit code $LASTEXITCODE"
-    }
+    Invoke-NodeAcceptance -Phase 'before' -Node $node -AcceptanceJs $acceptanceJs -ResultPath $beforeJson -PreviewSwitch $previewSwitch
 
     # Ensure the Electron process is gone before Scoop replaces the current tree.
     Stop-OwnProcesses -KeepServices
@@ -608,6 +827,7 @@ try {
     $manifest.version = $runtimeAfterVersion
     Write-EvidenceJson -Path $bucketManifestPath -Value $manifest
     Write-EvidenceJson -Path $manifestPath -Value $manifest
+    Write-Stage 'scoop-update-start' "version=$runtimeAfterVersion"
     Invoke-Scoop -Arguments @('update', $appName)
     $installedRoot = Get-AppRoot
     $afterInstall = Get-ScoopInstalledState -AppName $appName -BucketManifestPath $bucketManifestPath
@@ -653,18 +873,18 @@ try {
         assertionStatus = $updateAssertionStatus
         summary = $updateSummary
     })
+    Write-Stage 'scoop-update-evidence-written'
 
     $afterJson = Join-Path $OutputDirectory 'after.json'
+    Write-Stage 'electron-launch-after'
     Start-AppFromShortcut -Root $installedRoot -Shortcut $shortcutPath
     Start-Sleep -Seconds 2
-    & $node $acceptanceJs --phase after --cdp-port $cdpPort --app-root $installedRoot --gateway-url $gatewayUri --secret $secret --wrong-secret $wrongSecret --result $afterJson $previewSwitch
-    if ($LASTEXITCODE -ne 0) {
-        throw "Electron acceptance (after update) failed with exit code $LASTEXITCODE"
-    }
+    Invoke-NodeAcceptance -Phase 'after' -Node $node -AcceptanceJs $acceptanceJs -ResultPath $afterJson -PreviewSwitch $previewSwitch
     Stop-OwnProcesses
 
     $userDataMarker = Join-Path $userData 'acceptance-user-data-marker.txt'
     Set-Content -LiteralPath $userDataMarker -Value 'safe-test-data' -Encoding utf8NoBOM
+    Write-Stage 'scoop-uninstall-start'
     Invoke-Scoop -Arguments @('uninstall', $appName)
     if (Test-Path -LiteralPath (Join-Path (Join-Path $env:SCOOP 'apps') $appName)) {
         throw 'Scoop app directory remains after uninstall'
@@ -675,6 +895,7 @@ try {
     if (!(Test-Path -LiteralPath $userData) -or !(Test-Path -LiteralPath $userDataMarker)) {
         throw 'Expected user data did not remain after Scoop uninstall'
     }
+    Write-Stage 'scoop-uninstall-complete'
     if ($runtimeFailure) {
         throw $runtimeFailure
     }
@@ -719,20 +940,24 @@ try {
 } catch {
     $failure = Redact $_.Exception.Message
     $exitCode = 1
+    Write-Stage 'failure' $failure
+    try {
+        Write-Diagnostics -Reason $failure
+    } catch {
+        Write-Error (Redact "Failed to write acceptance diagnostics: $($_.Exception.Message)")
+    }
     Write-Error $failure
 } finally {
-    Stop-OwnProcesses
-    if ($secret) {
-        foreach ($path in @($gatewayLog, $gatewayErrorLog, $httpLog, $httpErrorLog)) {
-            if (Test-Path -LiteralPath $path) {
-                $safeName = Split-Path -Leaf $path
-                $contents = Get-Content -LiteralPath $path -Raw -ErrorAction SilentlyContinue
-                if ($null -eq $contents) {
-                    $contents = ''
-                }
-                $contents.Replace($secret, '[REDACTED]') |
-                    Set-Content -LiteralPath (Join-Path $OutputDirectory $safeName) -Encoding utf8NoBOM
-            }
+    try {
+        Stop-OwnProcesses
+    } catch {
+        Write-Error (Redact "Process cleanup failed: $($_.Exception.Message)")
+    }
+    Write-Stage 'cleanup-complete'
+    foreach ($path in @($gatewayLog, $gatewayErrorLog, $httpLog, $httpErrorLog)) {
+        if ($path) {
+            $safeName = Split-Path -Leaf $path
+            Write-RedactedArtifact -SourcePath $path -DestinationPath (Join-Path $OutputDirectory $safeName)
         }
     }
     if ($failure -and !(Test-Path -LiteralPath (Join-Path $OutputDirectory 'acceptance.json'))) {

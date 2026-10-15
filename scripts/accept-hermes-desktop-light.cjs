@@ -11,14 +11,71 @@ function argument(name) {
   return process.argv[index + 1]
 }
 
-const phase = argument('phase')
-const cdpPort = Number(argument('cdp-port'))
-const appRoot = path.resolve(argument('app-root'))
-const gatewayUrl = argument('gateway-url').replace(/\/+$/, '')
-const secret = argument('secret')
-const wrongSecret = argument('wrong-secret')
-const resultPath = path.resolve(argument('result'))
-const preview = process.argv.includes('--preview')
+function optionalArgument(name) {
+  const index = process.argv.indexOf(`--${name}`)
+  return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : null
+}
+
+const isMain = require.main === module
+const phase = isMain ? argument('phase') : null
+const cdpPort = isMain ? Number(argument('cdp-port')) : null
+const appRoot = isMain ? path.resolve(argument('app-root')) : null
+const gatewayUrl = isMain ? argument('gateway-url').replace(/\/+$/, '') : null
+const secret = isMain ? argument('secret') : null
+const wrongSecret = isMain ? argument('wrong-secret') : null
+const resultPath = isMain ? path.resolve(argument('result')) : null
+const diagnosticsDirectory = isMain ? optionalArgument('diagnostics-directory') : null
+const stageLogPath = isMain ? optionalArgument('stage-log') : null
+const preview = isMain && process.argv.includes('--preview')
+
+const DEFAULT_TIMEOUTS = Object.freeze({
+  cdpTargetSearchMs: 120000,
+  cdpHttpRequestMs: 5000,
+  cdpConnectMs: 15000,
+  cdpCallMs: 20000,
+  gatewayRequestMs: 10000,
+})
+
+function timeoutError(operation, timeoutMs) {
+  return new Error(`Timed out waiting for ${operation} after ${timeoutMs}ms`)
+}
+
+function withTimeout(promise, timeoutMs, operation, onTimeout) {
+  let timer
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(timeoutError(operation, timeoutMs))
+      try {
+        const cleanup = onTimeout?.()
+        if (cleanup && typeof cleanup.catch === 'function') cleanup.catch(() => {})
+      } catch {
+        // The named timeout is the actionable failure; cleanup is best effort.
+      }
+    }, timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+function writeStage(name, details = '') {
+  const suffix = details ? ` ${redact(details)}` : ''
+  const line = `[acceptance] ${new Date().toISOString()} stage=${name}${suffix}`
+  process.stdout.write(`${line}\n`)
+  if (stageLogPath) {
+    try {
+      fs.appendFileSync(stageLogPath, `${line}\n`, 'utf8')
+    } catch {
+      // The parent process writes a stage log even if this path is unavailable.
+    }
+  }
+}
+
+function safeJson(value) {
+  try {
+    return redact(JSON.stringify(value, null, 2))
+  } catch {
+    return redact(String(value))
+  }
+}
 
 function redact(value) {
   let text = String(value ?? '')
@@ -37,14 +94,38 @@ function sleep(ms) {
 }
 
 class CdpClient {
-  constructor(url) {
+  constructor(url, {
+    connectTimeoutMs = DEFAULT_TIMEOUTS.cdpConnectMs,
+    callTimeoutMs = DEFAULT_TIMEOUTS.cdpCallMs
+  } = {}) {
+    this.url = url
+    this.connectTimeoutMs = connectTimeoutMs
+    this.callTimeoutMs = callTimeoutMs
     this.socket = new WebSocket(url)
     this.nextId = 1
     this.pending = new Map()
-    this.opened = new Promise((resolve, reject) => {
-      this.socket.addEventListener('open', resolve, { once: true })
-      this.socket.addEventListener('error', event => reject(new Error(redact(event?.message || 'CDP WebSocket error'))), { once: true })
+    this.closed = false
+    let resolveOpened
+    let rejectOpened
+    const openedPromise = new Promise((resolve, reject) => {
+      resolveOpened = resolve
+      rejectOpened = reject
     })
+    this.opened = withTimeout(
+      openedPromise,
+      connectTimeoutMs,
+      'CDP WebSocket connection',
+      () => this.close()
+    )
+    this.socket.addEventListener('open', () => {
+      resolveOpened()
+    }, { once: true })
+    this.socket.addEventListener('error', event => {
+      const error = new Error(redact(event?.message || 'CDP WebSocket error'))
+      rejectOpened(error)
+      for (const waiter of this.pending.values()) waiter.reject(error)
+      this.pending.clear()
+    }, { once: true })
     this.socket.addEventListener('message', event => {
       let message
       try {
@@ -60,50 +141,105 @@ class CdpClient {
       else waiter.resolve(message.result || {})
     })
     this.socket.addEventListener('close', () => {
-      for (const waiter of this.pending.values()) waiter.reject(new Error('CDP connection closed'))
+      this.closed = true
+      const error = new Error('CDP connection closed')
+      rejectOpened(error)
+      for (const waiter of this.pending.values()) waiter.reject(error)
       this.pending.clear()
     })
   }
 
-  async call(method, params = {}) {
+  async call(method, params = {}, operation = `CDP ${method} response`) {
     await this.opened
+    if (this.closed) throw new Error('CDP connection is closed')
     const id = this.nextId++
-    return new Promise((resolve, reject) => {
+    const response = new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
-      this.socket.send(JSON.stringify({ id, method, params }))
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }))
+      } catch (error) {
+        this.pending.delete(id)
+        reject(error)
+      }
     })
+    return withTimeout(response, this.callTimeoutMs, operation, () => this.close())
+  }
+
+  async sendWithoutResponse(method, params = {}) {
+    await this.opened
+    if (this.closed) throw new Error('CDP connection is closed')
+    this.socket.send(JSON.stringify({ id: this.nextId++, method, params }))
   }
 
   close() {
+    if (this.closed) return
+    this.closed = true
+    const error = new Error('CDP connection closed')
+    for (const waiter of this.pending.values()) waiter.reject(error)
+    this.pending.clear()
     try { this.socket.close() } catch { /* best effort */ }
   }
 }
 
+async function fetchWithTimeout(url, options, timeoutMs, operation) {
+  const controller = new AbortController()
+  try {
+    return await withTimeout(
+      fetch(url, { ...options, signal: controller.signal }),
+      timeoutMs,
+      operation,
+      () => controller.abort()
+    )
+  } catch (error) {
+    if (error?.name === 'AbortError') throw timeoutError(operation, timeoutMs)
+    throw error
+  }
+}
+
 async function findTarget() {
-  const deadline = Date.now() + 120000
+  const timeoutMs = DEFAULT_TIMEOUTS.cdpTargetSearchMs
+  const deadline = Date.now() + timeoutMs
   let lastError = null
+  writeStage('cdp-target-search-start', `port=${cdpPort}`)
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${cdpPort}/json/list`)
-      const targets = await response.json()
+      const response = await fetchWithTimeout(
+        `http://127.0.0.1:${cdpPort}/json/list`,
+        undefined,
+        DEFAULT_TIMEOUTS.cdpHttpRequestMs,
+        'Electron CDP target-list response'
+      )
+      if (!response.ok) throw new Error(`CDP target-list returned HTTP ${response.status}`)
+      const targets = await withTimeout(
+        response.json(),
+        DEFAULT_TIMEOUTS.cdpHttpRequestMs,
+        'Electron CDP target-list body',
+        () => response.body?.cancel()
+      )
       const target = targets.find(item => item.type === 'page' && item.webSocketDebuggerUrl)
-      if (target) return target
+      if (target) {
+        writeStage('cdp-target-found', `type=${target.type}`)
+        return target
+      }
       lastError = new Error('Electron CDP endpoint has no page target yet')
     } catch (error) {
       lastError = error
     }
-    await sleep(1000)
+    await sleep(Math.min(1000, Math.max(0, deadline - Date.now())))
   }
-  throw new Error(`Timed out waiting for Electron CDP: ${redact(lastError?.message || 'unknown error')}`)
+  throw timeoutError(
+    `Electron CDP page target (${redact(lastError?.message || 'no target response')})`,
+    timeoutMs
+  )
 }
 
-async function evaluate(client, expression) {
+async function evaluate(client, expression, operation = 'Electron renderer Runtime.evaluate') {
   const response = await client.call('Runtime.evaluate', {
     expression,
     awaitPromise: true,
     returnByValue: true,
     userGesture: true
-  })
+  }, operation)
   if (response.exceptionDetails) {
     throw new Error(redact(response.exceptionDetails.exception?.description || response.exceptionDetails.text || 'renderer evaluation failed'))
   }
@@ -113,7 +249,7 @@ async function evaluate(client, expression) {
 async function bridge(client, method, value) {
   const literal = value === undefined ? '' : JSON.stringify(value)
   const expression = `(async () => { try { return { ok: true, value: await window.hermesDesktop.${method}(${literal}) } } catch (error) { return { ok: false, error: String(error?.message || error) } } })()`
-  const result = await evaluate(client, expression)
+  const result = await evaluate(client, expression, `Electron bridge ${method}`)
   assert(result && typeof result.ok === 'boolean', `${method} returned no result`)
   return result
 }
@@ -136,10 +272,23 @@ function appTreeFingerprint(root) {
 }
 
 async function fetchJson(url, token) {
-  const response = await fetch(url, {
-    headers: { 'X-Hermes-Session-Token': token, Accept: 'application/json' }
-  })
-  const text = await response.text()
+  const pathname = new URL(url).pathname
+  const controller = new AbortController()
+  const response = await withTimeout(
+    fetch(url, {
+      signal: controller.signal,
+      headers: { 'X-Hermes-Session-Token': token, Accept: 'application/json' }
+    }),
+    DEFAULT_TIMEOUTS.gatewayRequestMs,
+    `gateway HTTP response ${pathname}`,
+    () => controller.abort()
+  )
+  const text = await withTimeout(
+    response.text(),
+    DEFAULT_TIMEOUTS.gatewayRequestMs,
+    `gateway HTTP body ${pathname}`,
+    () => controller.abort()
+  )
   let body = null
   try { body = JSON.parse(text) } catch { body = text.slice(0, 300) }
   return { status: response.status, body }
@@ -157,6 +306,7 @@ async function fetchJsonWithRetry(url, token) {
     }
     await sleep(500)
   }
+  writeStage('gateway-http-retries-exhausted', `attempts=15 path=${new URL(url).pathname}`)
   return last || { error: 'no response' }
 }
 
@@ -226,11 +376,68 @@ async function persistedGatewayRpc(client, method, params = {}) {
   return response.result
 }
 
+async function writeDiagnostics(error, { client, target }) {
+  if (!diagnosticsDirectory) return
+  try {
+    fs.mkdirSync(diagnosticsDirectory, { recursive: true })
+    fs.writeFileSync(
+      path.join(diagnosticsDirectory, 'failure.json'),
+      `${safeJson({ status: 'failed', phase, error: redact(error?.message || error) })}\n`,
+      'utf8'
+    )
+    try {
+      const response = await fetchWithTimeout(
+        `http://127.0.0.1:${cdpPort}/json/list`,
+        undefined,
+        3000,
+        'diagnostic Electron CDP target-list response'
+      )
+      const targets = await withTimeout(
+        response.json(),
+        3000,
+        'diagnostic Electron CDP target-list body',
+        () => response.body?.cancel()
+      )
+      fs.writeFileSync(path.join(diagnosticsDirectory, 'cdp-targets.json'), `${safeJson(targets)}\n`, 'utf8')
+    } catch (targetError) {
+      fs.writeFileSync(
+        path.join(diagnosticsDirectory, 'cdp-targets.json'),
+        `${safeJson({ error: redact(targetError?.message || targetError) })}\n`,
+        'utf8'
+      )
+    }
+    if (target) {
+      fs.writeFileSync(path.join(diagnosticsDirectory, 'cdp-selected-target.json'), `${safeJson(target)}\n`, 'utf8')
+    }
+    if (client && !client.closed) {
+      try {
+        const screenshot = await client.call(
+          'Page.captureScreenshot',
+          { format: 'png' },
+          'diagnostic Electron screenshot'
+        )
+        if (screenshot?.data) {
+          fs.writeFileSync(path.join(diagnosticsDirectory, 'electron-screenshot.png'), Buffer.from(screenshot.data, 'base64'))
+        }
+      } catch (screenshotError) {
+        fs.writeFileSync(
+          path.join(diagnosticsDirectory, 'electron-screenshot.error.txt'),
+          `${redact(screenshotError?.message || screenshotError)}\n`,
+          'utf8'
+        )
+      }
+    }
+    writeStage('diagnostics-written', `directory=${diagnosticsDirectory}`)
+  } catch (diagnosticError) {
+    process.stderr.write(`[acceptance] diagnostics failed: ${redact(diagnosticError?.message || diagnosticError)}\n`)
+  }
+}
+
 async function run() {
   assert(Number.isInteger(cdpPort) && cdpPort > 0, 'invalid CDP port')
   assert(fs.existsSync(appRoot), `installed app root is missing: ${appRoot}`)
-  const target = await findTarget()
-  const client = new CdpClient(target.webSocketDebuggerUrl)
+  let target = null
+  let client = null
   const result = {
     schema: 1,
     status: 'passed',
@@ -246,7 +453,13 @@ async function run() {
   }
 
   try {
-    await evaluate(client, `document.body && document.body.innerText && document.body.innerText.trim().length > 10`)
+    writeStage('validation-start', `phase=${phase}`)
+    target = await findTarget()
+    writeStage('cdp-connect-start')
+    client = new CdpClient(target.webSocketDebuggerUrl)
+    writeStage('renderer-readiness-start')
+    await evaluate(client, `document.body && document.body.innerText && document.body.innerText.trim().length > 10`, 'Electron renderer readiness')
+    writeStage('renderer-ready')
     const payload = {
       mode: 'remote',
       remoteAuthMode: 'token',
@@ -256,7 +469,8 @@ async function run() {
     }
 
     if (phase === 'before') {
-      const localOfferVisible = await evaluate(client, `document.body.innerText.includes('Install Hermes locally')`)
+      writeStage('local-backend-probe-start')
+      const localOfferVisible = await evaluate(client, `document.body.innerText.includes('Install Hermes locally')`, 'local-install offer visibility')
       const localProbe = await bridge(client, 'probeLocalBackend')
       assert(localProbe.ok, `local backend probe failed: ${redact(localProbe.error)}`)
       assert(localProbe.value && localProbe.value.bootstrapNeeded === true,
@@ -268,15 +482,18 @@ async function run() {
         conclusion: 'No bundled local backend was runnable; the first-run local option resolves to bootstrap-needed and was not executed.'
       }
 
+      writeStage('connection-negative-test-start')
       const wrongTest = await bridge(client, 'testConnectionConfig', { ...payload, remoteToken: wrongSecret })
       assert(!wrongTest.ok, 'wrong gateway secret was unexpectedly accepted by the packaged app')
       result.connection.negative = { rejected: true, error: redact(wrongTest.error) }
 
+      writeStage('connection-positive-test-start')
       const positiveTest = await bridge(client, 'testConnectionConfig', payload)
       assert(positiveTest.ok && positiveTest.value?.ok === true,
         `packaged app did not pass authenticated HTTP+WebSocket test: ${redact(positiveTest.error || JSON.stringify(positiveTest.value))}`)
       result.connection.preflight = { ok: true, baseUrl: positiveTest.value.baseUrl, version: positiveTest.value.version || null }
 
+      writeStage('connection-persistence-start')
       const applied = await bridge(client, 'applyConnectionConfig', payload)
       assert(applied.ok, `remote connection apply failed: ${redact(applied.error)}`)
       await sleep(3000)
@@ -290,8 +507,10 @@ async function run() {
         remoteTokenSet: config.value.remoteTokenSet === true,
         tokenNotExported: !Object.prototype.hasOwnProperty.call(config.value, 'remoteToken')
       }
-      await evaluate(client, `localStorage.setItem('hermes-desktop-light-acceptance-marker', 'retained'); true`)
+      await evaluate(client, `localStorage.setItem('hermes-desktop-light-acceptance-marker', 'retained'); true`, 'acceptance marker persistence')
+      writeStage('connection-persistence-complete')
     } else {
+      writeStage('connection-persistence-readback-start')
       const config = await bridge(client, 'getConnectionConfig')
       assert(config.ok && config.value?.mode === 'remote', 'remote mode did not survive Scoop update')
       assert(config.value.remoteUrl === gatewayUrl, 'gateway URL did not survive Scoop update')
@@ -302,7 +521,7 @@ async function run() {
         remoteTokenSet: config.value.remoteTokenSet === true,
         tokenNotExported: !Object.prototype.hasOwnProperty.call(config.value, 'remoteToken')
       }
-      const marker = await evaluate(client, `localStorage.getItem('hermes-desktop-light-acceptance-marker')`)
+      const marker = await evaluate(client, `localStorage.getItem('hermes-desktop-light-acceptance-marker')`, 'acceptance marker readback')
       assert(marker === 'retained', 'renderer user data did not survive Scoop update')
       const persistedRpc = await persistedGatewayRpc(client, 'session.list', { limit: 1 })
       assert(persistedRpc && Array.isArray(persistedRpc.sessions),
@@ -312,8 +531,10 @@ async function run() {
         authenticated: true,
         sessionCount: persistedRpc.sessions.length
       }
+      writeStage('connection-persistence-readback-complete')
     }
 
+    writeStage('gateway-round-trip-start')
     const session = await fetchJsonWithRetry(`${gatewayUrl}/api/sessions?limit=1`, secret)
     assert(session && session.status === 200,
       `authenticated /api/sessions round-trip failed with status ${session?.status}: ${redact(JSON.stringify(session?.body))}`)
@@ -328,7 +549,9 @@ async function run() {
       wrongSecretStatus: wrongSession.status,
       bodyShape: Array.isArray(session.body) ? 'array' : typeof session.body
     }
+    writeStage('gateway-round-trip-complete')
 
+    writeStage('updater-check-start')
     const beforeTree = appTreeFingerprint(appRoot)
     const check = await bridge(client, 'updates.check', { force: true })
     assert(check.ok && check.value?.mechanism === 'external',
@@ -370,23 +593,51 @@ async function run() {
       },
       appTreeUnchanged: true
     }
+    writeStage('updater-check-complete')
+  } catch (error) {
+    writeStage('failure', `error=${redact(error?.message || error)}`)
+    await writeDiagnostics(error, { client, target })
+    throw error
   } finally {
-    try { await client.call('Browser.close') } catch { /* app may already be closing */ }
-    client.close()
+    if (client) {
+      writeStage('electron-shutdown-start')
+      try {
+        // Browser.close intentionally terminates Chromium without replying to
+        // the request. Send it as a notification and allow the app a bounded
+        // flush window before the PowerShell parent enforces process cleanup.
+        await client.sendWithoutResponse('Browser.close')
+        await sleep(1000)
+      } catch {
+        // The parent process also terminates the Electron process tree.
+      }
+      client.close()
+      writeStage('electron-shutdown-complete')
+    }
   }
 
   fs.writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8')
+  writeStage('result-written', `phase=${phase}`)
   process.stdout.write(`${JSON.stringify({ phase, status: result.status, authenticated: result.gateway.authenticated })}\n`)
 }
 
-run().catch(error => {
-  const failure = {
-    schema: 1,
-    status: 'failed',
-    phase,
-    error: redact(error.message || error)
-  }
-  try { fs.writeFileSync(resultPath, `${JSON.stringify(failure, null, 2)}\n`, 'utf8') } catch { /* report original failure */ }
-  process.stderr.write(`${failure.error}\n`)
-  process.exitCode = 1
-})
+if (isMain) {
+  run().catch(error => {
+    const failure = {
+      schema: 1,
+      status: 'failed',
+      phase,
+      error: redact(error.message || error)
+    }
+    try { fs.writeFileSync(resultPath, `${JSON.stringify(failure, null, 2)}\n`, 'utf8') } catch { /* report original failure */ }
+    process.stderr.write(`${failure.error}\n`)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {
+  CdpClient,
+  DEFAULT_TIMEOUTS,
+  timeoutError,
+  withTimeout,
+  fetchWithTimeout
+}

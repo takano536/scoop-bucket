@@ -96,3 +96,5 @@ jobs:
           $env:SCOOP_HOME="$(Convert-Path '.\scoop_core')"
           .\my_bucket\tests\distribution-versions.ps1 -ScoopHome $env:SCOOP_HOME
           .\my_bucket\bin\test.ps1
+      - name: Run Hermes Desktop Light CDP timeout tests
+        run: node --test .\my_bucket\tests\accept-hermes-desktop-light-cdp.test.cjs

@@ -74,6 +74,30 @@ Release作成/更新のrequest bodyは`gh api --input -`へJSONとして渡す�
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
 skipと混同しないnon-zero failureである。
 
+### Acceptance timeout and failure evidence
+
+The Windows acceptance driver gives every CDP connection, target-list request,
+CDP response, gateway HTTP response/body, and persisted WebSocket RPC an
+operation-specific timeout. A timeout names the operation and writes failure
+evidence under the uploaded `acceptance-output/diagnostics/` directory:
+processes (with command lines redacted), CDP targets, Electron stdout/stderr,
+gateway/HTTP logs, and a screenshot when the renderer still answers. The
+PowerShell harness also bounds each Node acceptance phase and terminates the
+Node/Electron/gateway/HTTP process trees with `taskkill /T /F` on every failure
+path. The CDP timeout and process-tree cleanup regression tests run in CI with:
+
+```bash
+node --test tests/accept-hermes-desktop-light-cdp.test.cjs
+```
+
+The harness sets `HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1` before launching the
+packaged app. The upstream Electron main process documents this switch for
+automated teardown: without it, an active-work confirmation modal has no CDP
+caller to answer it, so `Browser.close` can leave the app alive and prevent
+renderer storage from flushing before Scoop replaces the install. `Browser.close`
+is therefore sent as a bounded CDP notification, followed by a short flush
+window; the parent still enforces process-tree cleanup.
+
 ## 公開Scoop install verifier
 
 [`hermes-desktop-light-scoop-install.yml`](../.github/workflows/hermes-desktop-light-scoop-install.yml)
