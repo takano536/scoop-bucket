@@ -745,6 +745,9 @@ try {
     $wrongSecret = "$secret-wrong"
     $env:HERMES_DASHBOARD_SESSION_TOKEN = $secret
     $env:HERMES_DESKTOP = '1'
+    # The upstream desktop shows an active-work quit dialog unless automated
+    # teardown opts out; CDP has nobody that can answer that modal.
+    $env:HERMES_DESKTOP_SKIP_QUIT_CONFIRM = '1'
     foreach ($name in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'HF_TOKEN', 'HUGGINGFACE_TOKEN')) {
         Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
     }
