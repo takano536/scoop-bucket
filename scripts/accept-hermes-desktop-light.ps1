@@ -145,19 +145,6 @@ function Wait-Path {
     throw "Timed out waiting for path: $Path"
 }
 
-function Stop-ProcessTree {
-    param([int]$ProcessId)
-
-    if ($ProcessId -le 0) {
-        return
-    }
-    try {
-        & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
-    } catch {
-        # The process may have exited between discovery and taskkill.
-    }
-    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-}
 
 function Get-AppProcessIds {
     param([Parameter(Mandatory = $true)][string]$Root)

@@ -84,7 +84,7 @@ processes (with command lines redacted), CDP targets, Electron stdout/stderr,
 gateway/HTTP logs, and a screenshot when the renderer still answers. The
 PowerShell harness also bounds each Node acceptance phase and terminates the
 Node/Electron/gateway/HTTP process trees with `taskkill /T /F` on every failure
-path. The CDP timeout regression tests run in CI with:
+path. The CDP timeout and process-tree cleanup regression tests run in CI with:
 
 ```bash
 node --test tests/accept-hermes-desktop-light-cdp.test.cjs
