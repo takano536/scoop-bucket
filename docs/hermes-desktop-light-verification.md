@@ -74,6 +74,22 @@ Release作成/更新のrequest bodyは`gh api --input -`へJSONとして渡す�
 同一buildのr2以降は明示dispatchでのみ許可し、API failure/unknown provenanceはunsupported
 skipと混同しないnon-zero failureである。
 
+### Acceptance timeout and failure evidence
+
+The Windows acceptance driver gives every CDP connection, target-list request,
+CDP response, gateway HTTP response/body, and persisted WebSocket RPC an
+operation-specific timeout. A timeout names the operation and writes failure
+evidence under the uploaded `acceptance-output/diagnostics/` directory:
+processes (with command lines redacted), CDP targets, Electron stdout/stderr,
+gateway/HTTP logs, and a screenshot when the renderer still answers. The
+PowerShell harness also bounds each Node acceptance phase and terminates the
+Node/Electron/gateway/HTTP process trees with `taskkill /T /F` on every failure
+path. The CDP timeout regression tests run in CI with:
+
+```bash
+node --test tests/accept-hermes-desktop-light-cdp.test.cjs
+```
+
 ## 公開Scoop install verifier
 
 [`hermes-desktop-light-scoop-install.yml`](../.github/workflows/hermes-desktop-light-scoop-install.yml)
