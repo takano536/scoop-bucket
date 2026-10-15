@@ -90,6 +90,14 @@ path. The CDP timeout regression tests run in CI with:
 node --test tests/accept-hermes-desktop-light-cdp.test.cjs
 ```
 
+The harness sets `HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1` before launching the
+packaged app. The upstream Electron main process documents this switch for
+automated teardown: without it, an active-work confirmation modal has no CDP
+caller to answer it, so `Browser.close` can leave the app alive and prevent
+renderer storage from flushing before Scoop replaces the install. `Browser.close`
+is therefore sent as a bounded CDP notification, followed by a short flush
+window; the parent still enforces process-tree cleanup.
+
 ## 公開Scoop install verifier
 
 [`hermes-desktop-light-scoop-install.yml`](../.github/workflows/hermes-desktop-light-scoop-install.yml)
