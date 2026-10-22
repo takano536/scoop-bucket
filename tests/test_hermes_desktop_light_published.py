@@ -60,8 +60,9 @@ class PublishedExpectationTests(unittest.TestCase):
                 root = Path(scratch)
                 data, _pointer = self._publish_state(root, version, digest, commit)
                 self.assertEqual(
-                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["canary"]),
+                    light.published_expectations(root, self.REPOSITORY),
                     {
+                        "app": light.APP_BY_CHANNEL["canary"],
                         "version": version,
                         "sha256": digest,
                         "url": data["architecture"]["64bit"]["url"],
@@ -88,7 +89,7 @@ class PublishedExpectationTests(unittest.TestCase):
                 (root / "bucket" / f"{app}.json").write_text(json.dumps(data), encoding="utf-8")
                 (root / light.pointer_path(app)).write_text(json.dumps(pointer), encoding="utf-8")
                 with self.assertRaises(ValueError):
-                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["canary"])
+                    light.published_expectations(root, self.REPOSITORY)
 
 
     def test_expectations_follow_a_stable_channel_publish(self):
@@ -102,8 +103,9 @@ class PublishedExpectationTests(unittest.TestCase):
                 )
                 self.assertEqual(pointer["upstreamChannel"], "stable")
                 self.assertEqual(
-                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["stable"]),
+                    light.published_expectations(root, self.REPOSITORY),
                     {
+                        "app": light.APP_BY_CHANNEL["stable"],
                         "version": version,
                         "sha256": digest,
                         "url": data["architecture"]["64bit"]["url"],

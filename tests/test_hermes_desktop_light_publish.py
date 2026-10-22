@@ -486,7 +486,7 @@ class PublishContractTests(unittest.TestCase):
         self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
         self.assertIn("hermes-desktop-light%2Fv26.1009.7.410-alpha.dev.1-r1", data["architecture"]["64bit"]["url"])
         self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light Canary (Unofficial)"]])
-        self.assertIn("metadata/hermes-desktop-light-canary-release.json", data["checkver"]["url"])
+        self.assertIn("metadata/hermes-desktop-light-release.json", data["checkver"]["url"])
         self.assertIn("officially published Hermes Desktop canary", data["notes"])
 
     def test_release_pointer_records_both_upstream_and_bucket_identity(self):

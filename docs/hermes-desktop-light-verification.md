@@ -31,8 +31,11 @@ Hermes Desktop Lightは1パッケージから2パッケージ構成へ変更し�
 
 | パッケージ | 追従先 | manifest | pointer |
 | --- | --- | --- | --- |
-| `hermes-desktop-light` | stable | `bucket/hermes-desktop-light.json`（初回publishで生成） | `metadata/hermes-desktop-light-release.json` |
-| `hermes-desktop-light-canary` | canary | `bucket/hermes-desktop-light-canary.json` | `metadata/hermes-desktop-light-canary-release.json` |
+| `hermes-desktop-light` | stable | `bucket/hermes-desktop-light.json`（初回publishで生成） | `metadata/hermes-desktop-light-stable-release.json` |
+| `hermes-desktop-light-canary` | canary | `bucket/hermes-desktop-light-canary.json` | `metadata/hermes-desktop-light-release.json` |
+
+canary側のpointer名は分割前のまま。公開済みcanary manifestのcheckverがこのURLを指して
+いるため、名前を変えると次回publishまでcheckverが404になる。
 
 Release/tagとartifact名は`hermes-desktop-light/`名前空間を共有し、version形式がchannelを
 表す。workflowは[caller](.github/workflows/hermes-desktop-light.yml)がchannelごとに

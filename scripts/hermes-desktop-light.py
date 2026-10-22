@@ -85,9 +85,20 @@ def app_for(channel: Channel) -> str:
     return APP_BY_CHANNEL[channel.name]
 
 
+POINTER_BY_CHANNEL = {
+    # The published canary manifest already resolves its checkver against this
+    # path, so the split keeps it for the canary package.
+    "canary": Path(f"metadata/{APP}-release.json"),
+    "stable": Path(f"metadata/{APP}-stable-release.json"),
+}
+
+
 def pointer_path(app: str) -> Path:
     """Return the tracked pointer file for one package."""
-    return Path(f"metadata/{app}-release.json")
+    for name, path in POINTER_BY_CHANNEL.items():
+        if APP_BY_CHANNEL[name] == app:
+            return path
+    raise ValueError(f"{app} is not a Hermes Desktop Light package")
 
 
 def shortcut_label(channel: Channel) -> str:
@@ -726,13 +737,13 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
             output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="idempotent")
             return
         if requested_revision > previous_revision and not explicit:
-            if event == "schedule":
+            if event in ("schedule", "pull_request"):
                 print("Same Desktop release requires explicit workflow_dispatch for a revision bump")
                 output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
             raise ValueError("A same-Desktop-release rebuild requires workflow_dispatch with a higher revision")
         if requested_revision <= previous_revision:
-            if event == "schedule":
+            if event in ("schedule", "pull_request"):
                 print("Desktop-release build conditions changed; scheduled run waits for an explicit revision")
                 output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
@@ -1066,15 +1077,40 @@ def publish(channel: Channel | None = None) -> None:
     _publish_desktop(channel or channel_for(os.environ.get("UPSTREAM_CHANNEL")))
 
 
-def published_expectations(bucket_root: Path, repository: str, channel: Channel) -> dict:
+def _published_packages(bucket_root: Path) -> list[tuple[str, Path]]:
+    """List the package/pointer pairs a bucket checkout actually publishes.
+
+    Three layouts are possible: the split bucket (canary and/or stable), and the
+    pre-split bucket whose single `hermes-desktop-light` manifest still points at
+    the legacy pointer path.
+    """
+    candidates = [
+        (APP_BY_CHANNEL["canary"], pointer_path(APP_BY_CHANNEL["canary"])),
+        (APP_BY_CHANNEL["stable"], pointer_path(APP_BY_CHANNEL["stable"])),
+        (APP, Path(f"metadata/{APP}-release.json")),
+    ]
+    return [
+        (app, pointer)
+        for app, pointer in candidates
+        if (bucket_root / "bucket" / f"{app}.json").is_file() and (bucket_root / pointer).is_file()
+    ]
+
+
+def published_expectations(bucket_root: Path, repository: str, app: str | None = None) -> dict:
     """Derive install expectations from one published bucket checkout.
 
     Normal publishes rewrite the manifest and release pointer together, so the
     public verifier reads both from the exact bucket commit Scoop installs
     instead of carrying hand-copied version, hash, URL, or upstream pins.
     """
-    app = app_for(channel)
-    pointer = _read_json(bucket_root / pointer_path(app))
+    if app is None:
+        packages = _published_packages(bucket_root)
+        if not packages:
+            raise ValueError("Published bucket has no Light manifest and release pointer")
+        app, pointer_file = packages[0]
+    else:
+        pointer_file = pointer_path(app)
+    pointer = _read_json(bucket_root / pointer_file)
     published = _read_json(bucket_root / "bucket" / f"{app}.json")
     if not isinstance(pointer, dict) or not isinstance(published, dict):
         raise ValueError("Published bucket has no Light manifest and release pointer")
@@ -1093,6 +1129,7 @@ def published_expectations(bucket_root: Path, repository: str, channel: Channel)
         if published.get(key) != expected[key]:
             raise ValueError(f"Published manifest {key} disagrees with the release pointer")
     return {
+        "app": app,
         "version": version,
         "sha256": expected["architecture"]["64bit"]["hash"],
         "url": expected["architecture"]["64bit"]["url"],
@@ -1118,7 +1155,6 @@ def main(argv=None) -> int:
                 **published_expectations(
                     args.bucket_root,
                     _repository(os.environ["GITHUB_REPOSITORY"]),
-                    channel_for(args.channel or os.environ.get("UPSTREAM_CHANNEL")),
                 )
             )
         else:

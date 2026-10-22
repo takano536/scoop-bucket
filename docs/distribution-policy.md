@@ -114,8 +114,10 @@ Releaseはchannel由来のunofficial prereleaseとして別tagに作成し、既
 変更しない。公開gateは既存の`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`で制御し、このポリシー
 では設定値を変更しない。
 
-checkver/autoupdateはパッケージが実際に公開したLight versionの
-`metadata/<app>-release.json` pointerとimmutable Release URL/SHA256を参照する。
+checkver/autoupdateはパッケージが実際に公開したLight versionのpointer
+（stable=`metadata/hermes-desktop-light-stable-release.json`、
+canary=`metadata/hermes-desktop-light-release.json`。canaryは分割前の名前を
+公開済みmanifestのcheckver互換のため維持する）とimmutable Release URL/SHA256を参照する。
 公開前のbuild/acceptanceと公開/writebackは分離し、公開後にのみmain manifestとREADMEを
 更新する。
 

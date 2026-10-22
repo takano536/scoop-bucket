@@ -319,6 +319,11 @@ class PlannerTests(unittest.TestCase):
             self.assertEqual(light.main(["plan", "--channel", "canary"]), 0)
         self.assertEqual(self.result.call_args.kwargs["status"], "unsupported")
 
+    def test_pull_request_reports_a_pending_revision_instead_of_failing(self):
+        self.run_plan(pointer=self.pointer(), revision="2", explicit="false", event="pull_request")
+        self.assertEqual(self.result.call_args.kwargs["build"], "false")
+        self.assertEqual(self.result.call_args.kwargs["status"], "revision-required")
+
     def test_revision_two_requires_explicit_dispatch_for_same_release(self):
         self.run_plan(pointer=self.pointer(), revision="2", explicit="false")
         self.result.assert_called_once_with(

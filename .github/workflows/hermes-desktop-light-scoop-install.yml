@@ -87,7 +87,7 @@ jobs:
       - name: Derive expectations from the published manifest and release pointer
         id: published
         shell: pwsh
-        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published --channel canary
+        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published
 
       - name: Check out the published upstream commit for the gateway
         uses: actions/checkout@v4
@@ -265,6 +265,7 @@ jobs:
           EXPECTED_COMMIT: ${{ steps.published.outputs.upstream_commit }}
           EXPECTED_HASH: ${{ steps.published.outputs.sha256 }}
           EXPECTED_URL: ${{ steps.published.outputs.url }}
+          APP_NAME: ${{ steps.published.outputs.app }}
         run: |
           $ErrorActionPreference = 'Stop'
           $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
@@ -278,7 +279,7 @@ jobs:
             -ExpectedCommit $env:EXPECTED_COMMIT `
             -ExpectedHash $env:EXPECTED_HASH `
             -ExpectedUrl $env:EXPECTED_URL `
-            -AppName 'hermes-desktop-light-canary'
+            -AppName $env:APP_NAME
 
       - name: Upload small install evidence
         if: always()

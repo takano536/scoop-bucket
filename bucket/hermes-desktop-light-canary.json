@@ -16,7 +16,7 @@
         ]
     ],
     "checkver": {
-        "url": "https://raw.githubusercontent.com/takano536/scoop-bucket/main/metadata/hermes-desktop-light-canary-release.json",
+        "url": "https://raw.githubusercontent.com/takano536/scoop-bucket/main/metadata/hermes-desktop-light-release.json",
         "regex": "\"version\"\\s*:\\s*\"(?<version>\\d+\\.\\d+\\.\\d+\\.\\d+-alpha\\.dev\\.[1-9]\\d*-r[1-9]\\d*)\""
     },
     "autoupdate": {
@@ -24,7 +24,7 @@
             "64bit": {
                 "url": "https://github.com/takano536/scoop-bucket/releases/download/hermes-desktop-light%2Fv$matchVersion/hermes-desktop-light-$matchVersion-windows-x64.zip",
                 "hash": {
-                    "url": "https://raw.githubusercontent.com/takano536/scoop-bucket/main/metadata/hermes-desktop-light-canary-release.json",
+                    "url": "https://raw.githubusercontent.com/takano536/scoop-bucket/main/metadata/hermes-desktop-light-release.json",
                     "jsonpath": "$.sha256"
                 }
             }
