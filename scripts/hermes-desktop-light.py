@@ -451,6 +451,11 @@ def _desktop_provenance(feed: dict, channel: Channel = CHANNELS[DEFAULT_CHANNEL]
             raise ProvenanceError("Official Desktop stable feed did not name an immutable build tag")
     else:
         tag = _tag_for_product_version(feed["desktopVersion"])
+    # A stable build is admitted by the release claim ref (``rc.N-vX.Y.Z``):
+    # upstream preparation refuses to build it without the claim tag and its
+    # immutable annotated tag object.
+    if channel.name == "stable" and not re.fullmatch(r"rc\.[1-9]\d*-v\d+\.\d+\.\d+", tag):
+        raise ProvenanceError("Official Desktop stable archive tag is not a release claim tag")
     encoded_tag = quote(tag, safe="")
     commit, tag_object_sha = _annotated_tag_commit(tag, f"{channel.name} build")
     release_tag_name = _release_tag_for_build_tag(tag)
@@ -508,6 +513,8 @@ def _desktop_provenance(feed: dict, channel: Channel = CHANNELS[DEFAULT_CHANNEL]
         "desktopSourceTag": release_tag_name,
         "desktopCommit": commit,
         "desktopTagObject": tag_object_sha,
+        "desktopClaimTag": tag if channel.name == "stable" else "",
+        "desktopClaimObject": tag_object_sha if channel.name == "stable" else "",
         "desktopArtifactSha256": artifact_sha,
         "desktopArtifactSize": artifact_size,
         "desktopArtifactArchiveUrl": archive_artifact_url,
@@ -727,6 +734,8 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
         upstream_tag=provenance["desktopTag"],
         upstream_release_tag=provenance["desktopReleaseTag"],
         upstream_source_tag=provenance["desktopSourceTag"],
+        upstream_claim_tag=provenance["desktopClaimTag"],
+        upstream_claim_object=provenance["desktopClaimObject"],
         version=version,
         release_tag=release_tag(APP, version),
         artifact=artifact,
@@ -905,6 +914,8 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     source_ref = _commit(os.environ["SOURCE_REF"])
     upstream_tag = os.environ["UPSTREAM_TAG"]
     upstream_source_tag = os.environ["UPSTREAM_SOURCE_TAG"]
+    upstream_claim_tag = os.environ.get("UPSTREAM_CLAIM_TAG", "")
+    upstream_claim_object = os.environ.get("UPSTREAM_CLAIM_OBJECT", "")
     desktop_version = os.environ["DESKTOP_VERSION"]
     repository = _repository(os.environ["GITHUB_REPOSITORY"])
     expected_conditions = os.environ["CONDITIONS_FINGERPRINT"]
@@ -919,6 +930,8 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
         "desktopVersion": desktop_version,
         "desktopTag": upstream_tag,
         "desktopSourceTag": upstream_source_tag,
+        "desktopClaimTag": upstream_claim_tag,
+        "desktopClaimObject": upstream_claim_object,
         "desktopCommit": source_ref,
         "desktopFeedUrl": channel.feed_url,
     }.items()):
@@ -933,6 +946,8 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     if (
         record.get("desktopTag") != upstream_tag
         or record.get("desktopSourceTag") != upstream_source_tag
+        or record.get("desktopClaimTag", "") != upstream_claim_tag
+        or record.get("desktopClaimObject", "") != upstream_claim_object
         or record.get("desktopVersion") != desktop_version
     ):
         raise ValueError("Build provenance is not bound to the admitted Desktop release")

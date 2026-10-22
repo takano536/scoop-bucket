@@ -38,11 +38,23 @@ if ($channel -ceq 'canary') {
     if ($upstreamSourceTag -notmatch '^v\d+\.\d+\.\d+$') {
         throw 'Stable Desktop build needs an official release tag as its source tag'
     }
-    if ($upstreamTag -ceq $upstreamSourceTag) {
-        # A stable bundle archived directly under the release tag.
-    } elseif ($upstreamTag -notmatch "^rc\.[1-9][0-9]*-$([regex]::Escape($upstreamSourceTag))$") {
-        throw 'Stable Desktop build tag does not belong to the admitted release tag'
+    if ($upstreamTag -cnotmatch "^rc\.[1-9][0-9]*-$([regex]::Escape($upstreamSourceTag))$") {
+        throw 'Stable Desktop build tag is not the release claim of the admitted release tag'
     }
+}
+$claimTag = $env:UPSTREAM_CLAIM_TAG
+$claimObject = $env:UPSTREAM_CLAIM_OBJECT
+if ($channel -ceq 'stable') {
+    if ($claimTag -cne $upstreamTag -or $claimObject -notmatch '^[a-f0-9]{40}$') {
+        throw 'Stable Desktop build needs the release claim tag and its annotated tag object'
+    }
+    if ((git -C $source rev-parse "refs/tags/$claimTag").Trim() -cne $claimObject) {
+        throw 'Stable Desktop release claim tag does not resolve to the admitted tag object'
+    }
+    # Upstream preparation refuses a stable build without the claim it was
+    # published under; it also derives the reproducible build epoch from it.
+    $env:RELEASE_CLAIM_TAG = $claimTag
+    $env:RELEASE_CLAIM_OBJECT = $claimObject
 }
 $tagCommit = (git -C $source rev-parse "refs/tags/$upstreamSourceTag^{commit}").Trim()
 if ($tagCommit -cne $commit) {
@@ -96,6 +108,8 @@ $receipt = @{
     commit = $commit
     desktopTag = $upstreamTag
     desktopSourceTag = $upstreamSourceTag
+    desktopClaimTag = $claimTag
+    desktopClaimObject = $claimObject
     upstreamChannel = $channel
     desktopVersion = $desktopVersion
     desktopFeedUrl = $env:DESKTOP_FEED_URL

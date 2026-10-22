@@ -48,6 +48,8 @@ jobs:
       ref: ${{ steps.plan.outputs.ref }}
       upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
       upstream_source_tag: ${{ steps.plan.outputs.upstream_source_tag }}
+      upstream_claim_tag: ${{ steps.plan.outputs.upstream_claim_tag }}
+      upstream_claim_object: ${{ steps.plan.outputs.upstream_claim_object }}
       version: ${{ steps.plan.outputs.version }}
       release_tag: ${{ steps.plan.outputs.release_tag }}
       artifact: ${{ steps.plan.outputs.artifact }}
@@ -115,6 +117,8 @@ jobs:
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
           UPSTREAM_SOURCE_TAG: ${{ needs.plan.outputs.upstream_source_tag }}
+          UPSTREAM_CLAIM_TAG: ${{ needs.plan.outputs.upstream_claim_tag }}
+          UPSTREAM_CLAIM_OBJECT: ${{ needs.plan.outputs.upstream_claim_object }}
           UPSTREAM_CHANNEL: ${{ needs.plan.outputs.upstream_channel }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
@@ -213,6 +217,8 @@ jobs:
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
           UPSTREAM_SOURCE_TAG: ${{ needs.plan.outputs.upstream_source_tag }}
+          UPSTREAM_CLAIM_TAG: ${{ needs.plan.outputs.upstream_claim_tag }}
+          UPSTREAM_CLAIM_OBJECT: ${{ needs.plan.outputs.upstream_claim_object }}
           UPSTREAM_CHANNEL: ${{ needs.plan.outputs.upstream_channel }}
           DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
           DESKTOP_FEED_URL: ${{ needs.plan.outputs.desktop_feed_url }}

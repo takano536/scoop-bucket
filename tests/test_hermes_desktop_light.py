@@ -32,6 +32,8 @@ class FeedFixtures:
             "desktopTag": tag,
             "desktopReleaseTag": tag,
             "desktopSourceTag": tag,
+            "desktopClaimTag": "",
+            "desktopClaimObject": "",
             "desktopCommit": commit,
             "desktopTagObject": "b" * 40,
             "desktopArtifactSha256": "c" * 64,
@@ -443,6 +445,8 @@ class StableChannelTests(unittest.TestCase):
         self.assertEqual(provenance["desktopTag"], STABLE_BUILD_TAG)
         self.assertEqual(provenance["desktopReleaseTag"], STABLE_RELEASE_TAG)
         self.assertEqual(provenance["desktopSourceTag"], STABLE_RELEASE_TAG)
+        self.assertEqual(provenance["desktopClaimTag"], STABLE_BUILD_TAG)
+        self.assertEqual(provenance["desktopClaimObject"], "b" * 40)
         self.assertEqual(provenance["desktopCommit"], self.commit)
         self.assertEqual(provenance["desktopArtifactSha256"], "c" * 64)
         self.assertEqual(
@@ -476,6 +480,8 @@ class StableChannelTests(unittest.TestCase):
         self.assertEqual(values["upstream_tag"], STABLE_BUILD_TAG)
         self.assertEqual(values["upstream_release_tag"], STABLE_RELEASE_TAG)
         self.assertEqual(values["upstream_source_tag"], STABLE_RELEASE_TAG)
+        self.assertEqual(values["upstream_claim_tag"], STABLE_BUILD_TAG)
+        self.assertEqual(values["upstream_claim_object"], "b" * 40)
 
     def test_stable_handoff_ignores_the_store_submission_bundle(self):
         # The sideload bundle is the only downloadable artifact; a Store-only
@@ -499,6 +505,12 @@ class StableChannelTests(unittest.TestCase):
                 feed = light._desktop_feed(self.channel)
                 with self.assertRaises(light.ProvenanceError):
                     light._desktop_provenance(feed, self.channel)
+
+    def test_stable_archive_without_a_release_claim_tag_is_rejected(self):
+        with patch.object(light, "_http", side_effect=self.responses(tag=STABLE_RELEASE_TAG)):
+            feed = light._desktop_feed(self.channel)
+            with self.assertRaises(light.ProvenanceError):
+                light._desktop_provenance(feed, self.channel)
 
     def test_stable_feed_rejects_a_non_tag_archive_layout(self):
         artifact = (

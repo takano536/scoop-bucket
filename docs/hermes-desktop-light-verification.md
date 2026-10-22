@@ -9,7 +9,9 @@
   を使う。`MainBundle/@Version`、package URL/HEAD、R2
   `handoff-windows-universal.json`、`metadata-windows-x64.json`、channelのimmutable
   build tag/release tagを突き合わせ、published Desktop product versionからexact source
-  commitを決める。
+  commitを決める。stableのbuildはupstreamのrelease claim ref（`rc.<N>-vX.Y.Z`）とその
+  annotated tag objectを要求されるため、release tag（`vX.Y.Z`）を`--tag`に、claimを
+  `RELEASE_CLAIM_TAG`/`RELEASE_CLAIM_OBJECT`に渡す。
 - agentのGitHub Release、通常の`main` commit、commit-only R2 build、draftだけのtag、
   同一feedの再観測はnew Desktop releaseではない。API/metadataのunknown provenanceは
   unsupported skipではなくnon-zero failureである。
