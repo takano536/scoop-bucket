@@ -17,8 +17,9 @@ class PublishedExpectationTests(unittest.TestCase):
 
     REPOSITORY = "takano536/scoop-bucket"
 
-    def _publish_state(self, root, version, digest, commit):
+    def _publish_state(self, root, version, digest, commit, channel=None):
         """Write the manifest and pointer exactly as the publisher's writeback does."""
+        channel = channel or light.CHANNELS["canary"]
         (root / "bucket").mkdir(parents=True, exist_ok=True)
         (root / light.RELEASE_POINTER).parent.mkdir(parents=True, exist_ok=True)
         desktop_version = version.split("-", 1)[0]
@@ -28,7 +29,7 @@ class PublishedExpectationTests(unittest.TestCase):
             commit=commit,
             desktop_version=desktop_version,
             desktop_tag="v0.21.6+canary.20261011T070142Z",
-            desktop_feed_url=light.DESKTOP_FEED_URL,
+            desktop_feed_url=light.CANARY_FEED_URL,
             desktop_feed_etag='"etag"',
             desktop_feed_last_modified="Sun, 11 Oct 2026 08:00:00 GMT",
             desktop_artifact_url="https://example.invalid/HermesBundled.msixbundle",
@@ -37,8 +38,11 @@ class PublishedExpectationTests(unittest.TestCase):
             license_sha256="e" * 64,
             release_tag_value=light.release_tag(light.APP, version),
             artifact=light.artifact_name(light.APP, version),
+            channel=channel,
         )
-        data = light.manifest(version, self.REPOSITORY, digest, executable=pointer["executable"])
+        data = light.manifest(
+            version, self.REPOSITORY, digest, channel=channel, executable=pointer["executable"]
+        )
         (root / "bucket" / f"{light.APP}.json").write_text(json.dumps(data, indent=4), encoding="utf-8")
         (root / light.RELEASE_POINTER).write_text(json.dumps(pointer, indent=2), encoding="utf-8")
         return data, pointer
@@ -82,6 +86,27 @@ class PublishedExpectationTests(unittest.TestCase):
                 (root / light.RELEASE_POINTER).write_text(json.dumps(pointer), encoding="utf-8")
                 with self.assertRaises(ValueError):
                     light.published_expectations(root, self.REPOSITORY)
+
+
+    def test_expectations_follow_a_stable_channel_publish(self):
+        for version, digest, commit in (
+            ("2026.6864.2132.0-r1", "5" * 64, "6" * 40),
+        ):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                data, pointer = self._publish_state(
+                    root, version, digest, commit, light.CHANNELS["stable"]
+                )
+                self.assertEqual(pointer["upstreamChannel"], "stable")
+                self.assertEqual(
+                    light.published_expectations(root, self.REPOSITORY),
+                    {
+                        "version": version,
+                        "sha256": digest,
+                        "url": data["architecture"]["64bit"]["url"],
+                        "upstream_commit": commit,
+                    },
+                )
 
 
 if __name__ == "__main__":

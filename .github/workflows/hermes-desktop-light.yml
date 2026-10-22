@@ -5,6 +5,14 @@ on:
     - cron: '23 */4 * * *'
   workflow_dispatch:
     inputs:
+      channel:
+        description: 'Official Desktop channel to track'
+        type: choice
+        options:
+          - stable
+          - canary
+        default: stable
+        required: true
       revision:
         description: 'Distribution revision (r1 for a new Desktop release; r2+ only for an approved same-release fix)'
         type: string
@@ -34,10 +42,12 @@ jobs:
     outputs:
       build: ${{ steps.plan.outputs.build }}
       channel: ${{ steps.plan.outputs.channel }}
+      upstream_channel: ${{ steps.plan.outputs.upstream_channel }}
       status: ${{ steps.plan.outputs.status }}
       skip_reason: ${{ steps.plan.outputs.skip_reason }}
       ref: ${{ steps.plan.outputs.ref }}
       upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
+      upstream_source_tag: ${{ steps.plan.outputs.upstream_source_tag }}
       version: ${{ steps.plan.outputs.version }}
       release_tag: ${{ steps.plan.outputs.release_tag }}
       artifact: ${{ steps.plan.outputs.artifact }}
@@ -62,6 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUILD_REVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || '1' }}
           REVISION_EXPLICIT: ${{ github.event_name == 'workflow_dispatch' }}
+          UPSTREAM_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'stable' }}
         run: python3 scripts/hermes-desktop-light.py plan
       - name: Record unsupported-source reason
         if: steps.plan.outputs.status == 'unsupported'
@@ -103,6 +114,8 @@ jobs:
         env:
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
+          UPSTREAM_SOURCE_TAG: ${{ needs.plan.outputs.upstream_source_tag }}
+          UPSTREAM_CHANNEL: ${{ needs.plan.outputs.upstream_channel }}
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
           DESKTOP_FEED_URL: ${{ needs.plan.outputs.desktop_feed_url }}
@@ -199,6 +212,8 @@ jobs:
           PACKAGE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_REF: ${{ needs.plan.outputs.ref }}
           UPSTREAM_TAG: ${{ needs.plan.outputs.upstream_tag }}
+          UPSTREAM_SOURCE_TAG: ${{ needs.plan.outputs.upstream_source_tag }}
+          UPSTREAM_CHANNEL: ${{ needs.plan.outputs.upstream_channel }}
           DESKTOP_VERSION: ${{ needs.plan.outputs.desktop_version }}
           DESKTOP_FEED_URL: ${{ needs.plan.outputs.desktop_feed_url }}
           CONDITIONS_FINGERPRINT: ${{ needs.plan.outputs.conditions_fingerprint }}

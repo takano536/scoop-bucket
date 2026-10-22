@@ -14,6 +14,7 @@ import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
+from typing import NamedTuple
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -21,7 +22,7 @@ from distribution import (  # noqa: E402
     artifact_name,
     desktop_version_key,
     distribution_version_key,
-    light_version_key,
+    light_package_version,
     package_version,
     release_tag,
 )
@@ -29,12 +30,56 @@ from distribution import (  # noqa: E402
 UPSTREAM = "NousResearch/hermes-agent"
 APP = "hermes-desktop-light"
 DESKTOP_PUBLIC_BASE = "https://hermes-assets.nousresearch.com"
-DESKTOP_FEED_URL = f"{DESKTOP_PUBLIC_BASE}/releases/win32/canary/canary.appinstaller"
-DESKTOP_FEED_PATH = "releases/win32/canary/canary.appinstaller"
 DESKTOP_VERSION_PATTERN = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
 CANARY_TAG = re.compile(r"^v[^+\s]+\+canary\.(20\d{6}T\d{6}Z)$")
+# Stable Desktop bundles are archived under the build tag that produced them.
+# They are cut from a release candidate, so the immutable build tag keeps the
+# ``rc.N-`` prefix while the package metadata names the published release.
+STABLE_BUILD_TAG = re.compile(r"^(?:rc\.[1-9]\d*-)?v\d+\.\d+\.\d+$")
 FULL_SHA = re.compile(r"^[a-f0-9]{40}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
+
+
+class Channel(NamedTuple):
+    """One official Desktop Windows channel that the Light build can track."""
+
+    name: str
+    feed_path: str
+    executable: str
+    product_identity: str
+
+    @property
+    def feed_url(self) -> str:
+        return f"{DESKTOP_PUBLIC_BASE}/{self.feed_path}"
+
+
+CHANNELS = {
+    "canary": Channel(
+        name="canary",
+        feed_path="releases/win32/canary/canary.appinstaller",
+        executable="hermes-light-canary.exe",
+        product_identity="NousResearch.HermesBundledCanary",
+    ),
+    "stable": Channel(
+        name="stable",
+        feed_path="releases/win32/stable/stable.appinstaller",
+        executable="Hermes Light.exe",
+        product_identity="NousResearch.HermesBundled",
+    ),
+}
+DEFAULT_CHANNEL = "stable"
+# Canary names kept for callers that still target the pre-stable channel.
+CANARY_FEED_URL = CHANNELS["canary"].feed_url
+
+
+def channel_for(name: str | None) -> Channel:
+    """Resolve one official Desktop channel by name, failing closed."""
+    resolved = (name or DEFAULT_CHANNEL).strip()
+    if resolved not in CHANNELS:
+        raise ValueError(f"Unknown official Desktop channel: {resolved!r}")
+    return CHANNELS[resolved]
+
+
 RELEASE_POINTER = Path("metadata/hermes-desktop-light-release.json")
 NOTICE_PATHS = {
     "upstreamLicense": "LICENSE",
@@ -84,28 +129,36 @@ def _download_url(repository: str, tag: str, name: str) -> str:
     return f"https://github.com/{_repository(repository)}/releases/download/{quote(tag, safe='')}/{name}"
 
 
-def _light_executable() -> str:
-    # The official canary product identity appends -canary to the executable.
-    return "hermes-light-canary.exe"
-
-
-def manifest(version: str, repository: str, digest: str, *, executable: str = _light_executable()) -> dict:
+def manifest(
+    version: str,
+    repository: str,
+    digest: str,
+    *,
+    channel: Channel = CHANNELS[DEFAULT_CHANNEL],
+    executable: str | None = None,
+) -> dict:
     """Return the installable manifest for one immutable unofficial build."""
-    light_version_key(version)
+    light_package_version(version)
     digest = _digest(digest)
+    executable = executable or channel.executable
     name = artifact_name(APP, version)
     tag = release_tag(APP, version)
     pointer = f"https://raw.githubusercontent.com/{_repository(repository)}/main/{RELEASE_POINTER.as_posix()}"
+    version_pattern = (
+        r"\d+\.\d+\.\d+\.\d+-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
+        if channel.name == "canary"
+        else r"\d+\.\d+\.\d+\.\d+-r[1-9]\d*"
+    )
     return {
         "version": version,
-        "description": "Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop canary",
+        "description": "Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop " + channel.name,
         "homepage": "https://github.com/NousResearch/hermes-agent",
         "license": "MIT",
         "architecture": {"64bit": {"url": _download_url(repository, tag, name), "hash": digest}},
         "shortcuts": [[executable, "Hermes Desktop Light (Unofficial)"]],
         "checkver": {
             "url": pointer,
-            "regex": r'"version"\s*:\s*"(?<version>\d+\.\d+\.\d+\.\d+-alpha\.dev\.[1-9]\d*-r[1-9]\d*)"',
+            "regex": rf'"version"\s*:\s*"(?<version>{version_pattern})"',
         },
         "autoupdate": {
             "architecture": {
@@ -114,11 +167,11 @@ def manifest(version: str, repository: str, digest: str, *, executable: str = _l
                     "hash": {"url": pointer, "jsonpath": "$.sha256"},
                 }
             },
-            "shortcuts": [[_light_executable(), "Hermes Desktop Light (Unofficial)"]],
+            "shortcuts": [[executable, "Hermes Desktop Light (Unofficial)"]],
         },
         "notes": (
             "Unofficial unsigned x64 Light build based on the officially published Hermes Desktop "
-            "canary source. The upstream source channel and this bucket's unofficial Light distribution "
+            f"{channel.name} source. The upstream source channel and this bucket's unofficial Light distribution "
             "are separate; no local Python or agent is bundled. Connect to an existing Hermes gateway."
         ),
     }
@@ -140,9 +193,10 @@ def release_pointer(
     license_sha256: str,
     release_tag_value: str,
     artifact: str,
+    channel: Channel = CHANNELS[DEFAULT_CHANNEL],
     bucket_commit: str = "",
 ) -> dict:
-    light_version_key(version)
+    light_package_version(version)
     _digest(digest)
     _commit(commit)
     desktop_version_key(desktop_version)
@@ -155,7 +209,7 @@ def release_pointer(
         "schema": 2,
         "channel": "desktop-release",
         "distribution": "unofficial-light",
-        "upstreamChannel": "canary",
+        "upstreamChannel": channel.name,
         "version": version,
         "sha256": digest,
         "commit": commit,
@@ -169,7 +223,7 @@ def release_pointer(
         "desktopArtifactSha256": desktop_artifact_sha256,
         "releaseTag": release_tag_value,
         "artifact": artifact,
-        "executable": _light_executable(),
+        "executable": channel.executable,
         "conditionsFingerprint": conditions_fingerprint,
         "bucketCommit": bucket_commit,
         "licenseSha256": license_sha256,
@@ -177,19 +231,35 @@ def release_pointer(
 
 
 def provenance_manifest(record: dict, repository: str) -> dict:
-    return manifest(record["version"], repository, record["sha256"], executable=record["executable"])
+    channel = channel_for(record.get("upstreamChannel"))
+    return manifest(
+        record["version"],
+        repository,
+        record["sha256"],
+        channel=channel,
+        executable=record["executable"],
+    )
 
 
-def _release_notes(record: dict, live: dict, upstream_tag: str, source_ref: str, desktop_version: str) -> str:
+def _release_notes(
+    record: dict,
+    live: dict,
+    upstream_tag: str,
+    source_ref: str,
+    desktop_version: str,
+    channel: Channel = CHANNELS[DEFAULT_CHANNEL],
+) -> str:
     return (
         f"Unofficial Hermes Desktop Light build for officially published Desktop {desktop_version}.\n\n"
         f"Official Desktop distribution source: {live['desktopSourceUrl']}\n"
-        f"Official Desktop tag: `{upstream_tag}`\n"
+        f"Official Desktop channel: `{channel.name}`\n"
+        f"Official Desktop build tag: `{upstream_tag}`\n"
+        f"Official Desktop source tag: `{record.get('desktopSourceTag', upstream_tag)}`\n"
         f"Upstream commit: `{source_ref}`\n"
         f"Bucket build commit: `{record.get('bucketCommit', 'unknown')}`\n"
         f"Desktop package SHA256: `{live['desktopArtifactSha256']}`\n"
         f"Light artifact SHA256: `{record['sha256']}`\n\n"
-        "This is an unofficial unsigned Light build; the upstream source is a published canary and "
+        f"This is an unofficial unsigned Light build; the upstream source is a published {channel.name} build and "
         "the bucket distribution is not an official Light asset. It contains no local Python or agent."
     )
 
@@ -261,8 +331,8 @@ def _repository_tags() -> list[dict]:
     return rows
 
 
-def _desktop_feed() -> dict:
-    body, headers = _http(DESKTOP_FEED_URL)
+def _desktop_feed(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> dict:
+    body, headers = _http(channel.feed_url)
     try:
         root = ET.fromstring(body)
     except ET.ParseError as exc:
@@ -277,22 +347,48 @@ def _desktop_feed() -> dict:
         raise ProvenanceError(f"Official Desktop product version is not a four-component version: {version!r}")
     desktop_version_key(version)
     artifact_url = main.attrib.get("Uri", "")
-    expected_prefix = f"{DESKTOP_PUBLIC_BASE}/releases/win32/canary/HermesBundled-"
-    expected_suffix = "-win.msixbundle"
-    if not (artifact_url.startswith(expected_prefix) and artifact_url.endswith(expected_suffix)):
-        raise ProvenanceError("Official Desktop feed points outside the known canary artifact layout")
-    if artifact_url != f"{expected_prefix}{version}{expected_suffix}":
-        raise ProvenanceError("Official Desktop feed artifact does not match its product version")
+    layout = _bundle_layout(channel, artifact_url, version)
     _, artifact_headers = _http(artifact_url, method="HEAD")
     return {
         "desktopVersion": version,
-        "desktopFeedUrl": DESKTOP_FEED_URL,
+        "desktopFeedUrl": channel.feed_url,
+        "desktopFeedPath": channel.feed_path,
         "desktopFeedEtag": headers.get("etag", ""),
         "desktopFeedLastModified": headers.get("last-modified", ""),
         "desktopArtifactUrl": artifact_url,
         "desktopArtifactSize": int(artifact_headers.get("content-length", "0") or 0),
         "desktopArtifactEtag": artifact_headers.get("etag", ""),
         "desktopArtifactLastModified": artifact_headers.get("last-modified", ""),
+        **layout,
+    }
+
+
+def _bundle_layout(channel: Channel, artifact_url: str, version: str) -> dict:
+    """Validate the feed's bundle location for the channel.
+
+    The canary channel serves bundles from a mutable channel directory, so the
+    immutable build tag is recovered from the product version (see
+    :func:`_tag_for_product_version`).  The stable channel archives bundles
+    under the immutable build tag itself, so the feed URI already carries the
+    provenance the canary path has to look up.
+    """
+    name = f"HermesBundled-{version}-win.msixbundle"
+    parsed = urlsplit(artifact_url)
+    if f"{parsed.scheme}://{parsed.netloc}" != DESKTOP_PUBLIC_BASE:
+        raise ProvenanceError("Official Desktop feed points outside the published asset host")
+    if channel.name == "canary":
+        if parsed.path != f"/releases/win32/canary/{name}":
+            raise ProvenanceError("Official Desktop feed points outside the known canary artifact layout")
+        return {}
+    match = re.fullmatch(r"/releases/tag/(?P<tag>[A-Za-z0-9][A-Za-z0-9._+-]*)/(?P<name>[^/]+)", parsed.path)
+    if match is None or match.group("name") != name:
+        raise ProvenanceError("Official Desktop feed points outside the known stable tag archive layout")
+    tag = match.group("tag")
+    if not STABLE_BUILD_TAG.fullmatch(tag):
+        raise ProvenanceError(f"Official Desktop stable archive tag is not an official build tag: {tag!r}")
+    return {
+        "desktopBuildTag": tag,
+        "desktopArchiveBase": f"{DESKTOP_PUBLIC_BASE}/releases/tag/{quote(tag, safe='')}",
     }
 
 
@@ -312,20 +408,60 @@ def _tag_for_product_version(version: str) -> str:
     return matches[0]
 
 
-def _desktop_provenance(feed: dict) -> dict:
-    tag = _tag_for_product_version(feed["desktopVersion"])
+def _annotated_tag_commit(tag: str, label: str) -> tuple[str, str]:
+    """Resolve an immutable annotated upstream tag to its commit."""
     encoded_tag = quote(tag, safe="")
     ref = api(f"repos/{UPSTREAM}/git/ref/tags/{encoded_tag}")
     obj = ref.get("object", {}) if isinstance(ref, dict) else {}
     if obj.get("type") != "tag" or not FULL_SHA.fullmatch(obj.get("sha", "")):
-        raise ProvenanceError(f"Desktop canary tag {tag} is not an immutable annotated tag")
+        raise ProvenanceError(f"Desktop {label} tag {tag} is not an immutable annotated tag")
     tag_object = api(f"repos/{UPSTREAM}/git/tags/{obj['sha']}")
     peeled = tag_object.get("object", {}) if isinstance(tag_object, dict) else {}
     commit = _commit(peeled.get("sha", "")) if peeled.get("type") == "commit" else ""
     if not commit:
-        raise ProvenanceError(f"Desktop canary tag {tag} did not resolve to a commit")
+        raise ProvenanceError(f"Desktop {label} tag {tag} did not resolve to a commit")
+    return commit, obj["sha"]
 
-    archive_base = f"{DESKTOP_PUBLIC_BASE}/releases/tag/{encoded_tag}"
+
+def _release_tag_for_build_tag(tag: str) -> str:
+    """Return the published release tag a stable build tag was cut from."""
+    match = re.fullmatch(r"rc\.[1-9]\d*-(v\d+\.\d+\.\d+)", tag)
+    return match.group(1) if match else tag
+
+
+def _handoff_artifact(files, expected_name: str, channel: Channel) -> dict:
+    """Return the sideload bundle row a channel publishes for this version."""
+    if not isinstance(files, list) or not files or not all(isinstance(row, dict) for row in files):
+        raise ProvenanceError("Desktop handoff receipt has no Windows universal artifact")
+    selected = [row for row in files if row.get("path") == expected_name]
+    if len(selected) != 1:
+        raise ProvenanceError("Desktop handoff receipt does not name the published feed artifact exactly once")
+    extra = [row for row in files if row.get("path") != expected_name]
+    # The stable channel also stages a Store-submission bundle.  It is never
+    # distributed by this bucket and must not be mistaken for the sideload one.
+    if any(not str(row.get("path", "")).startswith("Store-") for row in extra):
+        raise ProvenanceError("Desktop handoff receipt carries artifacts this channel does not publish")
+    return selected[0]
+
+
+def _desktop_provenance(feed: dict, channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> dict:
+    if channel.name == "stable":
+        tag = feed.get("desktopBuildTag", "")
+        if not STABLE_BUILD_TAG.fullmatch(tag or ""):
+            raise ProvenanceError("Official Desktop stable feed did not name an immutable build tag")
+    else:
+        tag = _tag_for_product_version(feed["desktopVersion"])
+    encoded_tag = quote(tag, safe="")
+    commit, tag_object_sha = _annotated_tag_commit(tag, f"{channel.name} build")
+    release_tag_name = _release_tag_for_build_tag(tag)
+    if release_tag_name != tag:
+        release_commit, _ = _annotated_tag_commit(release_tag_name, "release")
+        if release_commit != commit:
+            raise ProvenanceError("Desktop release tag does not point at the stable build commit")
+
+    archive_base = feed.get("desktopArchiveBase") or f"{DESKTOP_PUBLIC_BASE}/releases/tag/{encoded_tag}"
+    if archive_base != f"{DESKTOP_PUBLIC_BASE}/releases/tag/{encoded_tag}":
+        raise ProvenanceError("Official Desktop feed archive path does not match its build tag")
     handoff_url = f"{archive_base}/handoff-windows-universal.json"
     handoff, handoff_headers = _json_url(handoff_url)
     if (
@@ -335,18 +471,15 @@ def _desktop_provenance(feed: dict) -> dict:
         or handoff.get("name") != "windows-universal"
     ):
         raise ProvenanceError("Desktop handoff receipt does not bind the official tag and source commit")
-    files = handoff.get("files")
-    if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], dict):
-        raise ProvenanceError("Desktop handoff receipt has no unique Windows universal artifact")
-    file_row = files[0]
     expected_name = f"HermesBundled-{feed['desktopVersion']}-win.msixbundle"
-    if file_row.get("path") != expected_name:
-        raise ProvenanceError("Desktop handoff artifact does not match the published feed version")
+    file_row = _handoff_artifact(handoff.get("files"), expected_name, channel)
     artifact_sha = _digest(file_row.get("sha256", ""))
     artifact_size = int(file_row.get("size", 0))
     if artifact_size <= 0 or feed.get("desktopArtifactSize") != artifact_size:
         raise ProvenanceError("Desktop feed artifact size differs from its immutable handoff receipt")
     archive_artifact_url = f"{archive_base}/{quote(expected_name, safe='')}"
+    if channel.name == "stable" and archive_artifact_url != feed.get("desktopArtifactUrl"):
+        raise ProvenanceError("Official Desktop feed artifact does not match its immutable tag archive")
     _, archive_artifact_headers = _http(archive_artifact_url, method="HEAD")
     archive_size = int(archive_artifact_headers.get("content-length", "0") or 0)
     if archive_size != artifact_size:
@@ -359,7 +492,8 @@ def _desktop_provenance(feed: dict) -> dict:
     metadata, metadata_headers = _json_url(metadata_url)
     expected_metadata = {
         "commit": commit,
-        "tag": tag,
+        "tag": release_tag_name,
+        "identity": channel.product_identity,
         "platform": "windows",
         "arch": "x64",
         "version": feed["desktopVersion"],
@@ -370,8 +504,10 @@ def _desktop_provenance(feed: dict) -> dict:
     return {
         **feed,
         "desktopTag": tag,
+        "desktopReleaseTag": release_tag_name,
+        "desktopSourceTag": release_tag_name,
         "desktopCommit": commit,
-        "desktopTagObject": obj["sha"],
+        "desktopTagObject": tag_object_sha,
         "desktopArtifactSha256": artifact_sha,
         "desktopArtifactSize": artifact_size,
         "desktopArtifactArchiveUrl": archive_artifact_url,
@@ -382,8 +518,8 @@ def _desktop_provenance(feed: dict) -> dict:
         "desktopMetadataUrl": metadata_url,
         "desktopMetadataEtag": metadata_headers.get("etag", ""),
         "desktopMetadataLastModified": metadata_headers.get("last-modified", ""),
-        "desktopSourceUrl": DESKTOP_FEED_URL,
-        "upstreamTagUrl": f"https://github.com/{UPSTREAM}/tree/{quote(tag, safe='')}" ,
+        "desktopSourceUrl": channel.feed_url,
+        "upstreamTagUrl": f"https://github.com/{UPSTREAM}/tree/{quote(release_tag_name, safe='')}",
     }
 
 
@@ -458,6 +594,14 @@ def _condition_input_paths(root):
     return sorted((path.relative_to(root).as_posix(), path) for path in paths)
 
 
+def _desktop_product(package: str) -> str:
+    """Return the upstream four-component product version of a Light version."""
+    match = re.fullmatch(rf"({DESKTOP_VERSION_PATTERN})(?:-alpha\.dev\.1)?-r[1-9]\d*", package or "")
+    if not match:
+        raise ValueError("Invalid Desktop Light distribution version")
+    return match.group(1)
+
+
 def conditions_descriptor(commit: str, desktop_tag: str = "", package: str = "", root=None) -> dict:
     root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
     files = {relative: hashlib.sha256(path.read_bytes()).hexdigest() for relative, path in _condition_input_paths(root)}
@@ -468,7 +612,7 @@ def conditions_descriptor(commit: str, desktop_tag: str = "", package: str = "",
         "upstream": UPSTREAM,
         "upstreamRef": desktop_tag,
         "commit": _commit(commit),
-        "desktopVersion": package.split("-alpha.dev.", 1)[0] if package else "",
+        "desktopVersion": _desktop_product(package),
         "variant": "light",
         "target": "win32-x64",
         "buildMode": "tag",
@@ -524,40 +668,42 @@ def _current_version() -> str | None:
     return value
 
 
-def _plan_desktop() -> None:
+def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     event = os.environ.get("GITHUB_EVENT_NAME", "")
-    feed = _desktop_feed()
-    provenance = _desktop_provenance(feed)
+    feed = _desktop_feed(channel)
+    provenance = _desktop_provenance(feed, channel)
     desktop_version = provenance["desktopVersion"]
     requested_revision = _revision(os.environ.get("BUILD_REVISION", "1"))
     explicit = os.environ.get("REVISION_EXPLICIT") == "true"
-    version = package_version(desktop_version, requested_revision)
+    version = package_version(desktop_version, requested_revision, channel.name)
     current = _current_version()
     candidate_key = distribution_version_key(version)
     if current is not None and distribution_version_key(current) > candidate_key:
         print(f"Current manifest {current} is newer than observed Desktop release {version}; no build")
-        output(build="false", channel="desktop-release", status="already-current")
+        output(build="false", channel="desktop-release", upstream_channel=channel.name, status="already-current")
         return
 
     pointer = _read_json(RELEASE_POINTER)
     same_release = isinstance(pointer, dict) and pointer.get("desktopTag") == provenance["desktopTag"] and pointer.get("commit") == provenance["desktopCommit"]
-    fingerprint = conditions_fingerprint(provenance["desktopCommit"], provenance["desktopTag"], version)
+    fingerprint = conditions_fingerprint(
+        provenance["desktopCommit"], provenance["desktopSourceTag"], version
+    )
     if same_release:
         previous_revision = _revision(pointer.get("version", "").rsplit("-r", 1)[-1]) if isinstance(pointer.get("version"), str) else 0
         if pointer.get("conditionsFingerprint") == fingerprint and requested_revision <= previous_revision:
             print("The same published Desktop build and build conditions are already current")
-            output(build="false", channel="desktop-release", status="idempotent")
+            output(build="false", channel="desktop-release", upstream_channel=channel.name, status="idempotent")
             return
         if requested_revision > previous_revision and not explicit:
             if event == "schedule":
                 print("Same Desktop release requires explicit workflow_dispatch for a revision bump")
-                output(build="false", channel="desktop-release", status="revision-required")
+                output(build="false", channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
             raise ValueError("A same-Desktop-release rebuild requires workflow_dispatch with a higher revision")
         if requested_revision <= previous_revision:
             if event == "schedule":
                 print("Desktop-release build conditions changed; scheduled run waits for an explicit revision")
-                output(build="false", channel="desktop-release", status="revision-required")
+                output(build="false", channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
             raise ValueError("A same-Desktop-release rebuild requires workflow_dispatch with a higher revision")
     elif requested_revision != 1:
@@ -568,16 +714,19 @@ def _plan_desktop() -> None:
     if not supports_light(provenance["desktopCommit"]):
         reason = f"unsupported-source:{provenance['desktopTag']}:{provenance['desktopCommit']}"
         print(f"::notice::Skipping official Desktop release {provenance['desktopTag']}: {reason}")
-        output(build="false", channel="desktop-release", status="unsupported", skip_reason=reason)
+        output(build="false", channel="desktop-release", upstream_channel=channel.name, status="unsupported", skip_reason=reason)
         return
     exact_license_sha = license_sha(provenance["desktopCommit"])
     artifact = artifact_name(APP, version)
     output(
         build="true",
         channel="desktop-release",
+        upstream_channel=channel.name,
         status="new-desktop-release",
         ref=provenance["desktopCommit"],
         upstream_tag=provenance["desktopTag"],
+        upstream_release_tag=provenance["desktopReleaseTag"],
+        upstream_source_tag=provenance["desktopSourceTag"],
         version=version,
         release_tag=release_tag(APP, version),
         artifact=artifact,
@@ -594,10 +743,10 @@ def _plan_desktop() -> None:
     )
 
 
-def plan() -> None:
-    # Every trigger uses the official Desktop feed.  In particular, scheduled
+def plan(channel: Channel | None = None) -> None:
+    # Every trigger uses one official Desktop feed.  In particular, scheduled
     # runs never resolve or build upstream main.
-    _plan_desktop()
+    _plan_desktop(channel or channel_for(os.environ.get("UPSTREAM_CHANNEL")))
 
 
 def _verify_common_stamp(archive, record: dict) -> None:
@@ -624,10 +773,19 @@ def verify_acceptance_evidence(record: dict, version: str, source_ref: str) -> N
         raise ValueError("Acceptance evidence artifact mismatch")
 
 
-def verify_artifact(root: Path, record: dict, version: str, source_ref: str, channel="desktop-release", expected_conditions=None) -> Path:
+def verify_artifact(
+    root: Path,
+    record: dict,
+    version: str,
+    source_ref: str,
+    channel="desktop-release",
+    expected_conditions=None,
+    upstream: Channel | None = None,
+) -> Path:
     import zipfile
 
-    light_version_key(version)
+    upstream = upstream or channel_for(record.get("upstreamChannel"))
+    light_package_version(version)
     source_ref = _commit(source_ref)
     expected_name = artifact_name(APP, version)
     expected = {
@@ -640,11 +798,11 @@ def verify_artifact(root: Path, record: dict, version: str, source_ref: str, cha
         "development": True,
         "channel": "desktop-release",
         "distribution": "unofficial-light",
-        "upstreamChannel": "canary",
+        "upstreamChannel": upstream.name,
         "payload": "light",
         "updateMechanism": "external",
         "artifact": expected_name,
-        "executable": _light_executable(),
+        "executable": upstream.executable,
         "smoke": "two native launches; renderer loaded; localStorage retained",
     }
     if channel != "desktop-release":
@@ -660,7 +818,7 @@ def verify_artifact(root: Path, record: dict, version: str, source_ref: str, cha
         raise ValueError("Artifact digest mismatch")
     with zipfile.ZipFile(artifact) as archive:
         names = set(archive.namelist())
-        required = {_light_executable(), "resources/app.asar", "LICENSE.electron.txt", "LICENSES.chromium.html", *NOTICE_PATHS.values()}
+        required = {upstream.executable, "resources/app.asar", "LICENSE.electron.txt", "LICENSES.chromium.html", *NOTICE_PATHS.values()}
         if not required <= names or any(name.startswith("resources/agent-payload/") for name in names):
             raise ValueError("Invalid Light package contents")
         if archive.testzip() is not None:
@@ -739,28 +897,30 @@ def _writeback(data: dict, pointer: dict, version: str, repository: str) -> None
     raise RuntimeError("Manifest push failed; published artifact is retained for retry")
 
 
-def _publish_desktop() -> None:
+def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     import tempfile
     import urllib.request
 
     version = os.environ["PACKAGE_VERSION"]
     source_ref = _commit(os.environ["SOURCE_REF"])
     upstream_tag = os.environ["UPSTREAM_TAG"]
+    upstream_source_tag = os.environ["UPSTREAM_SOURCE_TAG"]
     desktop_version = os.environ["DESKTOP_VERSION"]
     repository = _repository(os.environ["GITHUB_REPOSITORY"])
     expected_conditions = os.environ["CONDITIONS_FINGERPRINT"]
     license_digest = _digest(os.environ["LICENSE_SHA256"])
-    if package_version(desktop_version, _revision(version.rsplit("-r", 1)[-1])) != version:
+    if package_version(desktop_version, _revision(version.rsplit("-r", 1)[-1]), channel.name) != version:
         raise ValueError("Desktop release package version is malformed")
 
     # Re-read the mutable feed and immutable handoff immediately before any
     # Release mutation.  A feed advancing during build is a hard failure.
-    live = _desktop_provenance(_desktop_feed())
+    live = _desktop_provenance(_desktop_feed(channel), channel)
     if any(live.get(key) != expected for key, expected in {
         "desktopVersion": desktop_version,
         "desktopTag": upstream_tag,
+        "desktopSourceTag": upstream_source_tag,
         "desktopCommit": source_ref,
-        "desktopFeedUrl": os.environ.get("DESKTOP_FEED_URL", DESKTOP_FEED_URL),
+        "desktopFeedUrl": channel.feed_url,
     }.items()):
         raise ProvenanceError("Official Desktop release advanced or changed during the Light build")
 
@@ -769,8 +929,12 @@ def _publish_desktop() -> None:
     verify_acceptance_evidence(record, version, source_ref)
     if record.get("licenseSha256") != license_digest:
         raise ValueError("Build license digest does not match the admitted Desktop release commit")
-    artifact = verify_artifact(root, record, version, source_ref, expected_conditions=expected_conditions)
-    if record.get("desktopTag") != upstream_tag or record.get("desktopVersion") != desktop_version:
+    artifact = verify_artifact(root, record, version, source_ref, expected_conditions=expected_conditions, upstream=channel)
+    if (
+        record.get("desktopTag") != upstream_tag
+        or record.get("desktopSourceTag") != upstream_source_tag
+        or record.get("desktopVersion") != desktop_version
+    ):
         raise ValueError("Build provenance is not bound to the admitted Desktop release")
 
     tag = release_tag(APP, version)
@@ -778,7 +942,7 @@ def _publish_desktop() -> None:
     existing = next((row for row in rows if row.get("tag_name") == tag), None)
     reusing = existing is not None
     if not reusing:
-        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
+        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version, channel)
         created = api_write(
             f"repos/{repository}/releases",
             "POST",
@@ -804,7 +968,7 @@ def _publish_desktop() -> None:
     if not isinstance(release_id, int):
         raise ValueError("Light draft release has no immutable release id")
     if reusing and existing.get("draft") is True:
-        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version)
+        notes = _release_notes(record, live, upstream_tag, source_ref, desktop_version, channel)
         api_write(
             f"repos/{repository}/releases/{release_id}",
             "PATCH",
@@ -849,14 +1013,15 @@ def _publish_desktop() -> None:
         license_sha256=license_digest,
         release_tag_value=tag,
         artifact=record["artifact"],
+        channel=channel,
         bucket_commit=record.get("bucketCommit", ""),
     )
     _writeback(data, pointer, version, repository)
 
 
-def publish() -> None:
+def publish(channel: Channel | None = None) -> None:
     _trusted_publish_gate()
-    _publish_desktop()
+    _publish_desktop(channel or channel_for(os.environ.get("UPSTREAM_CHANNEL")))
 
 
 def published_expectations(bucket_root: Path, repository: str) -> dict:
@@ -871,7 +1036,14 @@ def published_expectations(bucket_root: Path, repository: str) -> dict:
     if not isinstance(pointer, dict) or not isinstance(published, dict):
         raise ValueError("Published bucket has no Light manifest and release pointer")
     version = pointer.get("version", "")
-    expected = manifest(version, repository, pointer.get("sha256", ""), executable=pointer.get("executable", ""))
+    channel = channel_for(pointer.get("upstreamChannel"))
+    expected = manifest(
+        version,
+        repository,
+        pointer.get("sha256", ""),
+        channel=channel,
+        executable=pointer.get("executable", ""),
+    )
     if pointer.get("releaseTag") != release_tag(APP, version) or pointer.get("artifact") != artifact_name(APP, version):
         raise ValueError("Published release pointer does not name its own immutable Release asset")
     for key in ("version", "architecture", "shortcuts"):
@@ -890,12 +1062,19 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "publish", "published-expectations"))
     parser.add_argument("--bucket-root", type=Path, default=Path("."), help="bucket checkout for published-expectations")
+    parser.add_argument(
+        "--channel",
+        choices=tuple(CHANNELS),
+        default=None,
+        help="official Desktop channel to track (default: UPSTREAM_CHANNEL or stable)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "published-expectations":
             output(**published_expectations(args.bucket_root, _repository(os.environ["GITHUB_REPOSITORY"])))
         else:
-            {"plan": plan, "publish": publish}[args.command]()
+            command = {"plan": plan, "publish": publish}[args.command]
+            command(channel_for(args.channel or os.environ.get("UPSTREAM_CHANNEL")))
     except ProvenanceError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 2

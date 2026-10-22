@@ -29,6 +29,34 @@ class DistributionTests(unittest.TestCase):
         self.assertLess(distribution.distribution_version_key(light), distribution.distribution_version_key(stable))
         self.assertLess(distribution.distribution_version_key(stable), distribution.distribution_version_key(future))
 
+    def test_stable_channel_keeps_the_product_version_without_the_dev_marker(self):
+        version = distribution.package_version("2026.6864.2132.0", 1, "stable")
+        self.assertEqual(version, "2026.6864.2132.0-r1")
+        self.assertEqual(
+            distribution.release_tag("hermes-desktop-light", version),
+            f"hermes-desktop-light/v{version}",
+        )
+        self.assertEqual(
+            distribution.artifact_name("hermes-desktop-light", version),
+            f"hermes-desktop-light-{version}-windows-x64.zip",
+        )
+        self.assertEqual(distribution.package_version("2026.6864.2132.0", 2, "canary"), "2026.6864.2132.0-alpha.dev.1-r2")
+        self.assertLess(
+            distribution.distribution_version_key("2026.6864.2132.0-alpha.dev.1-r2"),
+            distribution.distribution_version_key("2026.6864.2132.0-r1"),
+        )
+        self.assertLess(
+            distribution.distribution_version_key("26.1014.7.54-alpha.dev.1-r1"),
+            distribution.distribution_version_key("2026.6864.2132.0-r1"),
+        )
+
+    def test_unknown_channel_or_stable_identity_fails_closed(self):
+        with self.assertRaises(ValueError):
+            distribution.package_version("2026.6864.2132.0", 1, "beta")
+        for version in ("2026.6864.2132.0-r0", "2026.6864.2132.0-alpha.dev.1", "2026.6864.2132.0-alpha.dev.1-r1-extra"):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                distribution.light_package_version(version)
+
     def test_invalid_identities_fail_closed(self):
         for version in (
             "26.1009.7",

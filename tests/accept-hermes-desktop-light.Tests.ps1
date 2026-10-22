@@ -54,6 +54,26 @@ Describe 'Hermes Desktop Light updater channel expectations' {
 
         Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '26.1009.7.410-alpha.dev.1-r1' | Should -BeFalse
     }
+    It 'maps an official stable Desktop release to external non-preview acceptance' {
+        $receipt = [pscustomobject]@{
+            channel = 'desktop-release'
+            development = $true
+            upstreamChannel = 'stable'
+            preview = $false
+        }
+
+        Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '2026.6864.2132.0-r1' | Should -BeFalse
+    }
+    It 'rejects a Desktop receipt whose upstream channel is not official' {
+        $receipt = [pscustomobject]@{
+            channel = 'desktop-release'
+            development = $true
+            upstreamChannel = 'beta'
+            preview = $false
+        }
+
+        { Get-HermesAcceptanceDevelopmentMode -Receipt $receipt -PackageVersion '2026.6864.2132.0-r1' } | Should -Throw
+    }
 
 
     It 'maps a stable receipt to bundled-not-appinstaller' {

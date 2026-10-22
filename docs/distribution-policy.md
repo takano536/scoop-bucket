@@ -28,9 +28,10 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
   claimまたはadmission条件、外部サービスなどの実行条件を確認する。これらを他の
   アプリへ推測で適用しない。
 - `scripts/distribution.py`のHermes Desktop Light helperは、公式Desktopの4要素product
-  version（例`26.1009.7.410`）を受け取り、`<desktop>-alpha.dev.1-r<N>`を生成する。
-  既存の`0.0.0-alpha.dev.1-r1`も比較でき、通常のScoop更新で新形式へ進める。
-  他のアプリ・CalVer・stable versionを推測でこのhelperへ渡さない。
+  version（例`26.1009.7.410`、`2026.6864.2132.0`）とchannelを受け取り、stableは
+  `<desktop>-r<N>`、canaryは`<desktop>-alpha.dev.1-r<N>`を生成する。既存の
+  `0.0.0-alpha.dev.1-r1`も比較でき、通常のScoop更新で新形式へ進める。他のアプリ・
+  CalVer・未知のchannelを推測でこのhelperへ渡さない。
 
 ## 複数アプリ
 
@@ -46,43 +47,55 @@ APIのRelease一覧のページ数・他アプリの公開順・未公開上流�
 ## Hermes Desktop LightのDesktop-release policy
 
 Hermes Desktop Lightは、upstreamのGitHub `main` commitを追従する配布ではない。
-scheduled runは、公式R2 AppInstaller feed
+scheduled runは、公式R2 AppInstaller feedのうち既定ではstable channel
+`https://hermes-assets.nousresearch.com/releases/win32/stable/stable.appinstaller`
+をDesktop-release detectorとして読む。`workflow_dispatch`でchannelに`canary`を明示した
+場合だけ
 `https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller`
-をDesktop-release detectorとして読む。feedの`MainBundle/@Version`とMSIX URLが同じ
-4要素product versionであることを確認し、Windows packageのHEAD size/ETagを記録する。
-commit-onlyの`releases/commit/<sha>/`成果物、agent-only GitHub Release、通常のmain進行、
-draftだけのタグ、同じfeedの再観測はDesktop releaseではない。現在自動検出する公式配布経路は
-Windows canary feedだけであり、将来のofficial stable Desktop channelはこのdetectorでは
-自動検出しない。manifestのcheckver regexも`-alpha.dev.`だけに一致する。
+を読む。feedの`MainBundle/@Version`とMSIX URLが同じ4要素product versionであることを確認し、
+Windows packageのHEAD size/ETagを記録する。commit-onlyの`releases/commit/<sha>/`成果物、
+agent-only GitHub Release、通常のmain進行、draftだけのタグ、同じfeedの再観測はDesktop
+releaseではない。
 
-feed versionから、公式のcanary tag timestamp（例:
-`26.1009.7.410` → `v0.21.6+canary.20261009T070410Z`）をupstream tags APIで一意に
-検索する。そのannotated tagの`git/ref/tags/<tag>`、`git/tags/<object-sha>`が同じ
+channelごとにimmutableなbuild tagの求め方が違う。canary feedはmutableなchannel
+ディレクトリから配信されるため、feed versionのcanary timestamp（例:
+`26.1009.7.410` → `v0.21.6+canary.20261009T070410Z`）をupstream tags APIで一意に検索する。
+stable feedはMSIX URIが`releases/tag/<build tag>/HermesBundled-<version>-win.msixbundle`
+を直接指すため、そのbuild tagを正本とする。stable build tag（`rc.<N>-vX.Y.Z`または
+`vX.Y.Z`）と、そこから導くrelease tag（`vX.Y.Z`）はどちらもannotated tagとして同じ
 完全commitへ解決することを必須とする。さらにR2のimmutable
 `releases/tag/<tag>/handoff-windows-universal.json`、`metadata-windows-x64.json`、
-tag archive packageを読み、feedのversion/sizeとcommitを突き合わせる。いずれかを
-一意に結び付けられないAPI/metadataエラーは、unsupportedとは別の失敗（non-zero）である。
-公式配布源URL、Desktop version、canary tag、upstream commit、package SHA/ETag、
-bucket-side build commitをRelease bodyと`provenance.json`へ記録する。
+tag archive packageを読み、feedのversion/sizeとcommit、channel固有のpackage identity
+（stable=`NousResearch.HermesBundled`、canary=`NousResearch.HermesBundledCanary`）を
+突き合わせる。いずれかを一意に結び付けられないAPI/metadataエラーは、unsupportedとは
+別の失敗（non-zero）である。stableのhandoffはsideload bundleとStore提出用bundleの
+2件を持つが、配布対象はsideload bundleだけであり、Store bundleだけのreceiptは失敗と
+する。公式配布源URL、Desktop channel/version、build tag、release tag、upstream commit、
+package SHA/ETag、bucket-side build commitをRelease bodyと`provenance.json`へ記録する。
 
 Desktop sourceが`apps/desktop/product-identity.cjs`のLight identityとmanaged builderの
 Light contractを持つかは、Desktop-release detectionの後にexact commitで判定する。
 対応しないsourceは理由付き`unsupported` skip（exit 0）とし、current manifestを変更せず、
 mainへフォールバックしない。API障害、tag ambiguity、handoff不整合は必ず失敗させる。
-upstream sourceのcanary/development性と、bucketが配布する**unofficial Light build**で
-あることは別の属性である。
+upstream sourceのchannelと、bucketが配布する**unofficial Light build**であることは
+別の属性である。
 
-Scoop versionは`<desktop-version>-alpha.dev.1-r<N>`（例:
-`26.1009.7.410-alpha.dev.1-r1`）。これは既存の`0.0.0-alpha.dev.1-r1`より大きく、
-同じDesktop versionでは`r1 < r2`、未来のstable product versionよりalpha.dev buildが
-小さい。初回Desktop releaseはr1、同じpublished Desktop buildと同じbuild conditionsの
-再実行は同じversion/tag/assetsを再利用してno-opにする。r2以降は同じsourceを修正する
-承認済み手動dispatchだけで指定し、公開済みassetを上書きしない。
+Scoop versionは追従中channelの形式だけを使う。stableは
+`<desktop-version>-r<N>`（例 `2026.6864.2132.0-r1`）、canaryは
+`<desktop-version>-alpha.dev.1-r<N>`（例 `26.1009.7.410-alpha.dev.1-r1`）。同じproduct
+versionではstable形式がalpha.dev buildより大きく、どちらも既存の
+`0.0.0-alpha.dev.1-r1`より大きい。同じDesktop versionでは`r1 < r2`で、初回Desktop release
+はr1、同じpublished Desktop buildと同じbuild conditionsの再実行は同じversion/tag/assetsを
+再利用してno-opにする。r2以降は同じsourceを修正する承認済み手動dispatchだけで指定し、
+公開済みassetを上書きしない。channelを切り替えた場合も、version形式の順序に従って通常の
+Scoop updateで移動する。
 
 保持する条件は既存と同じである。exact Windows build、Light payload、MIT license、
 third-party notices、native launch/remote gateway acceptance、artifactと公開URLのSHA256
-検証を行う。失敗・unsupported skipでは現在のinstallable versionを保持する。
-Releaseはcanary由来のunofficial prereleaseとして別tagに作成し、既存Release/past versionを
+検証を行う。Windows buildは`product-identity.cjs`から実行ファイル名を解決し、channel固有の
+identity（stable=`Hermes Light.exe`、canary=`hermes-light-canary.exe`）と一致しない場合は
+失敗する。失敗・unsupported skipでは現在のinstallable versionを保持する。
+Releaseはchannel由来のunofficial prereleaseとして別tagに作成し、既存Release/past versionを
 変更しない。公開gateは既存の`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`で制御し、このポリシー
 では設定値を変更しない。
 

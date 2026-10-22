@@ -19,6 +19,8 @@ assert spec is not None and spec.loader is not None
 light = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(light)
 
+CANARY = light.CHANNELS["canary"]
+
 # GitHub REST "Create a release" / "Update a release" request bodies. The
 # endpoints reject wrongly typed fields with HTTP 422 (for example
 # `For 'properties/make_latest', false is not a string.`).
@@ -108,9 +110,10 @@ def _producer_record(*, version, commit, tag, desktop_version, artifact, digest,
         "sourceRef": commit,
         "commit": commit,
         "desktopTag": tag,
+        "desktopSourceTag": tag,
         "upstreamChannel": "canary",
         "desktopVersion": desktop_version,
-        "desktopFeedUrl": light.DESKTOP_FEED_URL,
+        "desktopFeedUrl": light.CANARY_FEED_URL,
         "desktopFeedEtag": '"feed-etag"',
         "desktopFeedLastModified": "Fri, 09 Oct 2026 08:04:40 GMT",
         "desktopArtifactUrl": "https://example.invalid/HermesBundled.msixbundle",
@@ -206,13 +209,14 @@ class PublishContractTests(unittest.TestCase):
         live = {
             "desktopVersion": desktop_version,
             "desktopTag": tag,
+            "desktopSourceTag": tag,
             "desktopCommit": self.commit,
-            "desktopFeedUrl": light.DESKTOP_FEED_URL,
+            "desktopFeedUrl": light.CANARY_FEED_URL,
             "desktopFeedEtag": record["desktopFeedEtag"],
             "desktopFeedLastModified": record["desktopFeedLastModified"],
             "desktopArtifactUrl": record["desktopArtifactUrl"],
             "desktopArtifactSha256": record["desktopArtifactSha256"],
-            "desktopSourceUrl": light.DESKTOP_FEED_URL,
+            "desktopSourceUrl": light.CANARY_FEED_URL,
         }
         return record, live, artifact
 
@@ -221,6 +225,7 @@ class PublishContractTests(unittest.TestCase):
             "PACKAGE_VERSION": record["version"],
             "SOURCE_REF": record["commit"],
             "UPSTREAM_TAG": record["desktopTag"],
+            "UPSTREAM_SOURCE_TAG": record["desktopSourceTag"],
             "DESKTOP_VERSION": record["desktopVersion"],
             "DESKTOP_FEED_URL": record["desktopFeedUrl"],
             "CONDITIONS_FINGERPRINT": record["conditionsFingerprint"],
@@ -268,7 +273,7 @@ class PublishContractTests(unittest.TestCase):
                      patch.object(light, "gh", gh), \
                      patch.object(light, "_writeback", writeback), \
                      patch("urllib.request.urlopen", return_value=response):
-                    light._publish_desktop()
+                    light._publish_desktop(CANARY)
             finally:
                 os.chdir(previous)
             release_rows.assert_called_once_with("example/bucket")
@@ -307,7 +312,7 @@ class PublishContractTests(unittest.TestCase):
                      patch.object(light, "gh", gh), \
                      patch.object(light, "_writeback", writeback), \
                      patch("urllib.request.urlopen", return_value=response):
-                    light._publish_desktop()
+                    light._publish_desktop(CANARY)
             finally:
                 os.chdir(previous)
             release_rows.assert_called_once_with("example/bucket")
@@ -356,7 +361,7 @@ class PublishContractTests(unittest.TestCase):
                          patch.object(light, "gh", gh), \
                          patch.object(light, "_writeback", writeback):
                         with self.assertRaises(ValueError):
-                            light._publish_desktop()
+                            light._publish_desktop(CANARY)
                 finally:
                     os.chdir(previous)
                 release_rows.assert_called_once_with("example/bucket")
@@ -408,7 +413,7 @@ class PublishContractTests(unittest.TestCase):
                          patch.object(light, "gh", gh), \
                          patch.object(light, "_writeback", writeback), \
                          patch("urllib.request.urlopen", return_value=response):
-                        light._publish_desktop()
+                        light._publish_desktop(CANARY)
                 finally:
                     os.chdir(previous)
                 upload_index = next(
@@ -461,7 +466,7 @@ class PublishContractTests(unittest.TestCase):
                          patch.object(light, "gh", gh), \
                          patch.object(light, "_writeback", writeback):
                         with self.assertRaises(ValueError):
-                            light._publish_desktop()
+                            light._publish_desktop(CANARY)
                 finally:
                     os.chdir(previous)
                 release_rows.assert_not_called()
@@ -471,7 +476,7 @@ class PublishContractTests(unittest.TestCase):
                 self.assertFalse((root / "output" / f"{light.APP}.json").exists())
 
     def test_manifest_points_to_immutable_unofficial_release_and_pointer(self):
-        data = light.manifest(self.version, "takano536/scoop-bucket", self.digest)
+        data = light.manifest(self.version, "takano536/scoop-bucket", self.digest, channel=CANARY)
         self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
         self.assertIn("hermes-desktop-light%2Fv26.1009.7.410-alpha.dev.1-r1", data["architecture"]["64bit"]["url"])
         self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light (Unofficial)"]])
@@ -485,7 +490,7 @@ class PublishContractTests(unittest.TestCase):
             commit=self.commit,
             desktop_version="26.1009.7.410",
             desktop_tag="v0.21.6+canary.20261009T070410Z",
-            desktop_feed_url=light.DESKTOP_FEED_URL,
+            desktop_feed_url=light.CANARY_FEED_URL,
             desktop_feed_etag='"feed"',
             desktop_feed_last_modified="Fri, 09 Oct 2026 08:04:40 GMT",
             desktop_artifact_url="https://example.invalid/HermesBundled.msixbundle",
@@ -494,6 +499,7 @@ class PublishContractTests(unittest.TestCase):
             license_sha256=self.license,
             release_tag_value=f"{light.APP}/v{self.version}",
             artifact=f"{light.APP}-{self.version}-windows-x64.zip",
+            channel=CANARY,
         )
         self.assertEqual(pointer["distribution"], "unofficial-light")
         self.assertEqual(pointer["upstreamChannel"], "canary")
@@ -510,7 +516,7 @@ class PublishContractTests(unittest.TestCase):
                 commit=self.commit,
                 desktop_version="26.1009.7.410",
                 desktop_tag="v0.21.6+canary.20261009T070410Z",
-                desktop_feed_url=light.DESKTOP_FEED_URL,
+                desktop_feed_url=light.CANARY_FEED_URL,
                 desktop_feed_etag="",
                 desktop_feed_last_modified="",
                 desktop_artifact_url="https://example.invalid/a",
@@ -557,10 +563,10 @@ class GitHubReleaseWireContractTests(unittest.TestCase):
                      patch.object(light.subprocess, "check_output", side_effect=fake_check_output), \
                      patch.object(light, "_writeback", Mock()), \
                      patch("urllib.request.urlopen", return_value=response):
-                    light._publish_desktop()
+                    light._publish_desktop(CANARY)
             finally:
                 os.chdir(previous)
-        notes = light._release_notes(record, live, record["desktopTag"], record["commit"], record["desktopVersion"])
+        notes = light._release_notes(record, live, record["desktopTag"], record["commit"], record["desktopVersion"], CANARY)
         return tag, notes, requests
 
     def test_new_release_create_body_matches_github_schema(self):

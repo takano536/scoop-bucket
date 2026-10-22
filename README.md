@@ -94,38 +94,38 @@ Latest Releaseや他アプリの公開順には依存しません。
 ## Hermes Desktop Light
 
 `Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）はupstream
-`main`の進行を追従しません。4時間ごとのscheduleは、公式Desktop Windows canary feed
-[`canary.appinstaller`](https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller)
-を検出対象とします。feedの4要素product version、MSIX URL/HEAD、upstream annotated
-canary tag、R2のimmutable handoff/metadataを突き合わせ、Desktop releaseに対応する
-exact source commitを決めます。agent-only GitHub Release、main commit、commit-only build、
-draftだけのtag、同じpublished buildの再観測は更新を起こしません。
+`main`の進行を追従しません。4時間ごとのscheduleは、公式Desktop Windows stable feed
+[`stable.appinstaller`](https://hermes-assets.nousresearch.com/releases/win32/stable/stable.appinstaller)
+を既定の検出対象とします。feedの4要素product version、MSIX URL/HEAD、MSIX URIが指す
+immutable build tag archive、upstream annotated build tagとrelease tag、R2のimmutable
+handoff/metadataを突き合わせ、Desktop releaseに対応するexact source commitを決めます。
+agent-only GitHub Release、main commit、commit-only build、draftだけのtag、同じpublished
+buildの再観測は更新を起こしません。canary feedは`workflow_dispatch`のchannel入力で明示した
+場合だけ追従します。
 
 source commitのLight contractが無い場合は理由付きで成功skipし、現在のmanifestを保持します。
 API障害やtag/handoff provenance不明はunsupportedとは区別して失敗します。upstream sourceの
-canary性と、このbucketの**unofficial Light build**は別属性です。
+channelと、このbucketの**unofficial Light build**であることは別属性です。
 
-新しいDesktop releaseのversionは
-`<Desktop product>-alpha.dev.1-r<N>`（例
-`26.1009.7.410-alpha.dev.1-r1`）。既存の`0.0.0-alpha.dev.1-r1`より通常のScoop updateで
-大きくなり、同じDesktop releaseの`r1 < r2`、将来stable versionよりalpha.devが小さく
-なります。同じpublished build/conditionsの再実行は同じRelease/assetsを再利用して
-idempotent no-opにし、r2以降は承認済みmanual dispatchのみで指定します。
+新しいDesktop releaseのversionは`<Desktop product>-r<N>`（例
+`2026.6864.2132.0-r1`）。canary channelを明示した場合だけ`<Desktop product>-alpha.dev.1-r<N>`
+となり、同じproduct versionではstable formがalpha.dev buildより大きく、既存の
+`0.0.0-alpha.dev.1-r1`からも通常のScoop updateで進みます。同じpublished
+build/conditionsの再実行は同じRelease/assetsを再利用してidempotent no-opにし、r2以降は
+承認済みmanual dispatchのみで指定します。
 
 build/acceptanceはWindows Actionsでのみ実行し、Light payload、MIT/license notices、
 native smoke、remote gateway/Scoop acceptance、artifactと公開URLのSHA256を検証します。
-公開Release本文とprovenanceには公式Desktop version、distribution source URL、upstream tag/
-commit、bucket-side build commit、両artifactのhashを記録します。公開済みassetは上書き
-せず、失敗時は現在のinstallable versionを変更しません。
+公開Release本文とprovenanceには公式Desktop channel/version、distribution source URL、
+upstream build tag/release tag、commit、bucket-side build commit、両artifactのhashを記録します。
+公開済みassetは上書きせず、失敗時は現在のinstallable versionを変更しません。
 
 publish gateは既存の開発用設定（`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`）で制御し、
 このポリシーでは設定値を変更しません。現在のmanifest/versionは過去の
 `0.0.0-alpha.dev.1-r1` Releaseを保持し、新しいDesktop releaseのWindows CIと明示承認済み
-publishが完了するまで変更しません。過去Releaseを削除・変更
-しません。このポリシーが自動検出する公式配布経路はWindows canary feedだけで、将来の
-official stable Desktop channelは自動検出しません（manifestのcheckver regexも
-`-alpha.dev.`だけに一致します）。upstream sourceがcanary/pre-releaseであることと、
-bucketが作るunofficial Light buildであることは別の属性です。
+publishが完了するまで変更しません。過去Releaseを削除・変更しません。このポリシーが
+自動検出する公式配布経路はWindows stable feed（既定）と明示指定時のcanary feedで、
+manifestのcheckver regexは追従中のchannelのversion形式だけに一致します。
 
 [実Windows CIの検証結果](docs/hermes-desktop-light-verification.md)と
 [配布ポリシー](docs/distribution-policy.md)に検出・provenance・skip/failureの契約を記録
