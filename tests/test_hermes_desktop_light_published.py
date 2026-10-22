@@ -20,8 +20,10 @@ class PublishedExpectationTests(unittest.TestCase):
     def _publish_state(self, root, version, digest, commit, channel=None):
         """Write the manifest and pointer exactly as the publisher's writeback does."""
         channel = channel or light.CHANNELS["canary"]
+        app = light.app_for(channel)
+        pointer_file = light.pointer_path(app)
         (root / "bucket").mkdir(parents=True, exist_ok=True)
-        (root / light.RELEASE_POINTER).parent.mkdir(parents=True, exist_ok=True)
+        (root / pointer_file).parent.mkdir(parents=True, exist_ok=True)
         desktop_version = version.split("-", 1)[0]
         pointer = light.release_pointer(
             version=version,
@@ -43,8 +45,8 @@ class PublishedExpectationTests(unittest.TestCase):
         data = light.manifest(
             version, self.REPOSITORY, digest, channel=channel, executable=pointer["executable"]
         )
-        (root / "bucket" / f"{light.APP}.json").write_text(json.dumps(data, indent=4), encoding="utf-8")
-        (root / light.RELEASE_POINTER).write_text(json.dumps(pointer, indent=2), encoding="utf-8")
+        (root / "bucket" / f"{app}.json").write_text(json.dumps(data, indent=4), encoding="utf-8")
+        (root / pointer_file).write_text(json.dumps(pointer, indent=2), encoding="utf-8")
         return data, pointer
 
     def test_expectations_follow_each_normal_publish(self):
@@ -58,7 +60,7 @@ class PublishedExpectationTests(unittest.TestCase):
                 root = Path(scratch)
                 data, _pointer = self._publish_state(root, version, digest, commit)
                 self.assertEqual(
-                    light.published_expectations(root, self.REPOSITORY),
+                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["canary"]),
                     {
                         "version": version,
                         "sha256": digest,
@@ -82,10 +84,11 @@ class PublishedExpectationTests(unittest.TestCase):
                 root = Path(scratch)
                 data, pointer = self._publish_state(root, "26.1011.7.142-alpha.dev.1-r1", "3" * 64, "4" * 40)
                 mutate(data, pointer)
-                (root / "bucket" / f"{light.APP}.json").write_text(json.dumps(data), encoding="utf-8")
-                (root / light.RELEASE_POINTER).write_text(json.dumps(pointer), encoding="utf-8")
+                app = light.app_for(light.CHANNELS["canary"])
+                (root / "bucket" / f"{app}.json").write_text(json.dumps(data), encoding="utf-8")
+                (root / light.pointer_path(app)).write_text(json.dumps(pointer), encoding="utf-8")
                 with self.assertRaises(ValueError):
-                    light.published_expectations(root, self.REPOSITORY)
+                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["canary"])
 
 
     def test_expectations_follow_a_stable_channel_publish(self):
@@ -99,7 +102,7 @@ class PublishedExpectationTests(unittest.TestCase):
                 )
                 self.assertEqual(pointer["upstreamChannel"], "stable")
                 self.assertEqual(
-                    light.published_expectations(root, self.REPOSITORY),
+                    light.published_expectations(root, self.REPOSITORY, light.CHANNELS["stable"]),
                     {
                         "version": version,
                         "sha256": digest,

@@ -29,6 +29,14 @@ from distribution import (  # noqa: E402
 
 UPSTREAM = "NousResearch/hermes-agent"
 APP = "hermes-desktop-light"
+# The bucket publishes one package per official Desktop channel.  Both share
+# the historical Release/tag namespace (versions encode the channel), while the
+# package name, pointer and shortcut label differ so the two can coexist.
+APP_BY_CHANNEL = {"stable": APP, "canary": f"{APP}-canary"}
+SHORTCUT_LABEL_BY_CHANNEL = {
+    "stable": "Hermes Desktop Light (Unofficial)",
+    "canary": "Hermes Desktop Light Canary (Unofficial)",
+}
 DESKTOP_PUBLIC_BASE = "https://hermes-assets.nousresearch.com"
 DESKTOP_VERSION_PATTERN = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
 CANARY_TAG = re.compile(r"^v[^+\s]+\+canary\.(20\d{6}T\d{6}Z)$")
@@ -72,6 +80,20 @@ DEFAULT_CHANNEL = "stable"
 CANARY_FEED_URL = CHANNELS["canary"].feed_url
 
 
+def app_for(channel: Channel) -> str:
+    """Return the bucket package that a Desktop channel publishes under."""
+    return APP_BY_CHANNEL[channel.name]
+
+
+def pointer_path(app: str) -> Path:
+    """Return the tracked pointer file for one package."""
+    return Path(f"metadata/{app}-release.json")
+
+
+def shortcut_label(channel: Channel) -> str:
+    return SHORTCUT_LABEL_BY_CHANNEL[channel.name]
+
+
 def channel_for(name: str | None) -> Channel:
     """Resolve one official Desktop channel by name, failing closed."""
     resolved = (name or DEFAULT_CHANNEL).strip()
@@ -80,7 +102,6 @@ def channel_for(name: str | None) -> Channel:
     return CHANNELS[resolved]
 
 
-RELEASE_POINTER = Path("metadata/hermes-desktop-light-release.json")
 NOTICE_PATHS = {
     "upstreamLicense": "LICENSE",
     "thirdParty": "THIRD-PARTY-NOTICES.txt",
@@ -141,9 +162,11 @@ def manifest(
     light_package_version(version)
     digest = _digest(digest)
     executable = executable or channel.executable
+    app = app_for(channel)
     name = artifact_name(APP, version)
     tag = release_tag(APP, version)
-    pointer = f"https://raw.githubusercontent.com/{_repository(repository)}/main/{RELEASE_POINTER.as_posix()}"
+    pointer = f"https://raw.githubusercontent.com/{_repository(repository)}/main/{pointer_path(app).as_posix()}"
+    label = shortcut_label(channel)
     version_pattern = (
         r"\d+\.\d+\.\d+\.\d+-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
         if channel.name == "canary"
@@ -155,7 +178,7 @@ def manifest(
         "homepage": "https://github.com/NousResearch/hermes-agent",
         "license": "MIT",
         "architecture": {"64bit": {"url": _download_url(repository, tag, name), "hash": digest}},
-        "shortcuts": [[executable, "Hermes Desktop Light (Unofficial)"]],
+        "shortcuts": [[executable, label]],
         "checkver": {
             "url": pointer,
             "regex": rf'"version"\s*:\s*"(?<version>{version_pattern})"',
@@ -167,7 +190,7 @@ def manifest(
                     "hash": {"url": pointer, "jsonpath": "$.sha256"},
                 }
             },
-            "shortcuts": [[executable, "Hermes Desktop Light (Unofficial)"]],
+            "shortcuts": [[executable, label]],
         },
         "notes": (
             "Unofficial unsigned x64 Light build based on the officially published Hermes Desktop "
@@ -663,8 +686,8 @@ def output(**values) -> None:
                 stream.write(f"{key}={value}\n")
 
 
-def _current_version() -> str | None:
-    target = Path(f"bucket/{APP}.json")
+def _current_version(app: str = APP) -> str | None:
+    target = Path(f"bucket/{app}.json")
     if not target.exists():
         return None
     data = _read_json(target)
@@ -683,14 +706,15 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     requested_revision = _revision(os.environ.get("BUILD_REVISION", "1"))
     explicit = os.environ.get("REVISION_EXPLICIT") == "true"
     version = package_version(desktop_version, requested_revision, channel.name)
-    current = _current_version()
+    app = app_for(channel)
+    current = _current_version(app)
     candidate_key = distribution_version_key(version)
     if current is not None and distribution_version_key(current) > candidate_key:
         print(f"Current manifest {current} is newer than observed Desktop release {version}; no build")
-        output(build="false", channel="desktop-release", upstream_channel=channel.name, status="already-current")
+        output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="already-current")
         return
 
-    pointer = _read_json(RELEASE_POINTER)
+    pointer = _read_json(pointer_path(app))
     same_release = isinstance(pointer, dict) and pointer.get("desktopTag") == provenance["desktopTag"] and pointer.get("commit") == provenance["desktopCommit"]
     fingerprint = conditions_fingerprint(
         provenance["desktopCommit"], provenance["desktopSourceTag"], version
@@ -699,18 +723,18 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
         previous_revision = _revision(pointer.get("version", "").rsplit("-r", 1)[-1]) if isinstance(pointer.get("version"), str) else 0
         if pointer.get("conditionsFingerprint") == fingerprint and requested_revision <= previous_revision:
             print("The same published Desktop build and build conditions are already current")
-            output(build="false", channel="desktop-release", upstream_channel=channel.name, status="idempotent")
+            output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="idempotent")
             return
         if requested_revision > previous_revision and not explicit:
             if event == "schedule":
                 print("Same Desktop release requires explicit workflow_dispatch for a revision bump")
-                output(build="false", channel="desktop-release", upstream_channel=channel.name, status="revision-required")
+                output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
             raise ValueError("A same-Desktop-release rebuild requires workflow_dispatch with a higher revision")
         if requested_revision <= previous_revision:
             if event == "schedule":
                 print("Desktop-release build conditions changed; scheduled run waits for an explicit revision")
-                output(build="false", channel="desktop-release", upstream_channel=channel.name, status="revision-required")
+                output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="revision-required")
                 return
             raise ValueError("A same-Desktop-release rebuild requires workflow_dispatch with a higher revision")
     elif requested_revision != 1:
@@ -721,12 +745,13 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     if not supports_light(provenance["desktopCommit"]):
         reason = f"unsupported-source:{provenance['desktopTag']}:{provenance['desktopCommit']}"
         print(f"::notice::Skipping official Desktop release {provenance['desktopTag']}: {reason}")
-        output(build="false", channel="desktop-release", upstream_channel=channel.name, status="unsupported", skip_reason=reason)
+        output(build="false", app=app, channel="desktop-release", upstream_channel=channel.name, status="unsupported", skip_reason=reason)
         return
     exact_license_sha = license_sha(provenance["desktopCommit"])
     artifact = artifact_name(APP, version)
     output(
         build="true",
+        app=app,
         channel="desktop-release",
         upstream_channel=channel.name,
         status="new-desktop-release",
@@ -879,28 +904,29 @@ def _release_rows(repository: str) -> list[dict]:
     return [row for page in pages for row in page]
 
 
-def _writeback(data: dict, pointer: dict, version: str, repository: str) -> None:
+def _writeback(data: dict, pointer: dict, version: str, repository: str, app: str = APP) -> None:
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
     for _ in range(3):
         subprocess.run(["git", "fetch", "origin", "main"], check=True)
         subprocess.run(["git", "reset", "--hard", "origin/main"], check=True)
-        target = Path(f"bucket/{APP}.json")
+        target = Path(f"bucket/{app}.json")
         if target.exists():
             current = _read_json(target)["version"]
             if distribution_version_key(current) > distribution_version_key(version):
                 raise ValueError("Refusing manifest downgrade")
         target.write_text(json.dumps(data, indent=4) + "\n", encoding="utf-8")
-        RELEASE_POINTER.parent.mkdir(parents=True, exist_ok=True)
-        RELEASE_POINTER.write_text(json.dumps(pointer, indent=2) + "\n", encoding="utf-8")
-        files = [target, RELEASE_POINTER]
+        pointer_file = pointer_path(app)
+        pointer_file.parent.mkdir(parents=True, exist_ok=True)
+        pointer_file.write_text(json.dumps(pointer, indent=2) + "\n", encoding="utf-8")
+        files = [target, pointer_file]
         subprocess.run(["python3", "scripts/update-readme.py"], check=True)
         subprocess.run(["python3", "scripts/update-readme.py", "--check"], check=True)
         files.append(Path("README.md"))
         subprocess.run(["git", "add", *(str(file) for file in files)], check=True)
         if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode == 0:
             return
-        subprocess.run(["git", "commit", "-m", f"chore: update {APP} to {version}"], check=True)
+        subprocess.run(["git", "commit", "-m", f"chore: update {app} to {version}"], check=True)
         if subprocess.run(["git", "push", "origin", "HEAD:main"]).returncode == 0:
             return
     raise RuntimeError("Manifest push failed; published artifact is retained for retry")
@@ -952,6 +978,7 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     ):
         raise ValueError("Build provenance is not bound to the admitted Desktop release")
 
+    app = app_for(channel)
     tag = release_tag(APP, version)
     rows = _release_rows(repository)
     existing = next((row for row in rows if row.get("tag_name") == tag), None)
@@ -990,7 +1017,7 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
             {"name": f"Unofficial Hermes Desktop Light {version}", "body": notes},
         )
     state = api(f"repos/{repository}/releases/{release_id}")
-    history_manifest = root / f"{APP}.json"
+    history_manifest = root / f"{app}.json"
     history_manifest.write_text(json.dumps(provenance_manifest(record, repository), indent=4) + "\n", encoding="utf-8")
     for file in (artifact, root / "provenance.json", history_manifest):
         prior = next((asset for asset in state.get("assets", []) if asset.get("name") == file.name), None)
@@ -1031,7 +1058,7 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
         channel=channel,
         bucket_commit=record.get("bucketCommit", ""),
     )
-    _writeback(data, pointer, version, repository)
+    _writeback(data, pointer, version, repository, app=app)
 
 
 def publish(channel: Channel | None = None) -> None:
@@ -1039,15 +1066,16 @@ def publish(channel: Channel | None = None) -> None:
     _publish_desktop(channel or channel_for(os.environ.get("UPSTREAM_CHANNEL")))
 
 
-def published_expectations(bucket_root: Path, repository: str) -> dict:
+def published_expectations(bucket_root: Path, repository: str, channel: Channel) -> dict:
     """Derive install expectations from one published bucket checkout.
 
     Normal publishes rewrite the manifest and release pointer together, so the
     public verifier reads both from the exact bucket commit Scoop installs
     instead of carrying hand-copied version, hash, URL, or upstream pins.
     """
-    pointer = _read_json(bucket_root / RELEASE_POINTER)
-    published = _read_json(bucket_root / "bucket" / f"{APP}.json")
+    app = app_for(channel)
+    pointer = _read_json(bucket_root / pointer_path(app))
+    published = _read_json(bucket_root / "bucket" / f"{app}.json")
     if not isinstance(pointer, dict) or not isinstance(published, dict):
         raise ValueError("Published bucket has no Light manifest and release pointer")
     version = pointer.get("version", "")
@@ -1086,7 +1114,13 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "published-expectations":
-            output(**published_expectations(args.bucket_root, _repository(os.environ["GITHUB_REPOSITORY"])))
+            output(
+                **published_expectations(
+                    args.bucket_root,
+                    _repository(os.environ["GITHUB_REPOSITORY"]),
+                    channel_for(args.channel or os.environ.get("UPSTREAM_CHANNEL")),
+                )
+            )
         else:
             command = {"plan": plan, "publish": publish}[args.command]
             command(channel_for(args.channel or os.environ.get("UPSTREAM_CHANNEL")))

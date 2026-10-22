@@ -25,18 +25,27 @@
   Scoop updateで上がる。same published Desktop build/conditionsはidempotent、r2+は
   manual fix専用。
 
-## Channel switch: canary → stable
+## Channel split: stable + canary
 
-Hermes Desktop Lightは既定channelをupstream canaryからofficial stableへ切り替えた。
+Hermes Desktop Lightは1パッケージから2パッケージ構成へ変更した。
+
+| パッケージ | 追従先 | manifest | pointer |
+| --- | --- | --- | --- |
+| `hermes-desktop-light` | stable | `bucket/hermes-desktop-light.json`（初回publishで生成） | `metadata/hermes-desktop-light-release.json` |
+| `hermes-desktop-light-canary` | canary | `bucket/hermes-desktop-light-canary.json` | `metadata/hermes-desktop-light-canary-release.json` |
+
+Release/tagとartifact名は`hermes-desktop-light/`名前空間を共有し、version形式がchannelを
+表す。workflowは[caller](.github/workflows/hermes-desktop-light.yml)がchannelごとに
+[release train](.github/workflows/hermes-desktop-light-release.yml)を呼ぶ。
 
 - 実行済み（Linux、このbucketのcheckout）: `python3 -m unittest discover -s tests -p 'test_*.py'`
-  でstable/canary両channelのversion・feed layout・handoff selection・manifest契約の
-  Pythonテストが通ること。stable feedは`releases/tag/rc.3-v0.22.0/`配下の
+  で両channelのversion・feed layout・handoff selection・manifest契約・published
+  expectationsのPythonテストが通ること。stable feedは`releases/tag/rc.3-v0.22.0/`配下の
   `HermesBundled-2026.6864.2132.0-win.msixbundle`、identity
   `NousResearch.HermesBundled`、metadata tag `v0.22.0`を返す。
-- 未確認: stable channelでのWindows build/acceptance、実artifactのpublish、Scoop
-  install/update、canary→stableの実機更新。これらはmainへの反映後にworkflowが実行する。
-  完了まで「検証済み」とは扱わない。
+- 未確認: stable channelの初回publish、両パッケージを同時インストールした際のshortcut、
+  実機でのcanary→stable移行。これらはmainへの反映後にworkflowが実行する。完了まで
+  「検証済み」とは扱わない。
 
 ## 実際に観測した公式canary publication
 

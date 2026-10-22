@@ -83,13 +83,15 @@ class PlannerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             previous = Path.cwd()
             os.chdir(directory)
+            resolved = channel or light.CHANNELS["canary"]
+            app = light.app_for(resolved)
             try:
                 if pointer is not None:
                     Path("metadata").mkdir()
-                    Path(light.RELEASE_POINTER).write_text(json.dumps(pointer), encoding="utf-8")
+                    Path(light.pointer_path(app)).write_text(json.dumps(pointer), encoding="utf-8")
                 if current is not None:
                     Path("bucket").mkdir()
-                    Path("bucket/hermes-desktop-light.json").write_text(json.dumps({"version": current}), encoding="utf-8")
+                    Path(f"bucket/{app}.json").write_text(json.dumps({"version": current}), encoding="utf-8")
                 env = {
                     "GITHUB_EVENT_NAME": event,
                     "BUILD_REVISION": revision,
@@ -171,7 +173,7 @@ class PlannerTests(unittest.TestCase):
             os.chdir(directory)
             try:
                 Path("metadata").mkdir()
-                Path(light.RELEASE_POINTER).write_text(json.dumps(self.pointer()), encoding="utf-8")
+                Path(light.pointer_path(light.APP_BY_CHANNEL["canary"])).write_text(json.dumps(self.pointer()), encoding="utf-8")
                 gh_calls = []
                 api_calls = []
                 main_head = "f" * 40
@@ -204,7 +206,11 @@ class PlannerTests(unittest.TestCase):
                      patch.object(light, "output", self.result):
                     light.plan(light.CHANNELS["canary"])
                 self.result.assert_called_once_with(
-            build="false", channel="desktop-release", upstream_channel="canary", status="idempotent"
+            build="false",
+            app="hermes-desktop-light-canary",
+            channel="desktop-release",
+            upstream_channel="canary",
+            status="idempotent",
         )
                 supports.assert_not_called()
                 self.assertTrue(gh_calls)
@@ -233,7 +239,7 @@ class PlannerTests(unittest.TestCase):
             os.chdir(directory)
             try:
                 Path("bucket").mkdir()
-                target = Path("bucket/hermes-desktop-light.json")
+                target = Path("bucket/hermes-desktop-light-canary.json")
                 original = {"version": "0.0.0-alpha.dev.1-r1"}
                 target.write_text(json.dumps(original), encoding="utf-8")
                 with patch.dict(os.environ, {"GITHUB_EVENT_NAME": "schedule", "BUILD_REVISION": "1", "REVISION_EXPLICIT": "false"}, clear=False), \
@@ -251,7 +257,11 @@ class PlannerTests(unittest.TestCase):
     def test_same_published_desktop_build_is_idempotent(self):
         supports = self.run_plan(pointer=self.pointer(), current="26.1009.7.410-alpha.dev.1-r1")
         self.result.assert_called_once_with(
-            build="false", channel="desktop-release", upstream_channel="canary", status="idempotent"
+            build="false",
+            app="hermes-desktop-light-canary",
+            channel="desktop-release",
+            upstream_channel="canary",
+            status="idempotent",
         )
         supports.assert_not_called()
 
@@ -312,7 +322,11 @@ class PlannerTests(unittest.TestCase):
     def test_revision_two_requires_explicit_dispatch_for_same_release(self):
         self.run_plan(pointer=self.pointer(), revision="2", explicit="false")
         self.result.assert_called_once_with(
-            build="false", channel="desktop-release", upstream_channel="canary", status="revision-required"
+            build="false",
+            app="hermes-desktop-light-canary",
+            channel="desktop-release",
+            upstream_channel="canary",
+            status="revision-required",
         )
 
 

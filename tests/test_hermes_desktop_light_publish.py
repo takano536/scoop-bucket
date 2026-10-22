@@ -485,8 +485,8 @@ class PublishContractTests(unittest.TestCase):
         data = light.manifest(self.version, "takano536/scoop-bucket", self.digest, channel=CANARY)
         self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
         self.assertIn("hermes-desktop-light%2Fv26.1009.7.410-alpha.dev.1-r1", data["architecture"]["64bit"]["url"])
-        self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light (Unofficial)"]])
-        self.assertIn("hermes-desktop-light-release.json", data["checkver"]["url"])
+        self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light Canary (Unofficial)"]])
+        self.assertIn("metadata/hermes-desktop-light-canary-release.json", data["checkver"]["url"])
         self.assertIn("officially published Hermes Desktop canary", data["notes"])
 
     def test_release_pointer_records_both_upstream_and_bucket_identity(self):

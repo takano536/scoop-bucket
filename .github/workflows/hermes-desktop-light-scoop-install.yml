@@ -42,14 +42,14 @@ jobs:
           # writeback after a release, otherwise the current public main.
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-written-back-sha" and .expired == false)][0].id // empty')"
+              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-canary-written-back-sha" and .expired == false)][0].id // empty')"
             if [[ -z "$artifact_id" ]]; then
               echo "The triggering run published nothing; no new public state to verify."
               exit 0
             fi
             scratch="$(mktemp -d)"
             gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-              --name hermes-desktop-light-written-back-sha --dir "$scratch"
+              --name hermes-desktop-light-canary-written-back-sha --dir "$scratch"
             target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
           else
             target="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)"
@@ -87,7 +87,7 @@ jobs:
       - name: Derive expectations from the published manifest and release pointer
         id: published
         shell: pwsh
-        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published
+        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published --channel canary
 
       - name: Check out the published upstream commit for the gateway
         uses: actions/checkout@v4
@@ -277,7 +277,8 @@ jobs:
             -ExpectedVersion $env:EXPECTED_VERSION `
             -ExpectedCommit $env:EXPECTED_COMMIT `
             -ExpectedHash $env:EXPECTED_HASH `
-            -ExpectedUrl $env:EXPECTED_URL
+            -ExpectedUrl $env:EXPECTED_URL `
+            -AppName 'hermes-desktop-light-canary'
 
       - name: Upload small install evidence
         if: always()
