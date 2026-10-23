@@ -30,6 +30,7 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      apps: ${{ steps.resolve.outputs.apps }}
     steps:
       - id: resolve
         env:
@@ -41,15 +42,18 @@ jobs:
           # Follow the bucket users actually install: the exact publisher
           # writeback after a release, otherwise the current public main.
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-canary-written-back-sha" and .expired == false)][0].id // empty')"
+            # The release train uploads one written-back artifact per channel.
+            match="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired == false and (.name == "hermes-desktop-light-stable-written-back-sha" or .name == "hermes-desktop-light-canary-written-back-sha"))] | (.[0] // {}) | [.id // "", .name // ""] | @tsv')"
+            artifact_id="${match%%$'\t'*}"
+            artifact_name="${match#*$'\t'}"
             if [[ -z "$artifact_id" ]]; then
               echo "The triggering run published nothing; no new public state to verify."
               exit 0
             fi
             scratch="$(mktemp -d)"
             gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-              --name hermes-desktop-light-canary-written-back-sha --dir "$scratch"
+              --name "$artifact_name" --dir "$scratch"
             target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
           else
             target="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)"
@@ -60,6 +64,25 @@ jobs:
           fi
           echo "sha=$target" >> "$GITHUB_OUTPUT"
 
+          # Verify every Light package that the resolved bucket commit publishes.
+          apps=""
+          for app in hermes-desktop-light hermes-desktop-light-canary; do
+            if gh api "repos/${GITHUB_REPOSITORY}/contents/bucket/${app}.json?ref=${target}" >/dev/null 2>&1; then
+              apps="${apps}\"${app}\","
+            fi
+          done
+          apps="[${apps%,}]"
+          if [[ "$apps" == "[]" ]]; then
+            echo "Bucket commit ${target} publishes no Light package" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$apps" | python3 -c 'import json,sys; json.load(sys.stdin)'; then
+            echo "Published package list is not valid JSON: $apps" >&2
+            exit 1
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "Published Light packages at ${target}: ${apps}"
+
   verify-public-scoop-install:
     needs: resolve-published
     # This job verifies what is published on main, so it runs after a publish or
@@ -68,6 +91,11 @@ jobs:
     if: needs.resolve-published.outputs.sha != '' && github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.resolve-published.outputs.apps) }}
+    name: verify public Scoop install (${{ matrix.app }})
     steps:
       - name: Check out bucket verifier
         uses: actions/checkout@v4
@@ -90,7 +118,7 @@ jobs:
       - name: Derive expectations from the published manifest and release pointer
         id: published
         shell: pwsh
-        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published
+        run: python bucket/scripts/hermes-desktop-light.py published-expectations --bucket-root published --app ${{ matrix.app }}
 
       - name: Check out the published upstream commit for the gateway
         uses: actions/checkout@v4
@@ -129,6 +157,65 @@ jobs:
           scoop --version
           scoop config cache true
 
+      - name: Install and exercise the published bucket app
+        shell: pwsh
+        env:
+          # Update-following: expectations are derived from the same bucket
+          # commit Scoop is pinned to, so a normal publish needs no edit here.
+          BUCKET_COMMIT: ${{ needs.resolve-published.outputs.sha }}
+          EXPECTED_VERSION: ${{ steps.published.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.published.outputs.upstream_commit }}
+          EXPECTED_HASH: ${{ steps.published.outputs.sha256 }}
+          EXPECTED_URL: ${{ steps.published.outputs.url }}
+          APP_NAME: ${{ matrix.app }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          & "$env:GITHUB_WORKSPACE/bucket/scripts/verify-scoop-install.ps1" `
+            -BucketRoot "$env:GITHUB_WORKSPACE/bucket" `
+            -UpstreamDirectory "$env:GITHUB_WORKSPACE/upstream" `
+            -OutputDirectory $output `
+            -BucketCommit $env:BUCKET_COMMIT `
+            -ExpectedVersion $env:EXPECTED_VERSION `
+            -ExpectedCommit $env:EXPECTED_COMMIT `
+            -ExpectedHash $env:EXPECTED_HASH `
+            -ExpectedUrl $env:EXPECTED_URL `
+            -AppName $env:APP_NAME
+
+      - name: Upload small install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-light-scoop-install-evidence-${{ matrix.app }}
+          path: scoop-install-evidence/*
+          if-no-files-found: warn
+          retention-days: 14
+
+  regression-historical-update:
+    needs: resolve-published
+    # Pinned pair from retained publications: the pre-split history is shared by
+    # both packages, so this runs once instead of once per published package.
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install Scoop (non-admin)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
+          $env:PATH = "$(Join-Path $scoopRoot 'shims');$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Invoke-RestMethod -Uri 'https://get.scoop.sh' | Invoke-Expression
+          }
+          $env:PATH = "$(Join-Path $scoopRoot 'shims');$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            throw 'The official non-admin Scoop installer did not provide scoop.exe'
+          }
+          scoop --version
+          scoop config cache true
       - name: Regression - historical published Scoop update
         shell: pwsh
         env:
@@ -265,37 +352,10 @@ jobs:
             }
           }
 
-      - name: Install and exercise the published bucket app
-        shell: pwsh
-        env:
-          # Update-following: expectations are derived from the same bucket
-          # commit Scoop is pinned to, so a normal publish needs no edit here.
-          BUCKET_COMMIT: ${{ needs.resolve-published.outputs.sha }}
-          EXPECTED_VERSION: ${{ steps.published.outputs.version }}
-          EXPECTED_COMMIT: ${{ steps.published.outputs.upstream_commit }}
-          EXPECTED_HASH: ${{ steps.published.outputs.sha256 }}
-          EXPECTED_URL: ${{ steps.published.outputs.url }}
-          APP_NAME: ${{ steps.published.outputs.app }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
-          New-Item -ItemType Directory -Force -Path $output | Out-Null
-          & "$env:GITHUB_WORKSPACE/bucket/scripts/verify-scoop-install.ps1" `
-            -BucketRoot "$env:GITHUB_WORKSPACE/bucket" `
-            -UpstreamDirectory "$env:GITHUB_WORKSPACE/upstream" `
-            -OutputDirectory $output `
-            -BucketCommit $env:BUCKET_COMMIT `
-            -ExpectedVersion $env:EXPECTED_VERSION `
-            -ExpectedCommit $env:EXPECTED_COMMIT `
-            -ExpectedHash $env:EXPECTED_HASH `
-            -ExpectedUrl $env:EXPECTED_URL `
-            -AppName $env:APP_NAME
-
       - name: Upload small install evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hermes-desktop-light-scoop-install-evidence
+          name: hermes-desktop-light-scoop-update-evidence
           path: scoop-install-evidence/*
           if-no-files-found: warn
-          retention-days: 14
