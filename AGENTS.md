@@ -15,12 +15,14 @@
 ## ブランチとPR
 
 - 機能ブランチは `main` をbaseにしてPRを作り、`main` へマージする。統合ブランチは置かない。
-- `main` はPR必須（直push禁止）のrulesetで保護する。唯一のbypassはwrite権限のdeploy keyで、botのworkflowは secret `MAIN_PUSH_DEPLOY_KEY` を使ってSSHでpushする。
 - `main` を直接編集せず、必ずレビュー可能なPRを作る。
 - 1つのPRは1つの確認可能な変更単位にする。
 - 積み上げPRは `gh pr create --base <branch>` で正しいベースを指定する。別PRの変更を `main` ベースのPRへ混ぜない。
-- Excavator・README・release writeback などの bot は例外的に `main` へ直接pushする。
 - issueを解決するPRは、本文に `Closes #N` を書く。`main` 向けPRなのでマージ時にissueが閉じる。
+- Excavator・README・release writeback などの bot は例外的に `main` へ直接pushする。workflowは secret `MAIN_PUSH_DEPLOY_KEY` の deploy key でSSH pushする。
+- `main` の保護は ruleset `protect-main`（default branch に `deletion` と `non_fast_forward` のみ）に限られる。
+  PR必須ルール・必須チェック・classic branch protection は未適用で `bypass_actors` も空のため、直pushは
+  技術的には可能。PR必須は運用上の決まりとして守る。
 - Conventional Commits のタイプは変更内容で選ぶ。
   - `ci:`: CI・workflow・GitHub Actionsだけの変更
   - `docs:`: ドキュメント・CHANGELOGの変更
