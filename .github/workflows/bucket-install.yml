@@ -1,0 +1,85 @@
+name: Bucket install
+
+# bucket/ の全manifestを実際にScoopでinstallし、配布物を取得できるか確認する。
+# manifestのスキーマ検証（CI）やURL・hash検証（Autoupdate validation）とは別に、
+# URL・hash・extract_dir・installerが実環境で通ることを確認する。
+# Pull Requestではread-onlyで動作し、書き戻しは行わない。
+
+on:
+  pull_request:
+    paths:
+      - 'bucket/**'
+      - 'scripts/verify-bucket-install.ps1'
+      - '.github/workflows/bucket-install.yml'
+  push:
+    branches:
+      - 'main'
+      - 'master'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bucket-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: Install every manifest
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Bucket
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: my_bucket
+          persist-credentials: false
+
+      - name: Install Scoop (non-admin)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scoopRoot = Join-Path $env:USERPROFILE 'scoop'
+          $shims = Join-Path $scoopRoot 'shims'
+          $env:PATH = "$shims;$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Invoke-RestMethod -Uri 'https://get.scoop.sh' | Invoke-Expression
+          }
+          $env:PATH = "$shims;$env:PATH"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            throw 'The official non-admin Scoop installer did not provide scoop.exe'
+          }
+          $shims | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          scoop --version
+          scoop config cache true
+
+      - name: Install every manifest in bucket/
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $shims = Join-Path (Join-Path $env:USERPROFILE 'scoop') 'shims'
+          $env:PATH = "$shims;$env:PATH"
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/bucket-install'
+          ./my_bucket/scripts/verify-bucket-install.ps1 -BucketRoot ./my_bucket -OutputDirectory $output
+
+      - name: Publish summary
+        if: always()
+        shell: pwsh
+        run: |
+          $summary = Join-Path $env:GITHUB_WORKSPACE 'artifacts/bucket-install/summary.md'
+          if (Test-Path -LiteralPath $summary) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value (Get-Content -LiteralPath $summary -Raw) -Encoding utf8
+          }
+          else {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value 'No bucket install summary was produced.'
+          }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bucket-install-evidence
+          path: artifacts/bucket-install
+          if-no-files-found: warn

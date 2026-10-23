@@ -61,10 +61,16 @@ runner上のworkflowで実行する。
 .\tests\autoupdate-regression.ps1 -ScoopHome (Resolve-Path .\scoop_core)
 .\bin\test-autoupdate.ps1 -ScoopHome (Resolve-Path .\scoop_core)
 .\bin\test.ps1
+.\scripts\verify-bucket-install.ps1 -OutputDirectory .\artifacts\bucket-install
 ```
 
 `bin/test.ps1`はPesterとBuildHelpersを要求し、リポジトリのPesterテストを実行する。
 `Scoop-Bucket.Tests.ps1`はScoop側の`Import-Bucket-Tests.ps1`を読み込む。
+
+`scripts/verify-bucket-install.ps1`は、`bucket/`のmanifestをScoopの一時ローカルbucketへ
+コピーし、各アプリを実際にinstallして`scoop prefix`で導入結果を確認した後にuninstallする。
+結果はアプリごとのログと`summary.json`・`summary.md`に出力する。`-App`で対象を限定でき、
+`-SkipApp`で環境依存のアプリを除ける。
 
 ## CI/CDワークフロー
 
@@ -86,6 +92,14 @@ bucket-built manifestが配布改訂を使う場合だけ、その版の比較�
 UTC 06:43のdaily schedule（`43 6 * * *`）で起動する。Windows PowerShellで、一時fixture
 を使ったcheckver/autoupdate回帰と、manifestのコピーに対するlive URL・hash・
 `extract_dir`検証をread-onlyで行う。アプリのinstallやhookは実行しない。
+
+### Bucket install ([../.github/workflows/bucket-install.yml](../.github/workflows/bucket-install.yml))
+
+`bucket/**`、`scripts/verify-bucket-install.ps1`、このworkflowを変更したPull Request、
+`main`/`master`へのpush、`workflow_dispatch`で起動する。Windows runnerで`bucket/`の
+全manifestを実際に`scoop install`し、`scoop prefix`で導入結果を確認してからuninstallする。
+URL・hash・`extract_dir`・installerが実環境で通るかを確認するread-only検証であり、
+manifestは変更しない。アプリごとのログと集計はActions Artifactsに残す。
 
 ### README ([../.github/workflows/readme.yml](../.github/workflows/readme.yml))
 
@@ -119,6 +133,7 @@ bucket-built distributionのbuild、smoke、受入条件、公開ゲート、成
 | bucket-built distributionの改訂順 | CI | 該当アプリの契約が定める版形式だけを`Compare-Version`で確認する。 |
 | autoupdate回帰 | Autoupdate validation | 一時fixtureでPowerShellの回帰ケースを実行する。 |
 | live autoupdate | Autoupdate validation | 実URLを取得し、hashと`extract_dir`を確認する。 |
+| 全manifestの実install | Bucket install | Windows runnerで`bucket/`の各アプリを`scoop install`し、失敗したmanifestを報告する。 |
 | READMEテスト・生成 | README | Python unittest、生成、`--check`を実行する。 |
 | アプリ固有のbuild・受入・公開 | 各アプリのworkflow | アプリ固有文書の契約とゲートに従う。 |
 
