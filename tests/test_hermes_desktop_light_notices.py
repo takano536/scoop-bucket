@@ -647,6 +647,40 @@ class NoticeTests(unittest.TestCase):
             )
             self.assertEqual(graph["assetSources"][output], list(notices.FIRST_PARTY_NATIVE_ASSETS[output]))
 
+    def test_website_static_asset_is_app_owned(self):
+        output = 'assets/official-art.jpg'
+        with tempfile.TemporaryDirectory() as scratch:
+            source = Path(scratch) / 'source'
+            desktop = source / 'apps' / 'desktop'
+            (desktop / 'src').mkdir(parents=True)
+            (desktop / 'package.json').write_text(
+                json.dumps({'name': 'desktop', 'version': '1.0.0'}),
+                encoding='utf-8',
+            )
+            art = source / 'website' / 'static' / 'img' / 'catalog' / 'official-art.jpg'
+            art.parent.mkdir(parents=True)
+            art.write_bytes(b'jpg bytes')
+            dist = desktop / 'dist' / 'assets'
+            dist.mkdir(parents=True)
+            (dist / 'index.js.map').write_text(
+                json.dumps({'version': 3, 'sources': []}), encoding='utf-8'
+            )
+            emitter = desktop / '.hermes-bundle-graph'
+            emitter.mkdir()
+            (emitter / 'graph-emitter.json').write_text(
+                json.dumps(
+                    {
+                        'schema': 1,
+                        'cssSources': [],
+                        'assetSources': {output: ['website/static/img/catalog/official-art.jpg']},
+                    }
+                ),
+                encoding='utf-8',
+            )
+            graph = notices.bundle_module_graph(source)
+            self.assertEqual(graph['unresolvedItems'], [])
+            self.assertEqual(graph['packages'], [])
+
     def test_unknown_native_asset_still_fails_closed(self):
         output = "native/win32-x64/unknown-helper.exe"
         with tempfile.TemporaryDirectory() as scratch, patch.object(
