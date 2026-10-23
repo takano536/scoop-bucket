@@ -16,6 +16,7 @@
 
 - `dev` が統合ブランチ。機能ブランチは `dev` をbaseにしてPRを作り、`dev` へマージする。
 - `main` へは `dev` からのみマージする。`dev` へのpushで main 向けの下書きPRが自動作成・自動更新される。
+- `main` はPR必須（直push禁止）のrulesetで保護する。唯一のbypassはwrite権限のdeploy keyで、botのworkflowは secret `MAIN_PUSH_DEPLOY_KEY` を使ってSSHでpushする。
 - `main` を直接編集せず、必ずレビュー可能なPRを作る。
 - 1つのPRは1つの確認可能な変更単位にする。
 - 積み上げPRは `gh pr create --base <branch>` で正しいベースを指定する。別PRの変更を `main` ベースのPRへ混ぜない。
