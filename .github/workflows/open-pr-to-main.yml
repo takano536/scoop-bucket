@@ -1,0 +1,48 @@
+name: Open a PR to main
+
+# dev への push ごとに、main 向けの下書きPRを作成または更新する。
+# PR は GITHUB_TOKEN で作成するため、このPRでは他の workflow は起動しない。
+# main のルールで必須チェックを要求していないのはそのため。
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: open-pr-to-main
+  cancel-in-progress: false
+
+jobs:
+  open:
+    name: Open or update pull request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create or update the dev to main pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head=dev
+          base=main
+          title='chore: Merge branch `dev` to `main`'
+          body='`dev` の変更を `main` に反映するPRです。`dev` への push ごとに自動で更新されます。マージはメンテナーが行います。'
+          ahead="$(gh api "repos/$GH_REPO/compare/$base...$head" --jq '.ahead_by')"
+          if [ "$ahead" = "0" ]; then
+            echo 'dev has nothing to merge into main'
+            exit 0
+          fi
+          number="$(gh pr list --head "$head" --base "$base" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body "$body"
+            echo "updated #$number"
+          else
+            gh pr create --base "$base" --head "$head" --draft --title "$title" --body "$body"
+          fi
