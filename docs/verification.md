@@ -81,17 +81,18 @@ runner上のworkflowで実行する。
 
 ```powershell
 $repo = Join-Path $env:USERPROFILE 'src\scoop-bucket'
-$work = Join-Path $env:USERPROFILE 'src\scoop-bucket-dev'
-git -C $repo worktree add $work dev
+$branch = 'feat/my-change'
+$work = Join-Path $env:USERPROFILE 'src\scoop-bucket-work'
+git -C $repo worktree add $work $branch
 New-Item -ItemType Junction `
-    -Path (Join-Path $env:USERPROFILE 'scoop\buckets\takano536-dev') `
+    -Path (Join-Path $env:USERPROFILE 'scoop\buckets\takano536-work') `
     -Target $work
-scoop install takano536-dev/<app>
+scoop install takano536-work/<app>
 ```
 
 worktreeはgit管理下なので、`scoop update`はjunction経由でそのworktreeのチェックアウト中
 ブランチをpullする。ブランチごとにworktreeとaliasを作れば、切り替えずに`takano536`（main）と
-`takano536-dev`（dev）を同時に使える。
+`takano536-work`（作業ブランチ）を同時に使える。
 
 ## CI/CDワークフロー
 
