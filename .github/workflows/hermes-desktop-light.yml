@@ -140,9 +140,11 @@ jobs:
         with:
           name: hermes-desktop-light-windows-x64
           path: artifact
+      # 3.14 は上流の依存が衝突する（hermes-agent が Pillow==13.0.0 を要求し、
+      # browser-harness==0.1.13 が pillow==12.3.0 を固定）。上流が解消したら 3.14 に戻す。
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.14'
+          python-version: '3.13'
       - name: Install the exact-release Hermes gateway (no provider extras)
         shell: pwsh
         working-directory: upstream
