@@ -1108,7 +1108,13 @@ def fallback_production_packages(source: Path) -> list[tuple[str, Path]]:
 
 
 def app_owned_source(source: Path, path: Path) -> bool:
-    roots = (source / "apps" / "desktop", source / "scripts")
+    # Desktop は同梱画像を website/static から参照する（catalog の artwork など）。
+    # いずれもこのリポジトリ自身の first-party ソースなので app-owned として扱う。
+    roots = (
+        source / "apps" / "desktop",
+        source / "scripts",
+        source / "website" / "static",
+    )
     for root in roots:
         try:
             relative = path.relative_to(root)
