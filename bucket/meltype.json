@@ -4,10 +4,14 @@
     "homepage": "https://github.com/yksr-melt/Meltype",
     "license": "GPL-3.0-or-later",
     "notes": [
-        "This manifest does not register Meltype as a Windows IME. To use the IME mode, register it from an elevated PowerShell: . \"$dir\\app\\meltype-ime.ps1\"; Install-MeltypeIme -Source \"$dir\\app\\tip\". Without it, Meltype uses the conversion box.",
-        "The bundled update script is removed on install, so Meltype cannot update itself: use 'scoop update meltype' and quit Meltype before updating.",
-        "Settings, learning data and logs live in %LOCALAPPDATA%\\Meltype. 'scoop uninstall meltype' unregisters the IME and deletes that folder, the autostart task, the shortcuts and the Run entry.",
-        "'Windows の起動時に起動' records the path Meltype was started from, so set it again after an update."
+        "Meltype works right away with the conversion box (candidates under the cursor). IME mode (typing straight into the text field) is optional. To register it once, open an elevated PowerShell (Run as administrator) and run:",
+        "cd \"$dir\\app\"",
+        ". .\\meltype-ime.ps1; Install-MeltypeIme -Source \"$PWD\\tip\"",
+        "After that, press Win + Space and pick 'Meltype'. Skip this if the conversion box is fine.",
+        "Don't run the bundled Install.cmd: it installs a second copy under %LOCALAPPDATA%\\Programs\\Meltype that Scoop doesn't manage.",
+        "Start at sign-in from the tray menu ('Windows の起動時に起動'); if Meltype stops starting after an update, toggle that item off and on again.",
+        "Update: quit Meltype (tray > Exit), then 'scoop update meltype'. Meltype cannot update itself, but your settings, learning data and the IME registration are kept (if IME mode stops working after an update, run the two lines above again).",
+        "Uninstall: 'scoop uninstall meltype' also deletes %LOCALAPPDATA%\\Meltype and unregisters the IME, so back that folder up first."
     ],
     "architecture": {
         "64bit": {
@@ -15,9 +19,7 @@
             "hash": "0f3710767333bf11852483c2180ebe73cfc8e9f6727e50e6fca74119f8c6744f"
         }
     },
-    "post_install": [
-        "Remove-Item -LiteralPath (Join-Path $dir 'app\\update.ps1') -Force -ErrorAction SilentlyContinue"
-    ],
+    "post_install": "Remove-Item -LiteralPath (Join-Path $dir 'app\\update.ps1') -Force -ErrorAction SilentlyContinue",
     "shortcuts": [
         [
             "app\\Meltype.exe",
