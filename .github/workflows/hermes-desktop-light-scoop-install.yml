@@ -97,10 +97,17 @@ jobs:
           path: upstream
           persist-credentials: false
 
-      - name: Install the upstream gateway dependencies
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      # 上流の uv.lock をそのまま再現する。pip で毎回解決すると
+      # browser-harness==0.1.13 の pillow==12.3.0 と hermes-agent の
+      # Pillow==13.0.0 が衝突して ResolutionImpossible になる。
+      - name: Install the exact-release Hermes gateway (official uv lock)
         shell: pwsh
         working-directory: upstream
-        run: python -m pip install --disable-pip-version-check --no-input -e '.[web]'
+        run: |
+          uv sync --frozen --extra web --python 3.14
+          "$PWD\.venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VIRTUAL_ENV=$PWD\.venv" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Scoop (non-admin)
         shell: pwsh
