@@ -35,12 +35,15 @@ jobs:
         run: |
           target="$GITHUB_SHA"
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-written-back-sha" and .expired == false)][0].id // empty')"
+            # the release train uploads one written-back artifact per channel
+            match="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired == false and (.name == "hermes-desktop-light-stable-written-back-sha" or .name == "hermes-desktop-light-canary-written-back-sha"))] | (.[0] // {}) | [.id // "", .name // ""] | @tsv')"
+            artifact_id="${match%%$'\t'*}"
+            artifact_name="${match#*$'\t'}"
             if [[ -n "$artifact_id" ]]; then
               scratch="$(mktemp -d)"
               gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-                --name hermes-desktop-light-written-back-sha --dir "$scratch"
+                --name "$artifact_name" --dir "$scratch"
               target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
             else
               target="$WORKFLOW_RUN_HEAD_SHA"

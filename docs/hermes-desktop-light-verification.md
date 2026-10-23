@@ -2,21 +2,53 @@
 
 共通の[配布ルール](distribution-policy.md)と[検証記録](distribution-validation.md)を前提に、Hermes Desktop Light固有の上流・Light・gateway契約と、実行済みCIの結果を記録する。
 
-- Hermes LightのDesktop-release detectorは、公式R2 AppInstaller feed
-  `https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller`。
-  `MainBundle/@Version`、package URL/HEAD、R2 `handoff-windows-universal.json`、
-  `metadata-windows-x64.json`、annotated canary tagを突き合わせ、published Desktop
-  product versionからexact source commitを決める。
+- Hermes LightのDesktop-release detectorは、既定で公式R2 AppInstaller stable feed
+  `https://hermes-assets.nousresearch.com/releases/win32/stable/stable.appinstaller`。
+  `workflow_dispatch`でchannelに`canary`を明示した場合だけ
+  `https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller`
+  を使う。`MainBundle/@Version`、package URL/HEAD、R2
+  `handoff-windows-universal.json`、`metadata-windows-x64.json`、channelのimmutable
+  build tag/release tagを突き合わせ、published Desktop product versionからexact source
+  commitを決める。stableのbuildはupstreamのrelease claim ref（`rc.<N>-vX.Y.Z`）とその
+  annotated tag objectを要求されるため、release tag（`vX.Y.Z`）を`--tag`に、claimを
+  `RELEASE_CLAIM_TAG`/`RELEASE_CLAIM_OBJECT`に渡す。
 - agentのGitHub Release、通常の`main` commit、commit-only R2 build、draftだけのtag、
   同一feedの再観測はnew Desktop releaseではない。API/metadataのunknown provenanceは
   unsupported skipではなくnon-zero failureである。
 - sourceのLight identity/managed builderをexact commitで検査し、非対応なら理由付き
   skip（exit 0）とする。skipではcurrent manifestを変更せず、mainへfallbackしない。
-- 配布物はupstream canary sourceから作る**unofficial Light build**である。upstreamの
-  canary/development性とbucket distributionの非公式性を同一視しない。
-- versionは`<Desktop product>-alpha.dev.1-rN`（例
-  `26.1009.7.410-alpha.dev.1-r1`）。旧`0.0.0-alpha.dev.1-r1`から通常のScoop updateで
-  上がる。same published Desktop build/conditionsはidempotent、r2+はmanual fix専用。
+- 配布物は追従中channelの公式sourceから作る**unofficial Light build**である。upstreamの
+  channelとbucket distributionの非公式性を同一視しない。
+- versionはstableが`<Desktop product>-rN`（例`2026.6864.2132.0-r1`）、canaryが
+  `<Desktop product>-alpha.dev.1-rN`（例`26.1009.7.410-alpha.dev.1-r1`）。同じproduct
+  versionではstable形式がalpha.dev buildより大きい。旧`0.0.0-alpha.dev.1-r1`からも通常の
+  Scoop updateで上がる。same published Desktop build/conditionsはidempotent、r2+は
+  manual fix専用。
+
+## Channel split: stable + canary
+
+Hermes Desktop Lightは1パッケージから2パッケージ構成へ変更した。
+
+| パッケージ | 追従先 | manifest | pointer |
+| --- | --- | --- | --- |
+| `hermes-desktop-light` | stable | `bucket/hermes-desktop-light.json`（初回publishで生成） | `metadata/hermes-desktop-light-stable-release.json` |
+| `hermes-desktop-light-canary` | canary | `bucket/hermes-desktop-light-canary.json` | `metadata/hermes-desktop-light-release.json` |
+
+canary側のpointer名は分割前のまま。公開済みcanary manifestのcheckverがこのURLを指して
+いるため、名前を変えると次回publishまでcheckverが404になる。
+
+Release/tagとartifact名は`hermes-desktop-light/`名前空間を共有し、version形式がchannelを
+表す。workflowは[caller](.github/workflows/hermes-desktop-light.yml)がchannelごとに
+[release train](.github/workflows/hermes-desktop-light-release.yml)を呼ぶ。
+
+- 実行済み（Linux、このbucketのcheckout）: `python3 -m unittest discover -s tests -p 'test_*.py'`
+  で両channelのversion・feed layout・handoff selection・manifest契約・published
+  expectationsのPythonテストが通ること。stable feedは`releases/tag/rc.3-v0.22.0/`配下の
+  `HermesBundled-2026.6864.2132.0-win.msixbundle`、identity
+  `NousResearch.HermesBundled`、metadata tag `v0.22.0`を返す。
+- 未確認: stable channelの初回publish、両パッケージを同時インストールした際のshortcut、
+  実機でのcanary→stable移行。これらはmainへの反映後にworkflowが実行する。完了まで
+  「検証済み」とは扱わない。
 
 ## 実際に観測した公式canary publication
 
@@ -51,10 +83,10 @@ python3 -m unittest discover -s tests -p 'test_distribution.py' -v
 
 [`hermes-desktop-light.yml`](../.github/workflows/hermes-desktop-light.yml)は、UTCの4時間ごとの
 schedule、`workflow_dispatch`（`revision`入力）、および関連ファイルを変更したPull Request
-で起動する。`plan`はUbuntuで公式Windows canary feedとR2 handoff/tag metadataを検証し、
-new Desktop releaseならexact upstream commitをoutputする。現状はこのWindows canary feedだけを
-検出し、将来のofficial stable Desktop channelは自動検出しない。manifestのcheckver regexも
-`-alpha.dev.`だけに一致する。Light contract非対応なら`unsupported`（exit 0）で
+で起動する。`plan`はUbuntuで公式Windows stable feed（既定）または明示指定されたcanary
+feedとR2 handoff/tag metadataを検証し、new Desktop releaseならexact upstream commitを
+outputする。追従channelはplan outputとしてbuild/publishへ渡し、manifestのcheckver regexは
+そのchannelのversion形式だけに一致する。Light contract非対応なら`unsupported`（exit 0）で
 build/acceptanceを起動せず、manifestを維持する。
 
 対象がある場合だけ`build`と`acceptance`がWindows runnerで動き、exact canary tag/source

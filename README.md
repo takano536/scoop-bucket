@@ -23,7 +23,7 @@ scoop install takano536/<アプリ名>
 
 | アプリ | バージョン | 説明 | リンク |
 | --- | --- | --- | --- |
-| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 26.1023.7.57-alpha.dev.1-r1 | Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop canary | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
+| [hermes-desktop-light-canary](bucket/hermes-desktop-light-canary.json) | 26.1023.7.57-alpha.dev.1-r1 | Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop canary | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | [meltype](bucket/meltype.json) | 1.3.0 | Japanese input helper for Windows that types Japanese and English without toggling the input mode | [github.com/yksr-melt/Meltype](https://github.com/yksr-melt/Meltype) |
 | [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [github.com/yuru7/udev-gothic](https://github.com/yuru7/udev-gothic) |
 
@@ -94,39 +94,47 @@ Latest Releaseや他アプリの公開順には依存しません。
 
 ## Hermes Desktop Light
 
-`Hermes Desktop Light`（[workflow](.github/workflows/hermes-desktop-light.yml)）はupstream
-`main`の進行を追従しません。4時間ごとのscheduleは、公式Desktop Windows canary feed
-[`canary.appinstaller`](https://hermes-assets.nousresearch.com/releases/win32/canary/canary.appinstaller)
-を検出対象とします。feedの4要素product version、MSIX URL/HEAD、upstream annotated
-canary tag、R2のimmutable handoff/metadataを突き合わせ、Desktop releaseに対応する
-exact source commitを決めます。agent-only GitHub Release、main commit、commit-only build、
-draftだけのtag、同じpublished buildの再観測は更新を起こしません。
+公式Desktop channelごとに1パッケージを配布する。
 
-source commitのLight contractが無い場合は理由付きで成功skipし、現在のmanifestを保持します。
-API障害やtag/handoff provenance不明はunsupportedとは区別して失敗します。upstream sourceの
-canary性と、このbucketの**unofficial Light build**は別属性です。
+| パッケージ | 追従先 |
+| --- | --- |
+| `hermes-desktop-light` | 公式Desktop Windows **stable** feed |
+| `hermes-desktop-light-canary` | 公式Desktop Windows **canary** feed |
 
-新しいDesktop releaseのversionは
-`<Desktop product>-alpha.dev.1-r<N>`（例
-`26.1009.7.410-alpha.dev.1-r1`）。既存の`0.0.0-alpha.dev.1-r1`より通常のScoop updateで
-大きくなり、同じDesktop releaseの`r1 < r2`、将来stable versionよりalpha.devが小さく
-なります。同じpublished build/conditionsの再実行は同じRelease/assetsを再利用して
-idempotent no-opにし、r2以降は承認済みmanual dispatchのみで指定します。
+どちらも同じunofficial remote-only Lightビルド（ローカルのPython/agentを含まない）で、
+異なるのは追従するupstream channelだけ。Release/tagは`hermes-desktop-light/`名前空間を
+共有し、versionがchannelを表す。shortcut名とmanifest/pointerは別なので2つを同時に
+インストールできる。
+
+それぞれのworkflow（[caller](.github/workflows/hermes-desktop-light.yml) /
+[release train](.github/workflows/hermes-desktop-light-release.yml)）は4時間ごとに両channelを
+計画し、Desktop releaseに対応するexact source commitを決める。feedの4要素product version、
+MSIX URL/HEAD、MSIX URIが指すimmutable build tag archive、upstream annotated claim tag
+（`rc.<N>-vX.Y.Z`）とrelease tag、R2のimmutable handoff/metadataを突き合わせる。
+agent-only GitHub Release、main commit、commit-only build、draftだけのtag、同じpublished
+buildの再観測は更新を起こさない。`hermes-desktop-light`はstable feedを既定とし、
+`hermes-desktop-light-canary`はcanary feedを追従する。
+
+source commitのLight contractが無い場合は理由付きで成功skipし、現在のmanifestを保持する。
+API障害やtag/handoff provenance不明はunsupportedとは区別して失敗する。upstream sourceの
+channelと、このbucketの**unofficial Light build**であることは別属性である。
+
+versionは`<Desktop product>-r<N>`（stable、例`2026.6864.2132.0-r1`）と
+`<Desktop product>-alpha.dev.1-r<N>`（canary、例`26.1014.7.54-alpha.dev.1-r1`）。
+同じproduct versionではstable形式がalpha.dev buildより大きく、既存の
+`0.0.0-alpha.dev.1-r1`からも通常のScoop updateで進む。同じpublished build/conditionsの
+再実行は同じRelease/assetsを再利用してidempotent no-opにし、r2以降は承認済みmanual
+dispatchのみで指定する。
 
 build/acceptanceはWindows Actionsでのみ実行し、Light payload、MIT/license notices、
-native smoke、remote gateway/Scoop acceptance、artifactと公開URLのSHA256を検証します。
-公開Release本文とprovenanceには公式Desktop version、distribution source URL、upstream tag/
-commit、bucket-side build commit、両artifactのhashを記録します。公開済みassetは上書き
-せず、失敗時は現在のinstallable versionを変更しません。
+native smoke、remote gateway/Scoop acceptance、artifactと公開URLのSHA256を検証する。
+公開Release本文とprovenanceには公式Desktop channel/version、distribution source URL、
+upstream build tag/release tag/claim object、commit、bucket-side build commit、両artifactの
+hashを記録する。公開済みassetは上書きせず、失敗時は現在のinstallable versionを変更しない。
 
 publish gateは既存の開発用設定（`HERMES_DESKTOP_LIGHT_DEV_RELEASE_ENABLED`）で制御し、
-このポリシーでは設定値を変更しません。現在のmanifest/versionは過去の
-`0.0.0-alpha.dev.1-r1` Releaseを保持し、新しいDesktop releaseのWindows CIと明示承認済み
-publishが完了するまで変更しません。過去Releaseを削除・変更
-しません。このポリシーが自動検出する公式配布経路はWindows canary feedだけで、将来の
-official stable Desktop channelは自動検出しません（manifestのcheckver regexも
-`-alpha.dev.`だけに一致します）。upstream sourceがcanary/pre-releaseであることと、
-bucketが作るunofficial Light buildであることは別の属性です。
+このポリシーでは設定値を変更しない。過去Releaseを削除・変更しない。manifestのcheckver
+regexは追従中のchannelのversion形式だけに一致する。
 
 [実Windows CIの検証結果](docs/hermes-desktop-light-verification.md)と
 [配布ポリシー](docs/distribution-policy.md)に検出・provenance・skip/failureの契約を記録

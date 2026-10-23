@@ -42,14 +42,14 @@ jobs:
           # writeback after a release, otherwise the current public main.
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-written-back-sha" and .expired == false)][0].id // empty')"
+              --jq '[.artifacts[] | select(.name == "hermes-desktop-light-canary-written-back-sha" and .expired == false)][0].id // empty')"
             if [[ -z "$artifact_id" ]]; then
               echo "The triggering run published nothing; no new public state to verify."
               exit 0
             fi
             scratch="$(mktemp -d)"
             gh run download "$WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-              --name hermes-desktop-light-written-back-sha --dir "$scratch"
+              --name hermes-desktop-light-canary-written-back-sha --dir "$scratch"
             target="$(tr -d '\r\n' < "$scratch/written-back-sha.txt")"
           else
             target="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)"
@@ -62,7 +62,10 @@ jobs:
 
   verify-public-scoop-install:
     needs: resolve-published
-    if: needs.resolve-published.outputs.sha != ''
+    # This job verifies what is published on main, so it runs after a publish or
+    # on demand.  On a pull request the published manifest is still the previous
+    # layout and its package identity legitimately differs from the PR.
+    if: needs.resolve-published.outputs.sha != '' && github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -272,6 +275,7 @@ jobs:
           EXPECTED_COMMIT: ${{ steps.published.outputs.upstream_commit }}
           EXPECTED_HASH: ${{ steps.published.outputs.sha256 }}
           EXPECTED_URL: ${{ steps.published.outputs.url }}
+          APP_NAME: ${{ steps.published.outputs.app }}
         run: |
           $ErrorActionPreference = 'Stop'
           $output = Join-Path $env:GITHUB_WORKSPACE 'scoop-install-evidence'
@@ -284,7 +288,8 @@ jobs:
             -ExpectedVersion $env:EXPECTED_VERSION `
             -ExpectedCommit $env:EXPECTED_COMMIT `
             -ExpectedHash $env:EXPECTED_HASH `
-            -ExpectedUrl $env:EXPECTED_URL
+            -ExpectedUrl $env:EXPECTED_URL `
+            -AppName $env:APP_NAME
 
       - name: Upload small install evidence
         if: always()

@@ -15,6 +15,14 @@ DESKTOP_VERSION = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d
 # Scoop update can move it to the first Desktop-release-derived version.
 LEGACY_DEV_VERSION = r"0\.0\.0-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
 LIGHT_VERSION = rf"{DESKTOP_VERSION}-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
+# The official Desktop stable channel publishes a Store-scheme product version
+# such as ``2026.6864.2132.0``. A stable-channel Light package keeps that
+# product version and carries only the bucket revision, without the
+# canary-only ``alpha.dev`` marker.
+STABLE_LIGHT_VERSION = rf"{DESKTOP_VERSION}-r[1-9]\d*"
+# Channel name -> the version marker that distinguishes the unofficial Light
+# distribution from the upstream product version it was built from.
+CHANNEL_VERSION_MARKERS = {"canary": "-alpha.dev.1", "stable": ""}
 LEGACY_STABLE_VERSION = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-r[1-9]\d*"
 APP = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 FULL_SHA = r"[a-f0-9]{40}"
@@ -35,6 +43,21 @@ def light_version_key(version):
     if not match:
         raise ValueError("Invalid Desktop Light distribution version")
     return (*desktop_version_key(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def light_package_version(version):
+    """Validate a Desktop-derived Light version from either official channel.
+
+    Ordering between the two channels is owned by
+    :func:`distribution_version_key`; this helper only guarantees that a
+    version belongs to the unofficial Light distribution and is well formed.
+    """
+    if not re.fullmatch(
+        rf"(?:{DESKTOP_VERSION})(?:-alpha\.dev\.1)?-r[1-9]\d*", version
+    ):
+        raise ValueError("Invalid Desktop Light distribution version")
+    distribution_version_key(version)
+    return version
 
 
 def version_key(version):
@@ -98,13 +121,23 @@ def distribution_version_key(version):
     raise ValueError("Invalid distribution version")
 
 
-def package_version(upstream_desktop_version, revision):
-    """Build the current Scoop version from the official Desktop version."""
+def package_version(upstream_desktop_version, revision, channel="canary"):
+    """Build the Scoop version for one official Desktop channel.
+
+    ``canary`` keeps the historical ``alpha.dev`` marker; ``stable`` adds only
+    the bucket revision.  Both keep the upstream four-component product
+    version so a normal Scoop update can move from the canary form to the
+    stable form.
+    """
     desktop_version_key(upstream_desktop_version)
+    if channel not in CHANNEL_VERSION_MARKERS:
+        raise ValueError("Unknown official Desktop channel")
     if not re.fullmatch(r"[1-9]\d*", str(revision)):
         raise ValueError("Distribution revision must be a positive integer")
-    version = f"{upstream_desktop_version}-alpha.dev.1-r{int(revision)}"
-    light_version_key(version)
+    version = (
+        f"{upstream_desktop_version}{CHANNEL_VERSION_MARKERS[channel]}-r{int(revision)}"
+    )
+    light_package_version(version)
     return version
 
 
@@ -121,13 +154,13 @@ def _validate_sha(commit):
 def release_tag(app, version):
     """Application-scoped immutable distribution tag."""
     _validate_app(app)
-    light_version_key(version)
+    light_package_version(version)
     return f"{app}/v{version}"
 
 
 def artifact_name(app, version, architecture="windows-x64"):
     _validate_app(app)
-    light_version_key(version)
+    light_package_version(version)
     if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", architecture):
         raise ValueError("Invalid artifact architecture")
     return f"{app}-{version}-{architecture}.zip"

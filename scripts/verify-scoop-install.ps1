@@ -16,7 +16,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedHash,
     [Parameter(Mandatory = $true)]
-    [string]$ExpectedUrl
+    [string]$ExpectedUrl,
+    [ValidatePattern('^[a-z0-9]+(?:-[a-z0-9]+)*$')]
+    [string]$AppName = 'hermes-desktop-light-canary'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,8 +29,11 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 $repo = 'takano536/scoop-bucket'
 $alias = 'takano536-verify'
-$appName = 'hermes-desktop-light'
-$expectedShortcutName = 'Hermes Desktop Light (Unofficial).lnk'
+$appName = $AppName
+# The shortcut label is part of the package contract; read it from the manifest
+# being verified so the stable and canary packages can differ.
+$expectedManifest = Get-Content -LiteralPath (Join-Path $BucketRoot "bucket\$appName.json") -Raw | ConvertFrom-Json
+$expectedShortcutName = "$($expectedManifest.shortcuts[0][1]).lnk"
  $evidence = [ordered]@{
      schema = 1
      status = 'failed'
@@ -364,7 +369,7 @@ $($rows -join "`n")
 
 - Status: **failed**
 - GitHub-hosted `windows-latest` runner evidence is **not** a guarantee for a clean general Windows installation.
-- Error: `$($_.Exception.Message)`
+- Error: $($_.Exception.Message)
 "@
     throw
 } finally {

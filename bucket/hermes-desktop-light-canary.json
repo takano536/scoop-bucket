@@ -12,7 +12,7 @@
     "shortcuts": [
         [
             "hermes-light-canary.exe",
-            "Hermes Desktop Light (Unofficial)"
+            "Hermes Desktop Light Canary (Unofficial)"
         ]
     ],
     "checkver": {
@@ -32,7 +32,7 @@
         "shortcuts": [
             [
                 "hermes-light-canary.exe",
-                "Hermes Desktop Light (Unofficial)"
+                "Hermes Desktop Light Canary (Unofficial)"
             ]
         ]
     },
