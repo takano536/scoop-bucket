@@ -1,0 +1,64 @@
+name: Link issues to merged pull requests
+
+# dev にマージされたPRが本文で宣言した Closes #N を、そのissueへ記録する。
+# GitHub の closing keyword は default branch 向けのPRでしか効かないため、base が dev のPRでは
+# issue は閉じない。閉じるかどうかはメンテナーが main へ反映した後に判断する。
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: link-issue-to-pr
+  cancel-in-progress: false
+
+jobs:
+  link:
+    name: Comment merged PRs on their issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment the PR on each declared issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prs="$(grep -oE 'Merge pull request #[0-9]+' "$GITHUB_EVENT_PATH" \
+            | grep -oE '[0-9]+' | sort -un || true)"
+          if [ -z "$prs" ]; then
+            echo 'no merge commits in this push'
+            exit 0
+          fi
+          for pr in $prs; do
+            body="$(gh pr view "$pr" --json body --jq '.body // ""')"
+            issues="$(printf '%s' "$body" \
+              | grep -oiE '(close[sd]?|fix(es|ed)?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#[0-9]+' \
+              | grep -oE '#[0-9]+' | sort -t'#' -k2,2n -u || true)"
+            if [ -z "$issues" ]; then
+              echo "#$pr declares no closing issue"
+              continue
+            fi
+            for issue in $issues; do
+              number="${issue#\#}"
+              state="$(gh issue view "$number" --json state --jq '.state' 2>/dev/null || echo '')"
+              if [ "$state" != 'OPEN' ]; then
+                echo "#$number is not open, skipping"
+                continue
+              fi
+              if gh issue view "$number" --json comments --jq '.comments[].body' \
+                | grep -qF "対応PR: #$pr （"; then
+                echo "#$number already mentions #$pr"
+                continue
+              fi
+              gh issue comment "$number" --body "対応PR: #$pr （\`dev\` にマージ済み。\`main\` へ反映した後にクローズします）"
+              echo "commented on #$number for #$pr"
+            done
+          done

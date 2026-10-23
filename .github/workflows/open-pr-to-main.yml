@@ -39,15 +39,6 @@ jobs:
             echo 'dev has nothing to merge into main'
             exit 0
           fi
-          # dev に取り込まれた PR が宣言した Closes/Fixes/Resolves を main 向けPRへ引き継ぐ。
-          # base が dev のPRではキーワードが無視されるため、main へのマージで issue を閉じるにはここで引き継ぐ必要がある。
-          closing="$(gh pr list --base "$head" --state merged --limit 100 --json body \
-            --jq '.[].body // ""' \
-            | grep -oiE '(close[sd]?|fix(es|ed)?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#[0-9]+' \
-            | grep -oE '#[0-9]+' | sort -t'#' -k2,2n -u || true)"
-          if [ -n "$closing" ]; then
-            body="${body}"$'\n\n'"$(printf 'Closes %s\n' $closing)"
-          fi
           number="$(gh pr list --head "$head" --base "$base" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$number" ]; then
             gh pr edit "$number" --title "$title" --body "$body"
