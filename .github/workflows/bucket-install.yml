@@ -1,9 +1,9 @@
 name: Bucket install
 
-# bucket/ の全manifestを実際にScoopでinstallし、配布物を取得できるか確認する。
-# manifestのスキーマ検証（CI）やURL・hash検証（Autoupdate validation）とは別に、
-# URL・hash・extract_dir・installerが実環境で通ることを確認する。
-# Pull Requestではread-onlyで動作し、書き戻しは行わない。
+# 変更されたmanifestを実際にScoopでinstallし、配布物を取得できるか確認する。
+# Pull Requestとmainへのpushでは、その変更で追加・更新されたアプリだけを対象にする。
+# 削除だけの変更はinstallする対象がないため、削除されたアプリ名をジョブサマリに残す。
+# 手動実行ではscopeでchanged/allを選べる。read-onlyで、manifestは変更しない。
 
 on:
   pull_request:
@@ -15,7 +15,17 @@ on:
     branches:
       - 'main'
       - 'master'
+    paths:
+      - 'bucket/**'
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 'changed: 直前の変更だけ / all: bucket/ 全体'
+        type: choice
+        options:
+          - changed
+          - all
+        default: all
 
 permissions:
   contents: read
@@ -26,7 +36,7 @@ concurrency:
 
 jobs:
   install:
-    name: Install every manifest
+    name: Install manifests
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -34,9 +44,75 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: my_bucket
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve manifests to verify
+        id: targets
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DISPATCH_SCOPE: ${{ inputs.scope }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location ./my_bucket
+          $all = $false
+          $diffArguments = $null
+          switch ($env:EVENT_NAME) {
+            'pull_request' {
+              $base = $env:PR_BASE_SHA
+              if ([string]::IsNullOrWhiteSpace($base)) { throw 'The pull request base commit is unknown.' }
+              & git fetch --no-tags --quiet origin $base
+              if ($LASTEXITCODE -ne 0) { throw "git fetch failed for $base" }
+              $diffArguments = @('diff', '--name-status', $base, 'HEAD', '--', 'bucket/')
+            }
+            'push' {
+              $before = $env:PUSH_BEFORE_SHA
+              if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+$') {
+                $all = $true
+              }
+              else {
+                & git fetch --no-tags --quiet origin $before
+                if ($LASTEXITCODE -ne 0) { throw "git fetch failed for $before" }
+                $diffArguments = @('diff', '--name-status', $before, 'HEAD', '--', 'bucket/')
+              }
+            }
+            default {
+              if ($env:DISPATCH_SCOPE -eq 'all') { $all = $true }
+              else { $diffArguments = @('diff', '--name-status', 'HEAD~1', 'HEAD', '--', 'bucket/') }
+            }
+          }
+          $install = New-Object System.Collections.Generic.List[string]
+          $removed = New-Object System.Collections.Generic.List[string]
+          if (-not $all) {
+            $lines = @(& git @diffArguments)
+            if ($LASTEXITCODE -ne 0) { throw "git $($diffArguments -join ' ') failed" }
+            foreach ($line in $lines) {
+              if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              $fields = $line -split "`t"
+              $status = $fields[0]
+              $path = if ($status -like 'R*') { $fields[2] } else { $fields[1] }
+              if ($path -notlike 'bucket/*.json') { continue }
+              $name = [IO.Path]::GetFileNameWithoutExtension($path)
+              if ($status -like 'D*') { $removed.Add($name) } else { $install.Add($name) }
+            }
+          }
+          $targets = @($install | Sort-Object -Unique)
+          $removedNames = @($removed | Sort-Object -Unique)
+          "all=$($all.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "apps=$($targets -join ',')" >> $env:GITHUB_OUTPUT
+          "removed=$($removedNames -join ',')" >> $env:GITHUB_OUTPUT
+          if ($all) { Write-Host 'Verifying every manifest in bucket/.' }
+          elseif ($targets.Count -eq 0) { Write-Host 'No added or modified manifest to install.' }
+          else { Write-Host "Verifying: $($targets -join ', ')" }
+          if ($removedNames.Count -gt 0) {
+            Write-Host "Removed (no install): $($removedNames -join ', ')"
+          }
+
       - name: Install Scoop (non-admin)
+        if: steps.targets.outputs.all == 'true' || steps.targets.outputs.apps != ''
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -55,26 +131,53 @@ jobs:
           scoop --version
           scoop config cache true
 
-      - name: Install every manifest in bucket/
+      - name: Install manifests
+        if: steps.targets.outputs.all == 'true' || steps.targets.outputs.apps != ''
         shell: pwsh
+        env:
+          VERIFY_ALL: ${{ steps.targets.outputs.all }}
+          VERIFY_APPS: ${{ steps.targets.outputs.apps }}
         run: |
           $ErrorActionPreference = 'Stop'
           $shims = Join-Path (Join-Path $env:USERPROFILE 'scoop') 'shims'
           $env:PATH = "$shims;$env:PATH"
           $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/bucket-install'
-          ./my_bucket/scripts/verify-bucket-install.ps1 -BucketRoot ./my_bucket -OutputDirectory $output
+          $arguments = @{ BucketRoot = './my_bucket'; OutputDirectory = $output }
+          if ($env:VERIFY_ALL -ne 'true') {
+            $arguments['App'] = $env:VERIFY_APPS -split ','
+          }
+          ./my_bucket/scripts/verify-bucket-install.ps1 @arguments
 
       - name: Publish summary
         if: always()
         shell: pwsh
+        env:
+          VERIFY_ALL: ${{ steps.targets.outputs.all }}
+          VERIFY_APPS: ${{ steps.targets.outputs.apps }}
+          REMOVED_APPS: ${{ steps.targets.outputs.removed }}
         run: |
-          $summary = Join-Path $env:GITHUB_WORKSPACE 'artifacts/bucket-install/summary.md'
-          if (Test-Path -LiteralPath $summary) {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value (Get-Content -LiteralPath $summary -Raw) -Encoding utf8
+          $ErrorActionPreference = 'Stop'
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add('### bucket install verification')
+          $lines.Add('')
+          if ($env:VERIFY_ALL -eq 'true') {
+            $lines.Add('対象: `bucket/` 全体')
+          }
+          elseif ($env:VERIFY_APPS) {
+            $lines.Add("対象: $($env:VERIFY_APPS -replace ',', ', ')")
           }
           else {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value 'No bucket install summary was produced.'
+            $lines.Add('対象: 追加・更新されたmanifestなし')
           }
+          if ($env:REMOVED_APPS) {
+            $lines.Add("削除（install対象外）: $($env:REMOVED_APPS -replace ',', ', ')")
+          }
+          $summary = Join-Path $env:GITHUB_WORKSPACE 'artifacts/bucket-install/summary.md'
+          if (Test-Path -LiteralPath $summary) {
+            $lines.Add('')
+            $lines.Add((Get-Content -LiteralPath $summary -Raw))
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
 
       - name: Upload evidence
         if: always()

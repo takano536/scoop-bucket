@@ -72,6 +72,27 @@ runner上のworkflowで実行する。
 結果はアプリごとのログと`summary.json`・`summary.md`に出力する。`-App`で対象を限定でき、
 `-SkipApp`で環境依存のアプリを除ける。
 
+### 作業ブランチのbucketを併設する
+
+特定ブランチのmanifestを実機で確認するときは、ブランチを切り替える代わりにbucketのaliasを
+分ける。`scoop bucket add`はブランチを指定できないが、Scoopは`buckets`配下のディレクトリを
+すべてbucketとして扱い、manifestを再帰的に探索する。そのため、作業ツリーへのjunctionを
+置けば、同じリポジトリの別ブランチを別bucketとして併設できる。
+
+```powershell
+$repo = Join-Path $env:USERPROFILE 'src\scoop-bucket'
+$work = Join-Path $env:USERPROFILE 'src\scoop-bucket-dev'
+git -C $repo worktree add $work dev
+New-Item -ItemType Junction `
+    -Path (Join-Path $env:USERPROFILE 'scoop\buckets\takano536-dev') `
+    -Target $work
+scoop install takano536-dev/<app>
+```
+
+worktreeはgit管理下なので、`scoop update`はjunction経由でそのworktreeのチェックアウト中
+ブランチをpullする。ブランチごとにworktreeとaliasを作れば、切り替えずに`takano536`（main）と
+`takano536-dev`（dev）を同時に使える。
+
 ## CI/CDワークフロー
 
 ここでは共通workflowの役割と入口だけを示す。bucket-built distributionや個別アプリの
@@ -96,10 +117,14 @@ UTC 06:43のdaily schedule（`43 6 * * *`）で起動する。Windows PowerShell
 ### Bucket install ([../.github/workflows/bucket-install.yml](../.github/workflows/bucket-install.yml))
 
 `bucket/**`、`scripts/verify-bucket-install.ps1`、このworkflowを変更したPull Request、
-`main`/`master`へのpush、`workflow_dispatch`で起動する。Windows runnerで`bucket/`の
-全manifestを実際に`scoop install`し、`scoop prefix`で導入結果を確認してからuninstallする。
+`bucket/**`を変更した`main`/`master`へのpush、`workflow_dispatch`で起動する。Windows runnerで
+対象のmanifestを実際に`scoop install`し、`scoop prefix`で導入結果を確認してからuninstallする。
 URL・hash・`extract_dir`・installerが実環境で通るかを確認するread-only検証であり、
 manifestは変更しない。アプリごとのログと集計はActions Artifactsに残す。
+
+Pull Requestとpushでは、その変更で追加・更新・renameされたmanifestだけを対象にする。
+削除だけの変更はinstallする対象がないため、削除されたアプリ名をジョブサマリに残す。
+`workflow_dispatch`は`scope`で`changed`と`all`を選べ、既定は`bucket/`全体。
 
 ### README ([../.github/workflows/readme.yml](../.github/workflows/readme.yml))
 
