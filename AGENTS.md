@@ -14,14 +14,13 @@
 
 ## ブランチとPR
 
-- `dev` が統合ブランチ。機能ブランチは `dev` をbaseにしてPRを作り、`dev` へマージする。
-- `main` へは `dev` からのみマージする。`dev` へのpushで main 向けの下書きPRが自動作成・自動更新される。
+- 機能ブランチは `main` をbaseにしてPRを作り、`main` へマージする。統合ブランチは置かない。
 - `main` はPR必須（直push禁止）のrulesetで保護する。唯一のbypassはwrite権限のdeploy keyで、botのworkflowは secret `MAIN_PUSH_DEPLOY_KEY` を使ってSSHでpushする。
 - `main` を直接編集せず、必ずレビュー可能なPRを作る。
 - 1つのPRは1つの確認可能な変更単位にする。
 - 積み上げPRは `gh pr create --base <branch>` で正しいベースを指定する。別PRの変更を `main` ベースのPRへ混ぜない。
-- Excavator・README・release writeback などの bot は例外的に `main` へ直接pushする。main の更新は back merge で `dev` に取り込まれる。
-- issueを解決するPRは、本文に `Closes #N` を書く（baseが `dev` でも書く）。GitHubのキーワードはdefault branch向けのPRでしか効かないため `dev` へのマージでは閉じない。`dev` にマージされると `Link issues to merged pull requests` がissueへ対応PRをコメントする。issueを閉じるのはメンテナーが `main` へ反映した後に行う。
+- Excavator・README・release writeback などの bot は例外的に `main` へ直接pushする。
+- issueを解決するPRは、本文に `Closes #N` を書く。`main` 向けPRなのでマージ時にissueが閉じる。
 - Conventional Commits のタイプは変更内容で選ぶ。
   - `ci:`: CI・workflow・GitHub Actionsだけの変更
   - `docs:`: ドキュメント・CHANGELOGの変更
