@@ -1,0 +1,23 @@
+{
+  "schema": 2,
+  "channel": "desktop-release",
+  "distribution": "unofficial-light",
+  "upstreamChannel": "stable",
+  "version": "2026.6864.2132.0-r1",
+  "sha256": "3e38de2c703f93d6c0595383c3409db5655f10117f86d046380d5bc9e5833e35",
+  "commit": "e06df9c2eae6901f4c88f464e0ae6e753c0428b8",
+  "shortSha": "e06df9c",
+  "desktopVersion": "2026.6864.2132.0",
+  "desktopTag": "rc.3-v0.22.0",
+  "desktopFeedUrl": "https://hermes-assets.nousresearch.com/releases/win32/stable/stable.appinstaller",
+  "desktopFeedEtag": "\"2f9ffa0a8e39cc6178a93ccd3326ab5b\"",
+  "desktopFeedLastModified": "Wed, 14 Oct 2026 04:06:51 GMT",
+  "desktopArtifactUrl": "https://hermes-assets.nousresearch.com/releases/tag/rc.3-v0.22.0/HermesBundled-2026.6864.2132.0-win.msixbundle",
+  "desktopArtifactSha256": "45faa4e1846096f8d68a3f76e2fc70f505c9df596d86c1190811a2e64bb148e4",
+  "releaseTag": "hermes-desktop-light/v2026.6864.2132.0-r1",
+  "artifact": "hermes-desktop-light-2026.6864.2132.0-r1-windows-x64.zip",
+  "executable": "Hermes Light.exe",
+  "conditionsFingerprint": "c7d7ec67cda6bf713e015f866ea7970ff98ceaf8d2c0d353341b2efb189be02a",
+  "bucketCommit": "3d0f2a8103dac84e3e478ae03e70abf95aca30aa",
+  "licenseSha256": "821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6"
+}

@@ -23,6 +23,7 @@ scoop install takano536/<アプリ名>
 
 | アプリ | バージョン | 説明 | リンク |
 | --- | --- | --- | --- |
+| [hermes-desktop-light](bucket/hermes-desktop-light.json) | 2026.6864.2132.0-r1 | Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop stable | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | [hermes-desktop-light-canary](bucket/hermes-desktop-light-canary.json) | 26.1023.7.57-alpha.dev.1-r1 | Hermes Desktop Light unofficial remote-only build from an official Hermes Desktop canary | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | [meltype](bucket/meltype.json) | 1.3.0 | Japanese input helper for Windows that types Japanese and English without toggling the input mode | [github.com/yksr-melt/Meltype](https://github.com/yksr-melt/Meltype) |
 | [UDEVGothic-NF](bucket/UDEVGothic-NF.json) | 2.2.0 | UDEV Gothic with Nerd Fonts and ligatures (UDEVGothic35NFLG, half-width/full-width ratio 3:5). | [github.com/yuru7/udev-gothic](https://github.com/yuru7/udev-gothic) |
