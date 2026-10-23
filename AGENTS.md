@@ -14,9 +14,12 @@
 
 ## ブランチとPR
 
+- `dev` が統合ブランチ。機能ブランチは `dev` をbaseにしてPRを作り、`dev` へマージする。
+- `main` へは `dev` からのみマージする。`dev` へのpushで main 向けの下書きPRが自動作成・自動更新される。
 - `main` を直接編集せず、必ずレビュー可能なPRを作る。
 - 1つのPRは1つの確認可能な変更単位にする。
 - 積み上げPRは `gh pr create --base <branch>` で正しいベースを指定する。別PRの変更を `main` ベースのPRへ混ぜない。
+- Excavator・README・release writeback などの bot は例外的に `main` へ直接pushする。main の更新は back merge で `dev` に取り込まれる。
 - Conventional Commits のタイプは変更内容で選ぶ。
   - `ci:`: CI・workflow・GitHub Actionsだけの変更
   - `docs:`: ドキュメント・CHANGELOGの変更
