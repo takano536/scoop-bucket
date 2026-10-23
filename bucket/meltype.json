@@ -1,0 +1,26 @@
+{
+    "version": "1.3.0",
+    "description": "Portable Japanese input helper for Windows that types Japanese and English without toggling the input mode",
+    "homepage": "https://github.com/yksr-melt/Meltype",
+    "license": "GPL-3.0-or-later",
+    "url": "https://github.com/yksr-melt/Meltype/releases/download/v1.3.0/Meltype-1.3.0-windows-portable.zip",
+    "hash": "6a3a5c5e027a6d2ac1ce199a9ff30a15284e158017daddd0dba17307ca890b7e",
+    "shortcuts": [
+        [
+            "Meltype.exe",
+            "Meltype"
+        ]
+    ],
+    "persist": "data",
+    "checkver": {
+        "github": "https://github.com/yksr-melt/Meltype"
+    },
+    "autoupdate": {
+        "url": "https://github.com/yksr-melt/Meltype/releases/download/v$version/Meltype-$version-windows-portable.zip",
+        "hash": {
+            "url": "https://api.github.com/repos/yksr-melt/Meltype/releases/tags/v$version",
+            "jsonpath": "$.assets[?(@.name == 'Meltype-$version-windows-portable.zip')].digest"
+        }
+    },
+    "notes": "Uses the portable zip, which does not register a Windows IME, does not add a startup entry, and does not self-update. Settings, learning data and logs are kept in the persisted 'data' folder next to Meltype.exe, and 'scoop update meltype' updates the app. Install the vendor installer separately if you need the Windows IME (TSF) integration."
+}
