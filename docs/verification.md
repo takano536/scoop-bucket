@@ -61,10 +61,37 @@ runner上のworkflowで実行する。
 .\tests\autoupdate-regression.ps1 -ScoopHome (Resolve-Path .\scoop_core)
 .\bin\test-autoupdate.ps1 -ScoopHome (Resolve-Path .\scoop_core)
 .\bin\test.ps1
+.\scripts\verify-bucket-install.ps1 -OutputDirectory .\artifacts\bucket-install
 ```
 
 `bin/test.ps1`はPesterとBuildHelpersを要求し、リポジトリのPesterテストを実行する。
 `Scoop-Bucket.Tests.ps1`はScoop側の`Import-Bucket-Tests.ps1`を読み込む。
+
+`scripts/verify-bucket-install.ps1`は、`bucket/`のmanifestをScoopの一時ローカルbucketへ
+コピーし、各アプリを実際にinstallして`scoop prefix`で導入結果を確認した後にuninstallする。
+結果はアプリごとのログと`summary.json`・`summary.md`に出力する。`-App`で対象を限定でき、
+`-SkipApp`で環境依存のアプリを除ける。
+
+### 作業ブランチのbucketを併設する
+
+特定ブランチのmanifestを実機で確認するときは、ブランチを切り替える代わりにbucketのaliasを
+分ける。`scoop bucket add`はブランチを指定できないが、Scoopは`buckets`配下のディレクトリを
+すべてbucketとして扱い、manifestを再帰的に探索する。そのため、作業ツリーへのjunctionを
+置けば、同じリポジトリの別ブランチを別bucketとして併設できる。
+
+```powershell
+$repo = Join-Path $env:USERPROFILE 'src\scoop-bucket'
+$work = Join-Path $env:USERPROFILE 'src\scoop-bucket-dev'
+git -C $repo worktree add $work dev
+New-Item -ItemType Junction `
+    -Path (Join-Path $env:USERPROFILE 'scoop\buckets\takano536-dev') `
+    -Target $work
+scoop install takano536-dev/<app>
+```
+
+worktreeはgit管理下なので、`scoop update`はjunction経由でそのworktreeのチェックアウト中
+ブランチをpullする。ブランチごとにworktreeとaliasを作れば、切り替えずに`takano536`（main）と
+`takano536-dev`（dev）を同時に使える。
 
 ## CI/CDワークフロー
 
@@ -86,6 +113,18 @@ bucket-built manifestが配布改訂を使う場合だけ、その版の比較�
 UTC 06:43のdaily schedule（`43 6 * * *`）で起動する。Windows PowerShellで、一時fixture
 を使ったcheckver/autoupdate回帰と、manifestのコピーに対するlive URL・hash・
 `extract_dir`検証をread-onlyで行う。アプリのinstallやhookは実行しない。
+
+### Bucket install ([../.github/workflows/bucket-install.yml](../.github/workflows/bucket-install.yml))
+
+`bucket/**`、`scripts/verify-bucket-install.ps1`、このworkflowを変更したPull Request、
+`bucket/**`を変更した`main`/`master`へのpush、`workflow_dispatch`で起動する。Windows runnerで
+対象のmanifestを実際に`scoop install`し、`scoop prefix`で導入結果を確認してからuninstallする。
+URL・hash・`extract_dir`・installerが実環境で通るかを確認するread-only検証であり、
+manifestは変更しない。アプリごとのログと集計はActions Artifactsに残す。
+
+Pull Requestとpushでは、その変更で追加・更新・renameされたmanifestだけを対象にする。
+削除だけの変更はinstallする対象がないため、削除されたアプリ名をジョブサマリに残す。
+`workflow_dispatch`は`scope`で`changed`と`all`を選べ、既定は`bucket/`全体。
 
 ### README ([../.github/workflows/readme.yml](../.github/workflows/readme.yml))
 
@@ -119,6 +158,7 @@ bucket-built distributionのbuild、smoke、受入条件、公開ゲート、成
 | bucket-built distributionの改訂順 | CI | 該当アプリの契約が定める版形式だけを`Compare-Version`で確認する。 |
 | autoupdate回帰 | Autoupdate validation | 一時fixtureでPowerShellの回帰ケースを実行する。 |
 | live autoupdate | Autoupdate validation | 実URLを取得し、hashと`extract_dir`を確認する。 |
+| 全manifestの実install | Bucket install | Windows runnerで`bucket/`の各アプリを`scoop install`し、失敗したmanifestを報告する。 |
 | READMEテスト・生成 | README | Python unittest、生成、`--check`を実行する。 |
 | アプリ固有のbuild・受入・公開 | 各アプリのworkflow | アプリ固有文書の契約とゲートに従う。 |
 
