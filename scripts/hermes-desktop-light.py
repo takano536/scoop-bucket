@@ -1148,6 +1148,12 @@ def main(argv=None) -> int:
         default=None,
         help="official Desktop channel to track (default: UPSTREAM_CHANNEL or stable)",
     )
+    parser.add_argument(
+        "--app",
+        choices=(APP_BY_CHANNEL["canary"], APP_BY_CHANNEL["stable"], APP),
+        default=None,
+        help="published package to describe (default: the bucket layout order)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "published-expectations":
@@ -1155,6 +1161,7 @@ def main(argv=None) -> int:
                 **published_expectations(
                     args.bucket_root,
                     _repository(os.environ["GITHUB_REPOSITORY"]),
+                    app=args.app,
                 )
             )
         else:

@@ -113,6 +113,38 @@ class PublishedExpectationTests(unittest.TestCase):
                     },
                 )
 
+    def test_explicit_app_picks_the_named_package_in_a_split_bucket(self):
+        # Both packages publish into the same bucket, so the public verifier has to
+        # name the package it installs instead of relying on the layout default.
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            canary = ("26.1023.7.57-alpha.dev.1-r1", "7" * 64, "8" * 40)
+            stable = ("2026.6864.2132.0-r1", "9" * 64, "a" * 40)
+            canary_data, _ = self._publish_state(root, *canary)
+            stable_data, _ = self._publish_state(root, *stable, light.CHANNELS["stable"])
+
+            self.assertEqual(
+                light.published_expectations(root, self.REPOSITORY)["app"],
+                light.APP_BY_CHANNEL["canary"],
+            )
+            for channel, data, (version, digest, commit) in (
+                ("canary", canary_data, canary),
+                ("stable", stable_data, stable),
+            ):
+                with self.subTest(channel=channel):
+                    self.assertEqual(
+                        light.published_expectations(
+                            root, self.REPOSITORY, app=light.APP_BY_CHANNEL[channel]
+                        ),
+                        {
+                            "app": light.APP_BY_CHANNEL[channel],
+                            "version": version,
+                            "sha256": digest,
+                            "url": data["architecture"]["64bit"]["url"],
+                            "upstream_commit": commit,
+                        },
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

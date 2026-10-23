@@ -17,8 +17,9 @@ param(
     [string]$ExpectedHash,
     [Parameter(Mandatory = $true)]
     [string]$ExpectedUrl,
+    [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-z0-9]+(?:-[a-z0-9]+)*$')]
-    [string]$AppName = 'hermes-desktop-light-canary'
+    [string]$AppName
 )
 
 $ErrorActionPreference = 'Stop'
