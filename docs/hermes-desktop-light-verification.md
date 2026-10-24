@@ -143,11 +143,21 @@ window; the parent still enforces process-tree cleanup.
   Releaseを意図的に削除する場合は公開が残るペアへ差し替える。404をskipや成功扱いにはしない。
   旧`0.0.0-alpha.dev.1-r1`のReleaseは版番号修正後に削除されたため、現在の回帰テストでは
   使用しない。下記の旧版からの移行記録は当時の実行結果として保持する。
-- **更新追従**: publish後（`workflow_run`で書き戻したcommit）またはdispatch/PR時の公開`main`
-  commitを解決し、そのcommitの`bucket/hermes-desktop-light.json`と
-  `metadata/hermes-desktop-light-release.json`から`published-expectations`で
-  version/hash/URL/upstream commitを導出する。manifestとpointerの不一致は失敗にする。
-  Scoopのbucket cloneも同じcommitへ固定し、gatewayも同じupstream commitを使う。
+- **更新追従**: publish後（`workflow_run`）は
+  `hermes-desktop-light-stable-written-back-sha`または
+  `hermes-desktop-light-canary-written-back-sha`の書き戻しartifactから、またはdispatch時は公開`main`
+  commitを解決する。`resolve-published`はそのcommitに存在する
+  `bucket/hermes-desktop-light-canary.json`（canary）と
+  `bucket/hermes-desktop-light.json`（stable）のpackage名を`apps`へ集め、
+  `verify-public-scoop-install`はその一覧をmatrixとしてpackageごとに一度ずつ反復する。
+  各matrix jobは`published-expectations --app`で該当manifestとrelease pointerから
+  version/hash/URL/upstream commitを導出する。canaryのpointerは
+  `metadata/hermes-desktop-light-release.json`、stableのpointerは
+  `metadata/hermes-desktop-light-stable-release.json`であり、manifestとpointerの不一致は
+  失敗にする。Scoopのbucket cloneも同じcommitへ固定し、gatewayも同じupstream commitを使う。
+- **固定履歴の回帰job**（`regression-historical-update`）はこのpackage matrixとは独立しており、
+  固定pairを一回だけ実行する。publishなしの`workflow_run`では書き戻しartifactがないため
+  更新追従のresolveは成功したままpublic install matrixをskipし、skipは成功として扱われる。
 
 ## Current final-head verification
 

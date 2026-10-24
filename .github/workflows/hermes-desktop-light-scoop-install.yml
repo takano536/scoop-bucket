@@ -42,9 +42,10 @@ jobs:
           # Follow the bucket users actually install: the exact publisher
           # writeback after a release, otherwise the current public main.
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            # The release train uploads one written-back artifact per channel.
+            # The API does not guarantee artifact order; choose the newest
+            # writeback rather than relying on whichever channel is returned first.
             match="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.expired == false and (.name == "hermes-desktop-light-stable-written-back-sha" or .name == "hermes-desktop-light-canary-written-back-sha"))] | (.[0] // {}) | [.id // "", .name // ""] | @tsv')"
+              --jq '[.artifacts[] | select(.expired == false and (.name == "hermes-desktop-light-stable-written-back-sha" or .name == "hermes-desktop-light-canary-written-back-sha"))] | sort_by(.created_at, .id) | (last // {}) | [.id // "", .name // ""] | @tsv')"
             artifact_id="${match%%$'\t'*}"
             artifact_name="${match#*$'\t'}"
             if [[ -z "$artifact_id" ]]; then
