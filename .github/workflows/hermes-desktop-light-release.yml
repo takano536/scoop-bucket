@@ -197,7 +197,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          # main への書き込みは deploy key を bypass とした ruleset のため SSH で push する
+          # bot の main への書き込みは deploy key（secret MAIN_PUSH_DEPLOY_KEY）で SSH push する
           ssh-key: ${{ secrets.MAIN_PUSH_DEPLOY_KEY }}
       - name: Download this run's verified artifacts
         env:
