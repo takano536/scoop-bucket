@@ -9,12 +9,38 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / ".github/workflows/hermes-desktop-light-scoop-install.yml"
+WORKFLOWS = (
+    (
+        "hermes-desktop-light-scoop-install",
+        ROOT / ".github/workflows/hermes-desktop-light-scoop-install.yml",
+        "resolve-published",
+        "verify-public-scoop-install",
+    ),
+    (
+        "ci",
+        ROOT / ".github/workflows/ci.yml",
+        "resolve-target",
+        "test",
+    ),
+    (
+        "autoupdate",
+        ROOT / ".github/workflows/autoupdate.yml",
+        "resolve-target",
+        "validate",
+    ),
+)
 
 
 class ScoopInstallWorkflowTests(unittest.TestCase):
     def test_resolver_selects_newest_writeback_artifact(self):
         """An API response is not ordered, so the newest channel artifact wins."""
+        for workflow_name, workflow_path, start_job, end_job in WORKFLOWS:
+            with self.subTest(workflow=workflow_name):
+                self._assert_resolver_selects_newest(
+                    workflow_path, start_job, end_job
+                )
+
+    def _assert_resolver_selects_newest(self, workflow_path, start_job, end_job):
         old_canary = "a" * 40
         new_stable = "b" * 40
         artifacts = {
@@ -33,10 +59,10 @@ class ScoopInstallWorkflowTests(unittest.TestCase):
                 },
             ]
         }
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        start = workflow.index("  resolve-published:")
+        workflow = workflow_path.read_text(encoding="utf-8")
+        start = workflow.index(f"  {start_job}:")
         start = workflow.index("        run: |\n", start) + len("        run: |\n")
-        end = workflow.index("\n\n  verify-public-scoop-install:", start)
+        end = workflow.index(f"\n\n  {end_job}:", start)
         resolver = textwrap.dedent(workflow[start:end])
 
         with tempfile.TemporaryDirectory() as scratch:
@@ -114,7 +140,6 @@ class ScoopInstallWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"sha={new_stable}", output_text)
         self.assertNotIn(f"sha={old_canary}", output_text)
-
 
 
 if __name__ == "__main__":
