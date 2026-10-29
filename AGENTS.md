@@ -55,9 +55,12 @@
 
 - このbucketのworkflowが上流ソースからビルドし、GitHub Releasesに公開するアプリは、
   [配布ルール](docs/distribution-policy.md)とアプリ固有の契約に従う。
-- Release tagは`<app>/v<upstream-version>-r<revision>`、Scoop manifest versionは
-  `<upstream-version>-r<revision>`、ZIP名は
-  `<app>-<upstream-version>-r<revision>-windows-<arch>.zip`とする。
+- Release tagは`<app>/<version>`、Scoop manifest version（以下version）は
+  公式Desktopのbuild tag（canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`、
+  stableは`rc.<N>-v<X.Y.Z>`）にこのbucketの改訂番号を付けた
+  `<official-tag>-r<revision>`とする。ZIP名は
+  `<app>-<version>-windows-<arch>.zip`とする。
+  例：canaryは`v0.22.5+canary.20261023T070057Z-r1`、stableは`rc.3-v0.22.0-r1`。
 - 改訂番号、同じ上流版の修正版、再実行、ライセンス・通知確認の扱いは、共通ルールと
   アプリ固有文書の両方を確認する。アプリ固有の条件は、各アプリの検証文書に記載する。
 

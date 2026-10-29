@@ -10,7 +10,9 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 
 ## 名前と正本
 
-- アプリごとにReleaseタグを`<app>/v<upstream>-r<N>`とする。
+- アプリごとにReleaseタグを`<app>/<version>`とする。versionは公式upstreamのbuild
+  tagに配布改訂番号を付けた形式（下記「Scoop version」参照）で、`v`プレフィックスは
+  version自身が担うためタグ側で追加しない。
 - Scoop versionとZIP名にも同じ配布改訂番号を含める。初回は`r1`。
 - 同じ上流版の修正だけ改訂番号を増やす。通常の再実行では増やさない。
 - 上流タグ・commitと配布版を区別する。`r2`でもビルド対象は同じ上流タグであり、
@@ -27,15 +29,16 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 - ビルド前に、対象アプリの契約で定めた上流tag/commit、version形式、source/build条件、
   claimまたはadmission条件、外部サービスなどの実行条件を確認する。これらを他の
   アプリへ推測で適用しない。
-- `scripts/distribution.py`のHermes Desktop Light helperは、公式Desktopの4要素product
-  version（例`26.1009.7.410`、`2026.6864.2132.0`）とchannelを受け取り、stableは
-  `<desktop>-r<N>`、canaryは`<desktop>-alpha.dev.1-r<N>`を生成する。既存の
-  `0.0.0-alpha.dev.1-r1`も比較でき、通常のScoop更新で新形式へ進める。他のアプリ・
-  CalVer・未知のchannelを推測でこのhelperへ渡さない。
+- `scripts/distribution.py`のHermes Desktop Light helperは、公式Desktopのbuild tag
+  （canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`、stableは`rc.<N>-v<X.Y.Z>`）と
+  改訂番号を受け取り、`<official-tag>-r<N>`を生成する。旧product version形式
+  （`2026.6864.2132.0-r1`、`<desktop>-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）も
+  比較でき、通常のScoop更新で新形式へ進める。他のアプリ・未知のtag形式を推測で
+  このhelperへ渡さない。
 
 ## 複数アプリ
 
-`<app-a>/v<upstream>-r1`と`<app-b>/v<upstream>-r1`は別Releaseとして共存する。
+`<app-a>/<version>`と`<app-b>/<version>`は別Releaseとして共存する。
 各アプリは固有のビルド、ライセンス検査、受け入れ検証、公開ゲートを持ち、共通ルールは
 それらの契約を置き換えない。
 
@@ -96,13 +99,16 @@ mainへフォールバックしない。API障害、tag ambiguity、handoff不�
 upstream sourceのchannelと、bucketが配布する**unofficial Light build**であることは
 別の属性である。
 
-Scoop versionは追従中channelの形式だけを使う。stableは
-`<desktop-version>-r<N>`（例 `2026.6864.2132.0-r1`）、canaryは
-`<desktop-version>-alpha.dev.1-r<N>`（例 `26.1009.7.410-alpha.dev.1-r1`）。同じproduct
-versionではstable形式がalpha.dev buildより大きく、どちらも既存の
-`0.0.0-alpha.dev.1-r1`より大きい。同じDesktop versionでは`r1 < r2`で、初回Desktop release
-はr1、同じpublished Desktop buildと同じbuild conditionsの再実行は同じversion/tag/assetsを
-再利用してno-opにする。r2以降は同じsourceを修正する承認済み手動dispatchだけで指定し、
+Scoop versionは公式Desktopのbuild tagそのままを正本とし、末尾にこのbucketの改訂番号
+を付けた`<official-tag>-r<N>`を使う。canaryは
+`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
+`v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-r<N>`（例
+`rc.3-v0.22.0-r1`）。旧product version形式（`<desktop-version>-r<N>`、
+`<desktop-version>-alpha.dev.1-r<N>`、`0.0.0-alpha.dev.1-r1`）はすべて新形式より小さい
+ため、通常のScoop更新で新形式へ進める。同じofficial tagでは`r1 < r2`で、初回Desktop
+releaseはr1、同じpublished Desktop buildと同じbuild conditionsの再実行は同じ
+version/tag/assetsを再利用してno-opにする。canaryとstableは別のパッケージであり、
+互いの大小は順序の根拠にしない。r2以降は同じsourceを修正する承認済み手動dispatchだけで指定し、
 公開済みassetを上書きしない。
 
 保持する条件は既存と同じである。exact Windows build、Light payload、MIT license、

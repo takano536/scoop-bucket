@@ -19,11 +19,13 @@
   skip（exit 0）とする。skipではcurrent manifestを変更せず、mainへfallbackしない。
 - 配布物は追従中channelの公式sourceから作る**unofficial Light build**である。upstreamの
   channelとbucket distributionの非公式性を同一視しない。
-- versionはstableが`<Desktop product>-rN`（例`2026.6864.2132.0-r1`）、canaryが
-  `<Desktop product>-alpha.dev.1-rN`（例`26.1009.7.410-alpha.dev.1-r1`）。同じproduct
-  versionではstable形式がalpha.dev buildより大きい。旧`0.0.0-alpha.dev.1-r1`からも通常の
-  Scoop updateで上がる。same published Desktop build/conditionsはidempotent、r2+は
-  manual fix専用。
+- versionは公式Desktopのbuild tagそのままにこのbucketの改訂番号を付けた
+  `<official-tag>-rN`。canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-rN`（例
+  `v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-rN`（例
+  `rc.3-v0.22.0-r1`）。旧product version形式（`2026.6864.2132.0-r1`、
+  `26.1009.7.410-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）はすべて新形式より小さく、
+  通常のScoop updateで上がる。same published Desktop build/conditionsはidempotent、r2+は
+  manual fix専用。canaryとstableは別のパッケージで互いの大小は順序の根拠にしない。
 
 ## Channel split: stable + canary
 
@@ -499,7 +501,7 @@ executable, or a missing source/build path, remains fail-closed.
 
 ## Desktop-release publication and open verification
 
-The publisher creates a prerelease tag `<app>/v<Desktop>-alpha.dev.1-rN`, never mutates an
+The publisher creates a prerelease tag `<app>/<official-tag>-rN`, never mutates an
 existing Release asset, and writes the official feed URL, product version, canary tag, exact
 upstream commit, Desktop package digest, bucket build commit, Light digest, license digest, and
 conditions fingerprint into Release body/provenance. Before writeback it re-reads the official
@@ -542,7 +544,7 @@ This review branch does not satisfy `refs/heads/main` and does not create or mod
 The existing `0.0.0-alpha.dev.1-r1` Release and manifest are retained as the last installable
 bucket version. Its old provenance identifies an earlier main-tracking development build; it is
 not a current Desktop-release detection result. The new publisher will create a separate
-`hermes-desktop-light/v<Desktop>-alpha.dev.1-rN` prerelease only after the official feed,
+`hermes-desktop-light/<official-tag>-rN` prerelease only after the official feed,
 annotated tag, R2 handoff, exact Light source, license/notice checks, Windows acceptance, and
 public URL SHA256 all pass.
 

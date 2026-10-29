@@ -143,7 +143,7 @@ def _producer_record(*, version, commit, tag, desktop_version, artifact, digest,
 
 class PublishContractTests(unittest.TestCase):
     def setUp(self):
-        self.version = "26.1009.7.410-alpha.dev.1-r1"
+        self.version = "v0.21.6+canary.20261009T070410Z-r1"
         self.digest = "a" * 64
         self.commit = "b" * 40
         self.desktop_digest = "c" * 64
@@ -249,7 +249,7 @@ class PublishContractTests(unittest.TestCase):
             commit=self.commit,
             tag="v0.21.6+canary.20261009T070410Z",
             desktop_version="26.1009.7.410",
-            artifact="hermes-desktop-light-26.1009.7.410-alpha.dev.1-r1-windows-x64.zip",
+            artifact="hermes-desktop-light-v0.21.6+canary.20261009T070410Z-r1-windows-x64.zip",
             digest=self.digest,
             conditions=self.conditions,
             license_digest=self.license,
@@ -484,7 +484,7 @@ class PublishContractTests(unittest.TestCase):
     def test_manifest_points_to_immutable_unofficial_release_and_pointer(self):
         data = light.manifest(self.version, "takano536/scoop-bucket", self.digest, channel=CANARY)
         self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
-        self.assertIn("hermes-desktop-light%2Fv26.1009.7.410-alpha.dev.1-r1", data["architecture"]["64bit"]["url"])
+        self.assertIn("hermes-desktop-light%2Fv0.21.6%2Bcanary.20261009T070410Z-r1", data["architecture"]["64bit"]["url"])
         self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light Canary (Unofficial)"]])
         self.assertIn("metadata/hermes-desktop-light-release.json", data["checkver"]["url"])
         self.assertIn("officially published Hermes Desktop canary", data["notes"])
@@ -503,7 +503,7 @@ class PublishContractTests(unittest.TestCase):
             desktop_artifact_sha256=self.desktop_digest,
             conditions_fingerprint=self.conditions,
             license_sha256=self.license,
-            release_tag_value=f"{light.APP}/v{self.version}",
+            release_tag_value=f"{light.APP}/{self.version}",
             artifact=f"{light.APP}-{self.version}-windows-x64.zip",
             channel=CANARY,
         )
@@ -517,7 +517,7 @@ class PublishContractTests(unittest.TestCase):
     def test_pointer_rejects_untrusted_digest_or_version(self):
         with self.assertRaises(ValueError):
             light.release_pointer(
-                version="0.0.0-alpha.dev.1-r1",
+                version="v0.21.6+canary.20261009T070410Z",
                 digest=self.digest,
                 commit=self.commit,
                 desktop_version="26.1009.7.410",

@@ -1,9 +1,10 @@
 """Version helpers for bucket-built Hermes Desktop Light distributions.
 
-The upstream Desktop Windows product uses a four-component version such as
-``26.1009.7.410`` for its published canary builds.  A bucket-built Light
-package keeps that product version and appends the explicit unofficial/dev
-marker plus a manually controlled distribution revision.
+The identity of a Light package is the official Desktop build tag it was built
+from: ``v<X.Y.Z>+canary.<YYYYMMDDTHHMMSSZ>`` on the canary channel and
+``rc.<N>-vX.Y.Z`` on the stable channel.  A Light version keeps that official
+tag verbatim and appends the bucket-controlled revision, so a Scoop version
+reads exactly like the official tag it tracks.
 """
 import re
 
@@ -11,65 +12,66 @@ import re
 # AppInstaller feed (YY.MMDD.HH.MMSS).  Keep this parser strict so a malformed
 # feed can never become a Scoop version by accident.
 DESKTOP_VERSION = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
-# Retain recognition of the already-published pre-policy version so a normal
-# Scoop update can move it to the first Desktop-release-derived version.
+SEMVER = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+# Official Desktop build tags.  Canary bundles are tagged with the stable
+# version plus the exact build stamp; stable bundles carry an RC claim tag.
+CANARY_TAG = rf"v{SEMVER}\+canary\.\d{{8}}T\d{{6}}Z"
+STABLE_TAG = rf"rc\.[1-9]\d*-v{SEMVER}"
+OFFICIAL_TAG = rf"(?:{STABLE_TAG}|{CANARY_TAG})"
+REVISION = r"[1-9]\d*"
+LIGHT_VERSION = rf"{OFFICIAL_TAG}-r{REVISION}"
+# Versions published before the official-tag rule stay parseable so ordering
+# across the migration, and the pointers/Releases that carry them, keep working.
 LEGACY_DEV_VERSION = r"0\.0\.0-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
-LIGHT_VERSION = rf"{DESKTOP_VERSION}-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
-# The official Desktop stable channel publishes a Store-scheme product version
-# such as ``2026.6864.2132.0``. A stable-channel Light package keeps that
-# product version and carries only the bucket revision, without the
-# canary-only ``alpha.dev`` marker.
-STABLE_LIGHT_VERSION = rf"{DESKTOP_VERSION}-r[1-9]\d*"
-# Channel name -> the version marker that distinguishes the unofficial Light
-# distribution from the upstream product version it was built from.
-CHANNEL_VERSION_MARKERS = {"canary": "-alpha.dev.1", "stable": ""}
-LEGACY_STABLE_VERSION = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-r[1-9]\d*"
+LEGACY_CANARY_VERSION = rf"{DESKTOP_VERSION}-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
+LEGACY_STABLE_PRODUCT_VERSION = rf"{DESKTOP_VERSION}-r[1-9]\d*"
+LEGACY_STABLE_VERSION = rf"{SEMVER}-r[1-9]\d*"
 APP = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 FULL_SHA = r"[a-f0-9]{40}"
+
+_CANARY_TAG = re.compile(rf"v({SEMVER})\+canary\.(\d{{8}})T(\d{{6}})Z")
+_STABLE_TAG = re.compile(rf"rc\.([1-9]\d*)-v({SEMVER})")
 
 
 def desktop_version_key(version):
     """Return the four numeric components of an upstream Desktop version."""
-    if not re.fullmatch(DESKTOP_VERSION, version):
+    if not re.fullmatch(DESKTOP_VERSION, version or ""):
         raise ValueError("Invalid upstream Desktop product version")
     return tuple(int(item) for item in version.split("."))
 
 
-def light_version_key(version):
-    """Parse the current Desktop-derived Light package version."""
-    match = re.fullmatch(
-        rf"({DESKTOP_VERSION})-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version
-    )
+def split_version(version):
+    """Return the official Desktop build tag and revision of a Light version."""
+    match = re.fullmatch(rf"({OFFICIAL_TAG})-r({REVISION})", version or "")
     if not match:
         raise ValueError("Invalid Desktop Light distribution version")
-    return (*desktop_version_key(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return match.group(1), int(match.group(2))
 
 
-def light_package_version(version):
-    """Validate a Desktop-derived Light version from either official channel.
+def official_tag_key(tag):
+    """Return the ordering key of one official Desktop build tag."""
+    # Scoop's own Compare-Version puts a ``v...`` tag above an ``rc.N-...`` tag,
+    # so the channel rank keeps this key in the same order for the same version.
+    canary = _CANARY_TAG.fullmatch(tag or "")
+    if canary:
+        major, minor, patch = (int(item) for item in canary.group(1).split("."))
+        return (1, major, minor, patch, int(canary.group(2) + canary.group(3)))
+    stable = _STABLE_TAG.fullmatch(tag or "")
+    if stable:
+        major, minor, patch = (int(item) for item in stable.group(2).split("."))
+        return (0, major, minor, patch, int(stable.group(1)))
+    raise ValueError("Invalid official Desktop build tag")
 
-    Ordering between the two channels is owned by
-    :func:`distribution_version_key`; this helper only guarantees that a
-    version belongs to the unofficial Light distribution and is well formed.
-    """
-    if not re.fullmatch(
-        rf"(?:{DESKTOP_VERSION})(?:-alpha\.dev\.1)?-r[1-9]\d*", version
-    ):
-        raise ValueError("Invalid Desktop Light distribution version")
-    distribution_version_key(version)
-    return version
 
-
-def version_key(version):
-    """Return numeric Desktop product, dev-marker, and revision ordering."""
-    return light_version_key(version)
+def light_version_key(version):
+    """Return the ordering key of a current official-tag-derived Light version."""
+    tag, revision = split_version(version)
+    return (*official_tag_key(tag), revision)
 
 
 def dev_version_key(version):
     """Parse the historical fixed-base development version."""
-    match = re.fullmatch(
-        r"0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version
-    )
+    match = re.fullmatch(r"0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version or "")
     if not match:
         raise ValueError("Invalid legacy development distribution version")
     return tuple(int(item) for item in match.groups())
@@ -81,62 +83,72 @@ def _validate_revision(revision):
     return int(revision)
 
 
-
 def distribution_version_key(version):
-    """Order legacy versions below Desktop-derived Light versions.
+    """Order Light versions for Scoop updates.
 
-    The leading family discriminator deliberately makes the first new
-    Desktop-derived package greater than ``0.0.0-alpha.dev.1-r1`` while
-    retaining numeric ordering for product-version, marker, and revision
-    components.  Stable four-component Desktop versions are accepted for
-    comparison fixtures and sort above the corresponding ``alpha.dev`` build.
+    Family 4 holds the current official-tag-derived versions, so they sort above
+    every version published before the tag rule and a normal ``scoop update``
+    moves forward through the migration.  The older families keep their
+    historical ordering so already published pointers stay readable.
     """
-    try:
-        product = light_version_key(version)
-        return (2, *product)
-    except ValueError:
-        pass
-    legacy = re.fullmatch(
-        r"0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version
+    match = re.fullmatch(rf"({OFFICIAL_TAG})-r({REVISION})", version or "")
+    if match:
+        return (4, *official_tag_key(match.group(1)), int(match.group(2)))
+    canary = re.fullmatch(
+        rf"({DESKTOP_VERSION})-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version or ""
     )
-    if legacy:
-        return (0, 0, 0, 0, 0, int(legacy.group(1)), int(legacy.group(2)))
-    stable_desktop = re.fullmatch(
-        rf"({DESKTOP_VERSION})(?:-r([1-9]\d*))?", version
-    )
-    if stable_desktop:
-        product = desktop_version_key(stable_desktop.group(1))
-        # A plain product version is the official/stable form and therefore
-        # sorts after the unofficial alpha.dev form.  ``-rN`` is retained for
-        # bucket stable fixtures and is also above alpha.dev.
-        revision = int(stable_desktop.group(2) or 1)
-        return (3, *product, 0, revision)
-    stable_legacy = re.fullmatch(
-        r"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-r([1-9]\d*)",
-        version,
-    )
+    if canary:
+        return (
+            2,
+            *desktop_version_key(canary.group(1)),
+            int(canary.group(2)),
+            int(canary.group(3)),
+        )
+    stable_product = re.fullmatch(rf"({DESKTOP_VERSION})(?:-r([1-9]\d*))?", version or "")
+    if stable_product:
+        return (
+            3,
+            *desktop_version_key(stable_product.group(1)),
+            0,
+            int(stable_product.group(2) or 1),
+        )
+    dev = re.fullmatch(r"0\.0\.0-alpha\.dev\.([1-9]\d*)-r([1-9]\d*)", version or "")
+    if dev:
+        return (0, 0, 0, 0, 0, int(dev.group(1)), int(dev.group(2)))
+    stable_legacy = re.fullmatch(rf"({SEMVER})-r([1-9]\d*)", version or "")
     if stable_legacy:
         parts = tuple(int(item) for item in stable_legacy.group(1).split("."))
         return (1, *parts, 0, int(stable_legacy.group(2)))
     raise ValueError("Invalid distribution version")
 
 
-def package_version(upstream_desktop_version, revision, channel="canary"):
-    """Build the Scoop version for one official Desktop channel.
+def light_package_version(version):
+    """Validate a Light version from either official channel.
 
-    ``canary`` keeps the historical ``alpha.dev`` marker; ``stable`` adds only
-    the bucket revision.  Both keep the upstream four-component product
-    version so a normal Scoop update can move from the canary form to the
-    stable form.
+    Current versions carry the official Desktop build tag verbatim.  Versions
+    published before that rule stay valid so the pointers and Releases already
+    on main keep resolving until the next publish rewrites them.
     """
-    desktop_version_key(upstream_desktop_version)
-    if channel not in CHANNEL_VERSION_MARKERS:
-        raise ValueError("Unknown official Desktop channel")
-    if not re.fullmatch(r"[1-9]\d*", str(revision)):
-        raise ValueError("Distribution revision must be a positive integer")
-    version = (
-        f"{upstream_desktop_version}{CHANNEL_VERSION_MARKERS[channel]}-r{int(revision)}"
+    accepted = (
+        rf"(?:{LIGHT_VERSION}|{LEGACY_CANARY_VERSION}|{LEGACY_STABLE_PRODUCT_VERSION}"
+        rf"|{LEGACY_STABLE_VERSION}|{LEGACY_DEV_VERSION})"
     )
+    if not re.fullmatch(accepted, version or ""):
+        raise ValueError("Invalid Desktop Light distribution version")
+    distribution_version_key(version)
+    return version
+
+
+def version_key(version):
+    """Return the ordering key of a Light version."""
+    return distribution_version_key(version)
+
+
+def package_version(official_tag, revision):
+    """Build the Scoop version for one official Desktop build tag."""
+    if not re.fullmatch(OFFICIAL_TAG, official_tag or ""):
+        raise ValueError("Invalid official Desktop build tag")
+    version = f"{official_tag}-r{_validate_revision(revision)}"
     light_package_version(version)
     return version
 
@@ -152,9 +164,17 @@ def _validate_sha(commit):
 
 
 def release_tag(app, version):
-    """Application-scoped immutable distribution tag."""
+    """Application-scoped immutable distribution tag.
+
+    A current version carries the official Desktop build tag verbatim, so the
+    Release tag and the Scoop version agree.  Versions published before that
+    rule keep their historical ``<app>/v<version>`` tag because those Releases
+    are immutable.
+    """
     _validate_app(app)
     light_package_version(version)
+    if re.fullmatch(LIGHT_VERSION, version):
+        return f"{app}/{version}"
     return f"{app}/v{version}"
 
 

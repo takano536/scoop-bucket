@@ -52,7 +52,7 @@ try {
         if ((Get-FileHash $file).Hash -ne $before) { throw 'Validator modified the original manifest' }
         Write-Host "PASS $($case.Name)"
     }
-    $releaseVersion = '26.1009.7.410-alpha.dev.1-r1'
+    $releaseVersion = 'v0.21.6+canary.20261009T070410Z-r1'
     $releaseCommit = 'b' * 40
     $releaseTag = 'v0.21.6+canary.20261009T070410Z'
     $releaseManifest = @{
@@ -67,7 +67,7 @@ try {
         } }
         checkver = @{
             url = "$base/dev-pointer"
-            regex = '"version"\s*:\s*"(?<version>\d+\.\d+\.\d+\.\d+-alpha\.dev\.[1-9]\d*-r[1-9]\d*)"[\s\S]*?"commit"\s*:\s*"(?<commit>[a-f0-9]{40})"'
+            regex = '"version"\s*:\s*"(?<version>v\d+\.\d+\.\d+\+canary\.\d{8}T\d{6}Z-r[1-9]\d*)"[\s\S]*?"commit"\s*:\s*"(?<commit>[a-f0-9]{40})"'
         }
         autoupdate = @{
             architecture = @{ '64bit' = @{

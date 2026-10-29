@@ -17,20 +17,19 @@ class PublishedExpectationTests(unittest.TestCase):
 
     REPOSITORY = "takano536/scoop-bucket"
 
-    def _publish_state(self, root, version, digest, commit, channel=None):
+    def _publish_state(self, root, version, digest, commit, channel=None, desktop_version="26.1011.7.142"):
         """Write the manifest and pointer exactly as the publisher's writeback does."""
         channel = channel or light.CHANNELS["canary"]
         app = light.app_for(channel)
         pointer_file = light.pointer_path(app)
         (root / "bucket").mkdir(parents=True, exist_ok=True)
         (root / pointer_file).parent.mkdir(parents=True, exist_ok=True)
-        desktop_version = version.split("-", 1)[0]
         pointer = light.release_pointer(
             version=version,
             digest=digest,
             commit=commit,
             desktop_version=desktop_version,
-            desktop_tag="v0.21.6+canary.20261011T070142Z",
+            desktop_tag=version.rsplit("-r", 1)[0],
             desktop_feed_url=light.CANARY_FEED_URL,
             desktop_feed_etag='"etag"',
             desktop_feed_last_modified="Sun, 11 Oct 2026 08:00:00 GMT",
@@ -52,13 +51,15 @@ class PublishedExpectationTests(unittest.TestCase):
     def test_expectations_follow_each_normal_publish(self):
         # The pinned verifier (PR #22) broke as soon as 26.1010 was superseded;
         # the same verifier must accept the next publish without edits.
-        for version, digest, commit in (
-            ("26.1010.7.26-alpha.dev.1-r1", "1" * 64, "2" * 40),
-            ("26.1011.7.142-alpha.dev.1-r1", "3" * 64, "4" * 40),
+        for version, feed_version, digest, commit in (
+            ("v0.21.6+canary.20261010T070123Z-r1", "26.1010.7.26", "1" * 64, "2" * 40),
+            ("v0.21.6+canary.20261011T070142Z-r1", "26.1011.7.142", "3" * 64, "4" * 40),
         ):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
-                data, _pointer = self._publish_state(root, version, digest, commit)
+                data, _pointer = self._publish_state(
+                    root, version, digest, commit, desktop_version=feed_version
+                )
                 self.assertEqual(
                     light.published_expectations(root, self.REPOSITORY),
                     {
@@ -72,7 +73,7 @@ class PublishedExpectationTests(unittest.TestCase):
 
     def test_manifest_and_pointer_disagreement_is_rejected(self):
         mutations = {
-            "manifest version": lambda data, pointer: data.update(version="26.1011.7.142-alpha.dev.1-r2"),
+            "manifest version": lambda data, pointer: data.update(version="v0.21.6+canary.20261011T070142Z-r2"),
             "manifest hash": lambda data, pointer: data["architecture"]["64bit"].update(hash="9" * 64),
             "manifest url": lambda data, pointer: data["architecture"]["64bit"].update(url="https://example.invalid/x.zip"),
             "manifest shortcut": lambda data, pointer: data.update(shortcuts=[["other.exe", "Other"]]),
@@ -83,7 +84,7 @@ class PublishedExpectationTests(unittest.TestCase):
         for name, mutate in mutations.items():
             with self.subTest(mutation=name), tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
-                data, pointer = self._publish_state(root, "26.1011.7.142-alpha.dev.1-r1", "3" * 64, "4" * 40)
+                data, pointer = self._publish_state(root, "v0.21.6+canary.20261011T070142Z-r1", "3" * 64, "4" * 40)
                 mutate(data, pointer)
                 app = light.app_for(light.CHANNELS["canary"])
                 (root / "bucket" / f"{app}.json").write_text(json.dumps(data), encoding="utf-8")
@@ -94,12 +95,13 @@ class PublishedExpectationTests(unittest.TestCase):
 
     def test_expectations_follow_a_stable_channel_publish(self):
         for version, digest, commit in (
-            ("2026.6864.2132.0-r1", "5" * 64, "6" * 40),
+            ("rc.3-v0.22.0-r1", "5" * 64, "6" * 40),
         ):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
                 data, pointer = self._publish_state(
-                    root, version, digest, commit, light.CHANNELS["stable"]
+                    root, version, digest, commit, light.CHANNELS["stable"],
+                    desktop_version="2026.6864.2132.0",
                 )
                 self.assertEqual(pointer["upstreamChannel"], "stable")
                 self.assertEqual(
@@ -118,10 +120,12 @@ class PublishedExpectationTests(unittest.TestCase):
         # name the package it installs instead of relying on the layout default.
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
-            canary = ("26.1023.7.57-alpha.dev.1-r1", "7" * 64, "8" * 40)
-            stable = ("2026.6864.2132.0-r1", "9" * 64, "a" * 40)
-            canary_data, _ = self._publish_state(root, *canary)
-            stable_data, _ = self._publish_state(root, *stable, light.CHANNELS["stable"])
+            canary = ("v0.22.5+canary.20261023T070057Z-r1", "7" * 64, "8" * 40)
+            stable = ("rc.3-v0.22.0-r1", "9" * 64, "a" * 40)
+            canary_data, _ = self._publish_state(root, *canary, desktop_version="26.1023.7.57")
+            stable_data, _ = self._publish_state(
+                root, *stable, light.CHANNELS["stable"], desktop_version="2026.6864.2132.0"
+            )
 
             self.assertEqual(
                 light.published_expectations(root, self.REPOSITORY)["app"],

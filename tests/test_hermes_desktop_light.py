@@ -43,11 +43,11 @@ class FeedFixtures:
 
 class VersionTests(unittest.TestCase):
     def test_desktop_version_and_revision_identity(self):
-        version = "26.1009.7.410-alpha.dev.1-r1"
-        self.assertEqual(light.package_version("26.1009.7.410", "1"), version)
+        version = "v0.21.6+canary.20261009T070410Z-r1"
+        self.assertEqual(light.package_version("v0.21.6+canary.20261009T070410Z", "1"), version)
         self.assertEqual(
             light.release_tag(light.APP, version),
-            f"{light.APP}/v{version}",
+            f"{light.APP}/{version}",
         )
         self.assertEqual(
             light.artifact_name(light.APP, version),
@@ -56,22 +56,24 @@ class VersionTests(unittest.TestCase):
 
     def test_normal_scoop_ordering_moves_legacy_to_desktop_release(self):
         legacy = "0.0.0-alpha.dev.1-r1"
-        first = "26.1009.7.410-alpha.dev.1-r1"
-        second = "26.1009.7.410-alpha.dev.1-r2"
-        future = "26.1010.1.100-r1"
+        first = "v0.21.6+canary.20261009T070410Z-r1"
+        second = "v0.21.6+canary.20261009T070410Z-r2"
+        future = "v0.21.6+canary.20261010T070410Z-r1"
         self.assertLess(light.distribution_version_key(legacy), light.distribution_version_key(first))
         self.assertLess(light.distribution_version_key(first), light.distribution_version_key(second))
         self.assertLess(light.distribution_version_key(second), light.distribution_version_key(future))
 
     def test_invalid_product_versions_fail_closed(self):
         for value in (
-            "26.1009.7",
-            "26.01009.7.410",
-            "26.1009.7.410-alpha.dev.0-r1",
-            "26.1009.7.410-alpha.dev.1-r01",
+            "v0.21.6",
+            "rc.3-v0.22",
+            "v0.21.6+canary.20261009T070410Z",
+            "rc.3-v0.22.0",
+            "v0.21.6+canary.20261009T070410Z-r0",
+            "rc.3-v0.22.0-r01",
         ):
             with self.assertRaises(ValueError):
-                light.package_version(value.split("-", 1)[0], "1") if "alpha" not in value else light.light_package_version(value)
+                light.light_package_version(value)
 
 
 class PlannerTests(unittest.TestCase):
@@ -109,7 +111,7 @@ class PlannerTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
-    def pointer(self, *, fingerprint="d" * 64, version="26.1009.7.410-alpha.dev.1-r1"):
+    def pointer(self, *, fingerprint="d" * 64, version="v0.21.6+canary.20261009T070410Z-r1"):
         return {
             "desktopTag": self.fixture.provenance["desktopTag"],
             "commit": self.fixture.provenance["desktopCommit"],
@@ -255,7 +257,7 @@ class PlannerTests(unittest.TestCase):
                 os.chdir(previous)
 
     def test_same_published_desktop_build_is_idempotent(self):
-        supports = self.run_plan(pointer=self.pointer(), current="26.1009.7.410-alpha.dev.1-r1")
+        supports = self.run_plan(pointer=self.pointer(), current="v0.21.6+canary.20261009T070410Z-r1")
         self.result.assert_called_once_with(
             build="false",
             app="hermes-desktop-light-canary",
@@ -469,8 +471,8 @@ class StableChannelTests(unittest.TestCase):
         self.assertEqual(provenance["desktopCommit"], self.commit)
         self.assertEqual(provenance["desktopArtifactSha256"], "c" * 64)
         self.assertEqual(
-            light.package_version(provenance["desktopVersion"], "1", self.channel.name),
-            "2026.6864.2132.0-r1",
+            light.package_version(provenance["desktopTag"], "1"),
+            "rc.3-v0.22.0-r1",
         )
 
     def test_stable_plan_targets_stable_channel_and_version(self):
@@ -494,8 +496,8 @@ class StableChannelTests(unittest.TestCase):
         values = result.call_args.kwargs
         self.assertEqual(values["build"], "true")
         self.assertEqual(values["upstream_channel"], "stable")
-        self.assertEqual(values["version"], "2026.6864.2132.0-r1")
-        self.assertEqual(values["release_tag"], "hermes-desktop-light/v2026.6864.2132.0-r1")
+        self.assertEqual(values["version"], "rc.3-v0.22.0-r1")
+        self.assertEqual(values["release_tag"], "hermes-desktop-light/rc.3-v0.22.0-r1")
         self.assertEqual(values["upstream_tag"], STABLE_BUILD_TAG)
         self.assertEqual(values["upstream_release_tag"], STABLE_RELEASE_TAG)
         self.assertEqual(values["upstream_source_tag"], STABLE_RELEASE_TAG)
