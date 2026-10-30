@@ -77,10 +77,14 @@ ZIPはGitにcommitせず、アプリ名でReleaseタグを分けます。
 
 | 項目 | 形式 |
 | --- | --- |
-| Releaseタグ | `<アプリ名>/v<上流バージョン>-r<改訂番号>` |
-| Scoop version | `<上流バージョン>-r<改訂番号>` |
-| ZIP | `<アプリ名>-<上流バージョン>-r<改訂番号>-windows-<arch>.zip` |
+| Releaseタグ | `<アプリ名>/<version>` |
+| Scoop version | `<version>`（公式upstreamタグ + `-r<改訂番号>`） |
+| ZIP | `<アプリ名>-<version>-windows-<arch>.zip` |
 
+versionは公式upstreamのbuild tagそのままに改訂番号を付けたもので、Hermes Desktop
+Lightではcanaryが`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
+`v0.22.5+canary.20261023T070057Z-r1`）、stableが`rc.<N>-v<X.Y.Z>-r<N>`（例
+`rc.3-v0.22.0-r1`）です。
 初回は`r1`、同じ上流版の配布修正は`r2`以降です。同じ内容の再実行では番号を増やさず、
 公開済みファイルを上書きしません。新しい上流版では`r1`に戻します。
 アプリごとに公開・検証成功後のmanifestを最新版の正本とし、リポジトリ全体の
@@ -120,10 +124,13 @@ source commitのLight contractが無い場合は理由付きで成功skipし、�
 API障害やtag/handoff provenance不明はunsupportedとは区別して失敗する。upstream sourceの
 channelと、このbucketの**unofficial Light build**であることは別属性である。
 
-versionは`<Desktop product>-r<N>`（stable、例`2026.6864.2132.0-r1`）と
-`<Desktop product>-alpha.dev.1-r<N>`（canary、例`26.1014.7.54-alpha.dev.1-r1`）。
-同じproduct versionではstable形式がalpha.dev buildより大きく、既存の
-`0.0.0-alpha.dev.1-r1`からも通常のScoop updateで進む。同じpublished build/conditionsの
+versionは公式Desktopのbuild tagそのままに改訂番号を付けた`<official-tag>-r<N>`。
+canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
+`v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-r<N>`（例
+`rc.3-v0.22.0-r1`）。旧product version形式（`2026.6864.2132.0-r1`、
+`26.1014.7.54-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）はすべて新形式より小さく、既存の
+公開済み版からも通常のScoop updateで進む。canaryとstableは別のパッケージで互いの大小は
+順序の根拠にしない。同じpublished build/conditionsの
 再実行は同じRelease/assetsを再利用してidempotent no-opにし、r2以降は承認済みmanual
 dispatchのみで指定する。
 

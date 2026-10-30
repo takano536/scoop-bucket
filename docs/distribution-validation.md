@@ -18,8 +18,10 @@ bucket-built distributionを変更する場合、アプリ固有の契約に従�
 | 公開安全性 | read-only検証、Draft/Releaseのimmutable扱い、公開URLの再検証 |
 | README・main書き戻し | 書き戻しを行った場合のcommitとreadback、行わない場合の理由 |
 
-Hermes Desktop Light uses the four-component official Desktop product version and derives
-`<desktop>-alpha.dev.1-r<N>`; the legacy `0.0.0-alpha.dev.1-r1` remains recognized only so
+Hermes Desktop Light keeps the official Desktop build tag verbatim and derives
+`<official-tag>-r<N>` (canary `v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`, stable
+`rc.<N>-v<X.Y.Z>-r<N>`); the legacy product-version forms (`<desktop-version>-r<N>`,
+`<desktop-version>-alpha.dev.1-r<N>`, `0.0.0-alpha.dev.1-r1`) remain recognized only so
 normal Scoop update ordering can move to the new format. Other applications keep their own
 version parser and comparison tests.
 

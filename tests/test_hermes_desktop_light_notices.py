@@ -302,7 +302,7 @@ class NoticeTests(unittest.TestCase):
             self.assertIn('fixture-package@1.0.0', notice_text)
 
     def test_notice_metadata_satisfies_publish_artifact_contract(self):
-        version = '26.1009.7.410-alpha.dev.1-r1'
+        version = 'v0.21.6+canary.20261009T070410Z-r1'
         commit = 'a' * 40
         conditions = 'b' * 64
         tag = 'v0.21.6+canary.20261009T070410Z'

@@ -16,14 +16,14 @@ $channel = $env:UPSTREAM_CHANNEL
 if ($channel -cnotin @('canary', 'stable')) {
     throw 'Desktop release channel is not an official Desktop channel'
 }
-if ($env:PACKAGE_VERSION -notmatch '^\d+\.\d+\.\d+\.\d+(?:-alpha\.dev\.1)?-r[1-9][0-9]*$') {
-    throw 'Desktop-release package identity mismatch'
+# The Scoop version is the official Desktop build tag plus the bucket revision.
+if ($channel -ceq 'canary' -and
+    $env:PACKAGE_VERSION -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+\+canary\.[0-9]{8}T[0-9]{6}Z-r[1-9][0-9]*$') {
+    throw 'Canary Desktop release package identity is not an official canary tag'
 }
-if ($channel -ceq 'canary' -and $env:PACKAGE_VERSION -notmatch '-alpha\.dev\.1-') {
-    throw 'Canary Desktop release package identity is missing its channel marker'
-}
-if ($channel -ceq 'stable' -and $env:PACKAGE_VERSION -match '-alpha\.dev\.1-') {
-    throw 'Stable Desktop release package identity carries a canary marker'
+if ($channel -ceq 'stable' -and
+    $env:PACKAGE_VERSION -notmatch '^rc\.[1-9][0-9]*-v[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*$') {
+    throw 'Stable Desktop release package identity is not an official stable build tag'
 }
 $upstreamTag = $env:UPSTREAM_TAG
 $upstreamSourceTag = $env:UPSTREAM_SOURCE_TAG

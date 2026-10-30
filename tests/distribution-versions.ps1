@@ -18,13 +18,20 @@ try {
         throw 'Pinned Scoop lib/versions.ps1 does not define Compare-Version'
     }
 
+    # Ascending pairs verified against the pinned Scoop implementation. They cover
+    # the legacy CalendarVer -> official-tag migration and same-channel
+    # official-tag ordering (revision bumps, later builds, rc numbers). Canary and
+    # stable tags are separate packages and are never compared with each other.
     $ascending = @(
-        @('0.0.0-alpha.dev.1-r1', '26.1009.7.410-alpha.dev.1-r1'),
-        @('26.1009.7.410-alpha.dev.1-r1', '26.1009.7.410-alpha.dev.1-r2'),
-        @('26.1009.7.410-alpha.dev.1-r9', '26.1009.7.410-alpha.dev.1-r10'),
-        @('26.1009.7.410-alpha.dev.1-r10', '26.1010.1.100-alpha.dev.1-r1'),
-        @('26.1010.1.100-alpha.dev.1-r1', '26.1010.1.100-r1'),
-        @('26.1009.7.410-r1', '26.1010.1.100-r1')
+        @('0.0.0-alpha.dev.1-r1', 'v0.22.5+canary.20261023T070057Z-r1'),
+        @('26.1023.7.57-alpha.dev.1-r1', 'v0.22.5+canary.20261023T070057Z-r1'),
+        @('2026.6864.2132.0-r1', 'rc.3-v0.22.0-r1'),
+        @('rc.3-v0.22.0-r1', 'rc.3-v0.22.0-r2'),
+        @('rc.3-v0.22.0-r9', 'rc.3-v0.22.0-r10'),
+        @('rc.3-v0.22.0-r2', 'rc.4-v0.22.1-r1'),
+        @('v0.22.5+canary.20261023T070057Z-r1', 'v0.22.5+canary.20261024T065630Z-r1'),
+        @('v0.22.5+canary.20261023T070057Z-r9', 'v0.22.5+canary.20261023T070057Z-r10'),
+        @('v0.22.4+canary.20261022T070155Z-r1', 'v0.22.5+canary.20261023T070057Z-r1')
     )
     foreach ($pair in $ascending) {
         if ((Compare-Version $pair[0] $pair[1]) -ne 1) { throw "Upgrade ordering failed: $($pair[0]) -> $($pair[1])" }
@@ -32,10 +39,14 @@ try {
     }
     foreach ($version in @(
         '0.0.0-alpha.dev.1-r1',
-        '26.1009.7.410-alpha.dev.1-r1',
-        '26.1009.7.410-alpha.dev.1-r2',
-        '26.1009.7.410-r1',
-        '26.1010.1.100-r1'
+        '26.1023.7.57-alpha.dev.1-r1',
+        '2026.6864.2132.0-r1',
+        'rc.3-v0.22.0-r1',
+        'rc.3-v0.22.0-r2',
+        'rc.4-v0.22.1-r1',
+        'v0.22.5+canary.20261023T070057Z-r1',
+        'v0.22.5+canary.20261023T070057Z-r10',
+        'v0.22.5+canary.20261024T065630Z-r1'
     )) {
         if ((Compare-Version $version $version) -ne 0) { throw "Equality ordering failed: $version" }
     }

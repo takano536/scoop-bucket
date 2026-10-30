@@ -12,7 +12,7 @@ with zipfile.ZipFile(buffer, 'w') as archive:
     archive.writestr('app-2.0.0/fixture.txt', 'autoupdate regression fixture\n')
 payload = buffer.getvalue()
 
-dev_version = '26.1009.7.410-alpha.dev.1-r1'
+dev_version = 'v0.21.6+canary.20261009T070410Z-r1'
 dev_commit = 'b' * 40
 dev_tag = 'v0.21.6+canary.20261009T070410Z'
 dev_name = f'hermes-desktop-light-{dev_version}-windows-x64.zip'

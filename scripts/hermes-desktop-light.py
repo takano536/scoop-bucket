@@ -19,6 +19,8 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from distribution import (  # noqa: E402
+    REVISION,
+    SEMVER,
     artifact_name,
     desktop_version_key,
     distribution_version_key,
@@ -178,10 +180,12 @@ def manifest(
     tag = release_tag(APP, version)
     pointer = f"https://raw.githubusercontent.com/{_repository(repository)}/main/{pointer_path(app).as_posix()}"
     label = shortcut_label(channel)
+    # The Release tag and the Scoop version are the official Desktop build tag
+    # plus this bucket's revision, so checkver only matches the tracked channel.
     version_pattern = (
-        r"\d+\.\d+\.\d+\.\d+-alpha\.dev\.[1-9]\d*-r[1-9]\d*"
+        rf"v{SEMVER}\+canary\.\d{{8}}T\d{{6}}Z-r{REVISION}"
         if channel.name == "canary"
-        else r"\d+\.\d+\.\d+\.\d+-r[1-9]\d*"
+        else rf"rc\.[1-9]\d*-v{SEMVER}-r{REVISION}"
     )
     return {
         "version": version,
@@ -197,7 +201,7 @@ def manifest(
         "autoupdate": {
             "architecture": {
                 "64bit": {
-                    "url": f"https://github.com/{_repository(repository)}/releases/download/{APP}%2Fv$matchVersion/{APP}-$matchVersion-windows-x64.zip",
+                    "url": f"https://github.com/{_repository(repository)}/releases/download/{APP}%2F$matchVersion/{APP}-$matchVersion-windows-x64.zip",
                     "hash": {"url": pointer, "jsonpath": "$.sha256"},
                 }
             },
@@ -635,17 +639,12 @@ def _condition_input_paths(root):
     return sorted((path.relative_to(root).as_posix(), path) for path in paths)
 
 
-def _desktop_product(package: str) -> str:
-    """Return the upstream four-component product version of a Light version."""
-    match = re.fullmatch(rf"({DESKTOP_VERSION_PATTERN})(?:-alpha\.dev\.1)?-r[1-9]\d*", package or "")
-    if not match:
-        raise ValueError("Invalid Desktop Light distribution version")
-    return match.group(1)
-
-
-def conditions_descriptor(commit: str, desktop_tag: str = "", package: str = "", root=None) -> dict:
+def conditions_descriptor(
+    commit: str, desktop_tag: str = "", desktop_version: str = "", root=None
+) -> dict:
     root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
     files = {relative: hashlib.sha256(path.read_bytes()).hexdigest() for relative, path in _condition_input_paths(root)}
+    desktop_version_key(desktop_version)
     bundle_env = os.environ.get("HERMES_BUNDLE_ENV_JSON", "")
     return {
         "schema": 2,
@@ -653,7 +652,7 @@ def conditions_descriptor(commit: str, desktop_tag: str = "", package: str = "",
         "upstream": UPSTREAM,
         "upstreamRef": desktop_tag,
         "commit": _commit(commit),
-        "desktopVersion": _desktop_product(package),
+        "desktopVersion": desktop_version,
         "variant": "light",
         "target": "win32-x64",
         "buildMode": "tag",
@@ -668,8 +667,12 @@ def conditions_descriptor(commit: str, desktop_tag: str = "", package: str = "",
     }
 
 
-def conditions_fingerprint(commit: str, desktop_tag: str = "", package: str = "", root=None) -> str:
-    return hashlib.sha256(_canonical_json(conditions_descriptor(commit, desktop_tag, package, root))).hexdigest()
+def conditions_fingerprint(
+    commit: str, desktop_tag: str = "", desktop_version: str = "", root=None
+) -> str:
+    return hashlib.sha256(
+        _canonical_json(conditions_descriptor(commit, desktop_tag, desktop_version, root))
+    ).hexdigest()
 
 
 def _read_json(path: Path):
@@ -716,7 +719,7 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     desktop_version = provenance["desktopVersion"]
     requested_revision = _revision(os.environ.get("BUILD_REVISION", "1"))
     explicit = os.environ.get("REVISION_EXPLICIT") == "true"
-    version = package_version(desktop_version, requested_revision, channel.name)
+    version = package_version(provenance["desktopTag"], requested_revision)
     app = app_for(channel)
     current = _current_version(app)
     candidate_key = distribution_version_key(version)
@@ -728,7 +731,9 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     pointer = _read_json(pointer_path(app))
     same_release = isinstance(pointer, dict) and pointer.get("desktopTag") == provenance["desktopTag"] and pointer.get("commit") == provenance["desktopCommit"]
     fingerprint = conditions_fingerprint(
-        provenance["desktopCommit"], provenance["desktopSourceTag"], version
+        provenance["desktopCommit"],
+        provenance["desktopSourceTag"],
+        desktop_version=desktop_version,
     )
     if same_release:
         previous_revision = _revision(pointer.get("version", "").rsplit("-r", 1)[-1]) if isinstance(pointer.get("version"), str) else 0
@@ -957,7 +962,7 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     repository = _repository(os.environ["GITHUB_REPOSITORY"])
     expected_conditions = os.environ["CONDITIONS_FINGERPRINT"]
     license_digest = _digest(os.environ["LICENSE_SHA256"])
-    if package_version(desktop_version, _revision(version.rsplit("-r", 1)[-1]), channel.name) != version:
+    if package_version(upstream_tag, _revision(version.rsplit("-r", 1)[-1])) != version:
         raise ValueError("Desktop release package version is malformed")
 
     # Re-read the mutable feed and immutable handoff immediately before any
