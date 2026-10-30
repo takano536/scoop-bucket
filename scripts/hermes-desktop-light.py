@@ -164,6 +164,7 @@ def _download_url(repository: str, tag: str, name: str) -> str:
     # Keep '+' raw here so the published and regenerated URLs are identical.
     return f"https://github.com/{_repository(repository)}/releases/download/{quote(tag, safe='+')}/{name}"
 
+
 def manifest(
     version: str,
     repository: str,
