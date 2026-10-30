@@ -160,8 +160,9 @@ def _digest(value: str) -> str:
 
 
 def _download_url(repository: str, tag: str, name: str) -> str:
-    return f"https://github.com/{_repository(repository)}/releases/download/{quote(tag, safe='')}/{name}"
-
+    # Scoop substitutes the raw $matchVersion capture into autoupdate URLs.
+    # Keep '+' raw here so the published and regenerated URLs are identical.
+    return f"https://github.com/{_repository(repository)}/releases/download/{quote(tag, safe='+')}/{name}"
 
 def manifest(
     version: str,

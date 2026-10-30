@@ -481,10 +481,25 @@ class PublishContractTests(unittest.TestCase):
                 writeback.assert_not_called()
                 self.assertFalse((root / "output" / f"{light.APP}.json").exists())
 
+    def test_manifest_url_matches_scoop_match_version_substitution_for_both_channels(self):
+        cases = (
+            (light.CHANNELS["canary"], "v0.21.6+canary.20261009T070410Z-r1"),
+            (light.CHANNELS["stable"], "rc.3-v0.22.0-r1"),
+        )
+        for channel, version in cases:
+            with self.subTest(channel=channel.name):
+                data = light.manifest(version, "takano536/scoop-bucket", self.digest, channel=channel)
+                manifest_url = data["architecture"]["64bit"]["url"]
+                regenerated_url = data["autoupdate"]["architecture"]["64bit"]["url"].replace(
+                    "$matchVersion", version
+                )
+                self.assertEqual(manifest_url, regenerated_url)
+                self.assertNotIn("%2B", manifest_url)
+
     def test_manifest_points_to_immutable_unofficial_release_and_pointer(self):
         data = light.manifest(self.version, "takano536/scoop-bucket", self.digest, channel=CANARY)
         self.assertEqual(data["architecture"]["64bit"]["hash"], self.digest)
-        self.assertIn("hermes-desktop-light%2Fv0.21.6%2Bcanary.20261009T070410Z-r1", data["architecture"]["64bit"]["url"])
+        self.assertIn("hermes-desktop-light%2Fv0.21.6+canary.20261009T070410Z-r1", data["architecture"]["64bit"]["url"])
         self.assertEqual(data["shortcuts"], [["hermes-light-canary.exe", "Hermes Desktop Light Canary (Unofficial)"]])
         self.assertIn("metadata/hermes-desktop-light-release.json", data["checkver"]["url"])
         self.assertIn("officially published Hermes Desktop canary", data["notes"])
