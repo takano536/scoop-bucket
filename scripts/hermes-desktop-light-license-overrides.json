@@ -35,19 +35,19 @@
     },
     "note": "The exact npm tarball declares MIT but omits a license file; the package's pinned gitHead resolves to the complete xterm.js LICENSE at the fixed commit."
   },
-  "react-arborist@3.13.2": {
+  "react-arborist@3.16.0": {
     "spdx": "MIT",
     "copyright": "Copyright (c) 2022 Brim Data",
     "evidence": {
       "kind": "license",
-      "url": "https://raw.githubusercontent.com/jameskerr/react-arborist/e6dc5c6d2cd1efd94ce3bc7cee722f6b428134e4/LICENSE",
+      "url": "https://raw.githubusercontent.com/jameskerr/react-arborist/d74c4ec696ba98c1a4e981075f6d60cdff3e290b/LICENSE",
       "path": "LICENSE",
       "sha256": "f1dcfe846608164333e4662013cd41adcee862327ca0b93228fbc11418b299c8",
-      "retrieval": "npm view react-arborist@3.13.2 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
+      "retrieval": "npm view react-arborist@3.16.0 dist.tarball dist.integrity gitHead repository license; curl -fsSL <immutable upstream LICENSE URL> | sha256sum",
       "tarball": {
-        "url": "https://registry.npmjs.org/react-arborist/-/react-arborist-3.13.2.tgz",
-        "integrity": "sha512-Qa5h2MwBGflTZXsg8vXOHOonF04w31u6DyPL06iyboe+A8CMqxRxgI/Imd5mwTo679iNNJ4e7CuinJGe3rGqgg==",
-        "sha256": "f4f5b7f658f7faa5ecc78123dd3b4d464bc0e9041836ec47dd689a3349c930f3",
+        "url": "https://registry.npmjs.org/react-arborist/-/react-arborist-3.16.0.tgz",
+        "integrity": "sha512-Pp1TQXETKMeg/0yAMGBFIwze7IfZaghDScX4vekJ4Ge8/t7uYifbDBhEGUSOYaDuahE1f8fyBIrlN2pLD4ysTA==",
+        "sha256": "2f4aa180a6124f12f1bfd7e4874655b6505f977f312a9172d251c2fc6d83fba0",
         "path": "package/package.json"
       }
     },
@@ -197,7 +197,7 @@
     },
     "note": "The exact 2.3.8 npm tarball has no license-named member. Its gitHead is unavailable and repository tags stop at v2.3.7, but the package author later added this complete MIT LICENSE on 2025-05-21 in commit 7301c160fda44cb8cf2b9fdfde61efad35736196; the later project-level evidence is recorded without claiming exact source-tree identity."
   },
-  "@nous-research/ui@0.18.2": {
+  "@nous-research/ui@0.19.1": {
     "spdx": "MIT",
     "declared": {
       "license": "MIT",
@@ -205,17 +205,17 @@
     },
     "evidence": {
       "kind": "declared-license-no-notice",
-      "retrieval": "npm view @nous-research/ui@0.18.2 dist.tarball dist.integrity gitHead license; tar tf exact registry tarball; inspect package/package.json fields",
+      "retrieval": "npm view @nous-research/ui@0.19.1 dist.tarball dist.integrity gitHead license; tar tf exact registry tarball; inspect package/package.json fields",
       "tarball": {
-        "url": "https://registry.npmjs.org/@nous-research/ui/-/ui-0.18.2.tgz",
-        "integrity": "sha512-xe//1PjCapafXu5onqnJW50MhAK41LXuHw2KvfHDLiI3TBeqtX4QEm4mTrWZaZ2PRqM6koY/o19fdgisB67LGA==",
-        "sha256": "7a6eae6b82281bb6dc39b0665ca3d8af21cf54d4282f093aaa179532e7ee1434",
+        "url": "https://registry.npmjs.org/@nous-research/ui/-/ui-0.19.1.tgz",
+        "integrity": "sha512-GIPNJQrOyFesjRZSjR/wqXdSJHzX5OW7a5ioTzI6CGeFG/l8gpajNZaY82R5n14wncQD+GyswY0rPrTxAamNcQ==",
+        "sha256": "9b30254836b7f1204fae8963fc0a93674ec76d4ce29eced4d105bab659fe006f",
         "path": "package/package.json",
         "licenseMembers": [],
         "copyrightMembers": []
       }
     },
-    "note": "The exact tarball declares MIT and has no author field, license/notice file, or copyright-named member. The README's design-language repository and npm gitHead source are unavailable; no copyright line is synthesized."
+    "note": "The exact tarball declares MIT and has no author field, license/notice file, or copyright-named member. No upstream repository is published for the npm gitHead, so no copyright line is synthesized."
   },
   "lazy-val@1.0.5": {
     "spdx": "MIT",
