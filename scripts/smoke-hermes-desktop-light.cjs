@@ -6,7 +6,9 @@ const os = require('node:os');
 const assert = require('node:assert/strict');
 const [source, executablePath, output] = process.argv.slice(2);
 const upstreamRequire = createRequire(path.join(source, 'apps/desktop/package.json'));
-const { _electron: electron } = upstreamRequire('playwright');
+// The admitted Desktop source declares @playwright/test; pnpm does not hoist
+// its transitive playwright package into the workspace package's node_modules.
+const { _electron: electron } = upstreamRequire('@playwright/test');
 
 (async () => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-desktop-light-smoke-'));
