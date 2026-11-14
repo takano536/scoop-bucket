@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
@@ -332,14 +333,26 @@ def _command_failure(error: subprocess.CalledProcessError) -> str:
     return message.replace("%", "%25")
 
 
+# Runner 側の一時的な DNS 失敗や接続リセットで公開サイクル全体を落とさないよう、
+# 取得だけを再試行する。取得内容は呼び出し側が期待値と照合するため公開ゲートは緩まない。
+_HTTP_RETRY_DELAYS = (2, 5)
+
+
 def _http(url: str, method: str = "GET") -> tuple[bytes, dict[str, str]]:
     request = Request(url, method=method, headers={"User-Agent": "takano536-scoop-bucket"})
-    try:
-        with urlopen(request, timeout=60) as response:
-            headers = {key.lower(): value for key, value in response.headers.items()}
-            return (response.read() if method != "HEAD" else b""), headers
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise ProvenanceError(f"Official Desktop distribution request failed: {url}: {exc}") from exc
+    attempt = 0
+    while True:
+        try:
+            with urlopen(request, timeout=60) as response:
+                headers = {key.lower(): value for key, value in response.headers.items()}
+                return (response.read() if method != "HEAD" else b""), headers
+        except HTTPError as exc:
+            raise ProvenanceError(f"Official Desktop distribution request failed: {url}: {exc}") from exc
+        except (URLError, TimeoutError) as exc:
+            if attempt >= len(_HTTP_RETRY_DELAYS):
+                raise ProvenanceError(f"Official Desktop distribution request failed: {url}: {exc}") from exc
+            time.sleep(_HTTP_RETRY_DELAYS[attempt])
+            attempt += 1
 
 
 def _json_url(url: str) -> tuple[dict, dict[str, str]]:
