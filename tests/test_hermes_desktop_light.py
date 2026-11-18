@@ -1,11 +1,13 @@
 import importlib.util
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError, URLError
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/hermes-desktop-light.py"
@@ -550,6 +552,50 @@ class StableChannelTests(unittest.TestCase):
                     f"{light.DESKTOP_PUBLIC_BASE}/releases/tag/{tag}/{self.name}",
                     STABLE_VERSION,
                 )
+
+
+class TransientFetchRetryTests(unittest.TestCase):
+    """runner 側の一時的な名前解決失敗で公開サイクルを落とさない。"""
+
+    class Response:
+        def __init__(self, body=b"{}"):
+            self.body = body
+            self.headers = {"ETag": '"feed-etag"'}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            return self.body
+
+    def test_transient_resolution_error_is_retried(self):
+        failure = URLError(socket.gaierror(-3, "Temporary failure in name resolution"))
+        responses = [failure, failure, self.Response()]
+        with patch.object(light, "urlopen", side_effect=responses) as fetch, \
+                patch.object(light.time, "sleep") as sleep:
+            body, headers = light._http("https://example.test/canary.appinstaller")
+        self.assertEqual((body, headers), (b"{}", {"etag": '"feed-etag"'}))
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], list(light._HTTP_RETRY_DELAYS))
+
+    def test_exhausted_retries_still_fail_closed(self):
+        failure = URLError(socket.gaierror(-3, "Temporary failure in name resolution"))
+        with patch.object(light, "urlopen", side_effect=failure), patch.object(light.time, "sleep"):
+            with self.assertRaises(light.ProvenanceError) as raised:
+                light._http("https://example.test/canary.appinstaller")
+        self.assertIn("Temporary failure in name resolution", str(raised.exception))
+
+    def test_http_error_is_not_retried(self):
+        failure = HTTPError("https://example.test/canary.appinstaller", 404, "Not Found", {}, None)
+        with patch.object(light, "urlopen", side_effect=failure) as fetch, \
+                patch.object(light.time, "sleep") as sleep:
+            with self.assertRaises(light.ProvenanceError):
+                light._http("https://example.test/canary.appinstaller")
+        self.assertEqual(fetch.call_count, 1)
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":
