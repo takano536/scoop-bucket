@@ -56,6 +56,17 @@ class VersionTests(unittest.TestCase):
             f"{light.APP}-{version}-windows-x64.zip",
         )
 
+    def test_writeback_message_matches_the_bucket_update_format(self):
+        version = "v0.23.3+canary.20261120T064609Z-r1"
+        self.assertEqual(
+            light.writeback_message(light.APP_BY_CHANNEL["canary"], version),
+            f"hermes-desktop-light-canary: Update to version {version}",
+        )
+        self.assertEqual(
+            light.writeback_message(light.APP_BY_CHANNEL["stable"], "rc.3-v0.22.0-r1"),
+            "hermes-desktop-light: Update to version rc.3-v0.22.0-r1",
+        )
+
     def test_normal_scoop_ordering_moves_legacy_to_desktop_release(self):
         legacy = "0.0.0-alpha.dev.1-r1"
         first = "v0.21.6+canary.20261009T070410Z-r1"

@@ -935,6 +935,10 @@ def _release_rows(repository: str) -> list[dict]:
     return [row for page in pages for row in page]
 
 
+def writeback_message(app: str, version: str) -> str:
+    return f"{app}: Update to version {version}"
+
+
 def _writeback(data: dict, pointer: dict, version: str, repository: str, app: str = APP) -> None:
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
@@ -957,7 +961,7 @@ def _writeback(data: dict, pointer: dict, version: str, repository: str, app: st
         subprocess.run(["git", "add", *(str(file) for file in files)], check=True)
         if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode == 0:
             return
-        subprocess.run(["git", "commit", "-m", f"chore: update {app} to {version}"], check=True)
+        subprocess.run(["git", "commit", "-m", writeback_message(app, version)], check=True)
         if subprocess.run(["git", "push", "origin", "HEAD:main"]).returncode == 0:
             return
     raise RuntimeError("Manifest push failed; published artifact is retained for retry")
