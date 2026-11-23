@@ -4,12 +4,14 @@ name: Bucket install
 # Pull Requestとmainへのpushでは、その変更で追加・更新されたアプリだけを対象にする。
 # 削除だけの変更はinstallする対象がないため、削除されたアプリ名をジョブサマリに残す。
 # 手動実行ではscopeでchanged/allを選べる。read-onlyで、manifestは変更しない。
+# Excavatorの自動更新はpushトリガーのワークフローを起動しないため、完了時にworkflow_runでも検証する。
 
 on:
   pull_request:
     paths:
       - 'bucket/**'
       - 'scripts/verify-bucket-install.ps1'
+      - 'scripts/installed-payload.ps1'
       - '.github/workflows/bucket-install.yml'
   push:
     branches:
@@ -26,6 +28,9 @@ on:
           - changed
           - all
         default: all
+  workflow_run:
+    workflows: [Excavator]
+    types: [completed]
 
 permissions:
   contents: read
@@ -37,6 +42,11 @@ concurrency:
 jobs:
   install:
     name: Install manifests
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -54,6 +64,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           DISPATCH_SCOPE: ${{ inputs.scope }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -78,6 +89,13 @@ jobs:
                 if ($LASTEXITCODE -ne 0) { throw "git fetch failed for $before" }
                 $diffArguments = @('diff', '--name-status', $before, 'HEAD', '--', 'bucket/')
               }
+            }
+            'workflow_run' {
+              $base = $env:WORKFLOW_RUN_HEAD_SHA
+              if ($base -notmatch '^[0-9a-f]{40}$') { throw 'The workflow run head commit is unknown.' }
+              & git fetch --no-tags --quiet origin $base
+              if ($LASTEXITCODE -ne 0) { throw "git fetch failed for $base" }
+              $diffArguments = @('diff', '--name-status', $base, 'HEAD', '--', 'bucket/')
             }
             default {
               if ($env:DISPATCH_SCOPE -eq 'all') { $all = $true }

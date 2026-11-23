@@ -34,6 +34,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'installed-payload.ps1')
+
 function Set-Utf8File {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -129,7 +131,31 @@ try {
                 $detail = 'scoop prefix did not resolve an installed app directory'
             }
             else {
-                $status = 'installed'
+                $installedManifestPath = Join-Path $prefixPath 'scoop-manifest.json'
+                if (-not (Test-Path -LiteralPath $installedManifestPath)) {
+                    $installedManifestPath = Join-Path $prefixPath 'manifest.json'
+                }
+                $installedManifest = if (Test-Path -LiteralPath $installedManifestPath) {
+                    Get-Content -LiteralPath $installedManifestPath -Raw | ConvertFrom-Json
+                }
+                else {
+                    $manifest
+                }
+                $installedArchitecture = ''
+                $installInfoPath = Join-Path $prefixPath 'install.json'
+                if (Test-Path -LiteralPath $installInfoPath) {
+                    $installedArchitecture = [string](Get-Content -LiteralPath $installInfoPath -Raw | ConvertFrom-Json).architecture
+                }
+                $problems = @(Test-InstalledPayload -Prefix $prefixPath -Manifest $installedManifest -Architecture $installedArchitecture)
+                if (@($install.Output | Where-Object { $_ -match "failed: Couldn't find" }).Count -gt 0) {
+                    $problems += 'scoop reported a missing target while creating shortcuts or shims'
+                }
+                if ($problems.Count -eq 0) {
+                    $status = 'installed'
+                }
+                else {
+                    $detail = 'installed payload is incomplete: ' + ($problems -join '; ')
+                }
             }
         }
 
