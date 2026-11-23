@@ -1,10 +1,10 @@
 """Version helpers for bucket-built Hermes Desktop Light distributions.
 
-The identity of a Light package is the official Desktop build tag it was built
-from: ``v<X.Y.Z>+canary.<YYYYMMDDTHHMMSSZ>`` on the canary channel and
-``rc.<N>-vX.Y.Z`` on the stable channel.  A Light version keeps that official
-tag verbatim and appends the bucket-controlled revision, so a Scoop version
-reads exactly like the official tag it tracks.
+The identity of a Light package is the official Desktop build version it was
+built from: ``v<X.Y.Z>+canary.<YYYYMMDDTHHMMSSZ>`` on the canary channel and
+``rc.<N>-vX.Y.Z`` on the stable channel.  Canary versions keep that
+build-metadata shape even though upstream now writes the same identity as the
+claim tag ``canary.<stamp>-vX.Y.Z``, so published Scoop versions keep ordering.
 """
 import re
 

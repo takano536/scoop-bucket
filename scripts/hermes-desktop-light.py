@@ -42,7 +42,14 @@ SHORTCUT_LABEL_BY_CHANNEL = {
 }
 DESKTOP_PUBLIC_BASE = "https://hermes-assets.nousresearch.com"
 DESKTOP_VERSION_PATTERN = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
-CANARY_TAG = re.compile(r"^v[^+\s]+\+canary\.(20\d{6}T\d{6}Z)$")
+# Upstream renamed its canary claim tag from `vX.Y.Z+canary.<stamp>` to
+# `canary.<stamp>-vX.Y.Z`.  Accept both, but keep the retired build-metadata
+# shape as the bucket version identity so existing Scoop versions still order
+# across the rename.
+CANARY_TAG = re.compile(
+    r"^canary\.(?P<stamp>20\d{6}T\d{6}Z)-v(?P<core>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$"
+)
+LEGACY_CANARY_TAG = re.compile(r"^v[^+\s]+\+canary\.(?P<stamp>20\d{6}T\d{6}Z)$")
 # Stable Desktop bundles are archived under the build tag that produced them.
 # They are cut from a release candidate, so the immutable build tag keeps the
 # ``rc.N-`` prefix while the package metadata names the published release.
@@ -445,14 +452,28 @@ def _bundle_layout(channel: Channel, artifact_url: str, version: str) -> dict:
     }
 
 
+def _version_tag(tag: str) -> str:
+    """Return the bucket version identity of an upstream canary tag.
+
+    Upstream's canonical claim tag is ``canary.<stamp>-vX.Y.Z``; the release
+    version it carries is ``X.Y.Z+canary.<stamp>``.  Keep that retired shape
+    for the bucket version so Scoop orders new builds after already published
+    canary versions.
+    """
+    match = CANARY_TAG.fullmatch(tag or "")
+    if match is None:
+        return tag
+    return f"v{match.group('core')}+canary.{match.group('stamp')}"
+
+
 def _tag_for_product_version(version: str) -> str:
     yy, month_day, hour, minute_second = desktop_version_key(version)
     stamp = f"20{yy:02d}{month_day:04d}T{hour:02d}{minute_second:04d}Z"
     matches = []
     for row in _repository_tags():
         tag = row.get("name", "")
-        match = CANARY_TAG.fullmatch(tag)
-        if match and match.group(1) == stamp:
+        match = CANARY_TAG.fullmatch(tag) or LEGACY_CANARY_TAG.fullmatch(tag)
+        if match and match.group("stamp") == stamp:
             matches.append(tag)
     if len(matches) != 1:
         raise ProvenanceError(
@@ -734,7 +755,7 @@ def _plan_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     desktop_version = provenance["desktopVersion"]
     requested_revision = _revision(os.environ.get("BUILD_REVISION", "1"))
     explicit = os.environ.get("REVISION_EXPLICIT") == "true"
-    version = package_version(provenance["desktopTag"], requested_revision)
+    version = package_version(_version_tag(provenance["desktopTag"]), requested_revision)
     app = app_for(channel)
     current = _current_version(app)
     candidate_key = distribution_version_key(version)
@@ -981,7 +1002,7 @@ def _publish_desktop(channel: Channel = CHANNELS[DEFAULT_CHANNEL]) -> None:
     repository = _repository(os.environ["GITHUB_REPOSITORY"])
     expected_conditions = os.environ["CONDITIONS_FINGERPRINT"]
     license_digest = _digest(os.environ["LICENSE_SHA256"])
-    if package_version(upstream_tag, _revision(version.rsplit("-r", 1)[-1])) != version:
+    if package_version(_version_tag(upstream_tag), _revision(version.rsplit("-r", 1)[-1])) != version:
         raise ValueError("Desktop release package version is malformed")
 
     # Re-read the mutable feed and immutable handoff immediately before any

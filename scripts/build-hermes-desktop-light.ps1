@@ -28,7 +28,7 @@ if ($channel -ceq 'stable' -and
 $upstreamTag = $env:UPSTREAM_TAG
 $upstreamSourceTag = $env:UPSTREAM_SOURCE_TAG
 if ($channel -ceq 'canary') {
-    if ($upstreamTag -notmatch '^v[^+\s]+\+canary\.20\d{6}T\d{6}Z$') {
+    if ($upstreamTag -notmatch '^(?:v[^+\s]+\+canary\.20\d{6}T\d{6}Z|canary\.20\d{6}T\d{6}Z-v\d+\.\d+\.\d+)$') {
         throw 'Desktop release source tag is not an official canary tag'
     }
     if ($upstreamSourceTag -cne $upstreamTag) {
