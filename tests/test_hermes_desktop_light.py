@@ -356,6 +356,20 @@ class MappingTests(unittest.TestCase):
         with patch.object(light, "_repository_tags", return_value=tags):
             self.assertEqual(light._tag_for_product_version("26.1009.7.410"), tags[0]["name"])
 
+    def test_canary_claim_tag_maps_to_a_legacy_ordered_version_identity(self):
+        tag = "canary.20261123T065600Z-v0.23.3"
+        with patch.object(light, "_repository_tags", return_value=[{"name": tag}]):
+            self.assertEqual(light._tag_for_product_version("26.1123.6.5600"), tag)
+        self.assertEqual(light._version_tag(tag), "v0.23.3+canary.20261123T065600Z")
+        self.assertEqual(
+            light._version_tag("v0.23.3+canary.20261120T064609Z"),
+            "v0.23.3+canary.20261120T064609Z",
+        )
+        self.assertGreater(
+            light.distribution_version_key(light.package_version(light._version_tag(tag), "1")),
+            light.distribution_version_key("v0.23.3+canary.20261120T064609Z-r1"),
+        )
+
     def test_ambiguous_or_missing_tag_is_a_provenance_failure(self):
         for tags in ([], [{"name": "v0.21.6+canary.20261009T070410Z"}, {"name": "v0.21.5+canary.20261009T070410Z"}]):
             with self.subTest(tags=tags), patch.object(light, "_repository_tags", return_value=tags):
