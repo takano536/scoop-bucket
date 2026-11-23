@@ -29,10 +29,13 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 - ビルド前に、対象アプリの契約で定めた上流tag/commit、version形式、source/build条件、
   claimまたはadmission条件、外部サービスなどの実行条件を確認する。これらを他の
   アプリへ推測で適用しない。
-- `scripts/distribution.py`のHermes Desktop Light helperは、公式Desktopのbuild tag
-  （canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`、stableは`rc.<N>-v<X.Y.Z>`）と
-  改訂番号を受け取り、`<official-tag>-r<N>`を生成する。旧product version形式
-  （`2026.6864.2132.0-r1`、`<desktop>-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）も
+- `hermes-desktop-light.py`は、upstream canaryのcanonical claim/build tag
+  （`canary.<YYYYMMDD>T<HHMMSS>Z-v<X.Y.Z>`）を、Scoop versionのidentityである旧形式
+  （`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`）へ正規化してから
+  `scripts/distribution.py`のHermes Desktop Light helperへ渡す。旧形式のupstream tagも
+  移行期間は解決対象に残す。helper自体はこの正規化後のcanary identity（stableは
+  `rc.<N>-v<X.Y.Z>`）と改訂番号を受け取り、`<normalized-tag>-r<N>`を生成する。旧product
+  version形式（`2026.6864.2132.0-r1`、`<desktop>-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）も
   比較でき、通常のScoop更新で新形式へ進める。他のアプリ・未知のtag形式を推測で
   このhelperへ渡さない。
 
@@ -73,8 +76,10 @@ releaseではない。
 
 channelごとにimmutableなbuild tagの求め方が違う。canary feedはmutableなchannel
 ディレクトリから配信されるため、feed versionのcanary timestamp（例:
-`26.1009.7.410` → `v0.21.6+canary.20261009T070410Z`）をupstream tags APIで一意に検索する。
-stable feedはMSIX URIが`releases/tag/<build tag>/HermesBundled-<version>-win.msixbundle`
+`26.1009.7.410`）をupstream tags APIでcanonicalな
+`canary.20261009T070410Z-v0.21.6`または旧形式のtagのいずれかとして一意に検索する。
+このcanonical tagを`hermes-desktop-light.py`がversion identity
+`v0.21.6+canary.20261009T070410Z`へ正規化する。stable feedはMSIX URIが`releases/tag/<build tag>/HermesBundled-<version>-win.msixbundle`
 を直接指すため、そのbuild tagを正本とする。stable build tag（`rc.<N>-vX.Y.Z`または
 `vX.Y.Z`）と、そこから導くrelease tag（`vX.Y.Z`）はどちらもannotated tagとして同じ
 完全commitへ解決することを必須とする。さらにR2のimmutable
@@ -99,8 +104,10 @@ mainへフォールバックしない。API障害、tag ambiguity、handoff不�
 upstream sourceのchannelと、bucketが配布する**unofficial Light build**であることは
 別の属性である。
 
-Scoop versionは公式Desktopのbuild tagそのままを正本とし、末尾にこのbucketの改訂番号
-を付けた`<official-tag>-r<N>`を使う。canaryは
+Scoop versionは、canaryではupstreamのcanonical claim/build tagを
+`hermes-desktop-light.py`が旧形式のversion identityへ正規化した値（旧形式のupstream tagは
+そのidentityをそのまま使用）に、stableでは公式Desktopのbuild tagに、このbucketの改訂番号
+を付けた`<normalized-tag>-r<N>`を使う。canaryは
 `v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
 `v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-r<N>`（例
 `rc.3-v0.22.0-r1`）。旧product version形式（`<desktop-version>-r<N>`、

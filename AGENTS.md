@@ -56,11 +56,13 @@
 - このbucketのworkflowが上流ソースからビルドし、GitHub Releasesに公開するアプリは、
   [配布ルール](docs/distribution-policy.md)とアプリ固有の契約に従う。
 - Release tagは`<app>/<version>`、Scoop manifest version（以下version）は
-  公式Desktopのbuild tag（canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`、
-  stableは`rc.<N>-v<X.Y.Z>`）にこのbucketの改訂番号を付けた
-  `<official-tag>-r<revision>`とする。ZIP名は
+  upstream canaryのcanonical claim/build tag（`canary.<YYYYMMDD>T<HHMMSS>Z-v<X.Y.Z>`、
+  移行期間は旧形式`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`も解決対象）を
+  `hermes-desktop-light.py`が旧形式のversion identityへ正規化し、stableは公式Desktopの
+  build tag（`rc.<N>-v<X.Y.Z>`）を使って、このbucketの改訂番号を付けた
+  `<normalized-tag>-r<revision>`とする。ZIP名は
   `<app>-<version>-windows-<arch>.zip`とする。
-  例：canaryは`v0.22.5+canary.20261023T070057Z-r1`、stableは`rc.3-v0.22.0-r1`。
+- 例：canaryは`v0.22.5+canary.20261023T070057Z-r1`、stableは`rc.3-v0.22.0-r1`。
 - 改訂番号、同じ上流版の修正版、再実行、ライセンス・通知確認の扱いは、共通ルールと
   アプリ固有文書の両方を確認する。アプリ固有の条件は、各アプリの検証文書に記載する。
 
