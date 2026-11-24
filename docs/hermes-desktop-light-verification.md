@@ -19,8 +19,12 @@
   skip（exit 0）とする。skipではcurrent manifestを変更せず、mainへfallbackしない。
 - 配布物は追従中channelの公式sourceから作る**unofficial Light build**である。upstreamの
   channelとbucket distributionの非公式性を同一視しない。
-- versionは公式Desktopのbuild tagそのままにこのbucketの改訂番号を付けた
-  `<official-tag>-rN`。canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-rN`（例
+- upstream canary claim/build tagはcanonicalな
+  `canary.<YYYYMMDD>T<HHMMSS>Z-v<X.Y.Z>`であり、移行期間は旧形式
+  `v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`も解決対象とする。`hermes-desktop-light.py`が
+  canonical tagを旧形式のversion identityへ正規化してから、`scripts/distribution.py`の
+  helperへ渡すため、versionはそのidentityにこのbucketの改訂番号を付けた
+  `<normalized-tag>-rN`となる。canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-rN`（例
   `v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-rN`（例
   `rc.3-v0.22.0-r1`）。旧product version形式（`2026.6864.2132.0-r1`、
   `26.1009.7.410-alpha.dev.1-r1`、`0.0.0-alpha.dev.1-r1`）はすべて新形式より小さく、
@@ -501,8 +505,10 @@ executable, or a missing source/build path, remains fail-closed.
 
 ## Desktop-release publication and open verification
 
-The publisher creates a prerelease tag `<app>/<official-tag>-rN`, never mutates an
-existing Release asset, and writes the official feed URL, product version, canary tag, exact
+The publisher creates a prerelease tag `<app>/<version>`; for canary, `hermes-desktop-light.py`
+normalizes the canonical claim tag to the legacy version identity before the revision suffix is
+added. It never mutates an existing Release asset, and writes the official feed URL, product
+version, canary tag, exact
 upstream commit, Desktop package digest, bucket build commit, Light digest, license digest, and
 conditions fingerprint into Release body/provenance. Before writeback it re-reads the official
 feed/handoff and verifies the public Light URL SHA256.
@@ -544,7 +550,8 @@ This review branch does not satisfy `refs/heads/main` and does not create or mod
 The existing `0.0.0-alpha.dev.1-r1` Release and manifest are retained as the last installable
 bucket version. Its old provenance identifies an earlier main-tracking development build; it is
 not a current Desktop-release detection result. The new publisher will create a separate
-`hermes-desktop-light/<official-tag>-rN` prerelease only after the official feed,
+`hermes-desktop-light/<version>` prerelease (with the canonical canary claim tag normalized to
+the legacy version identity) only after the official feed,
 annotated tag, R2 handoff, exact Light source, license/notice checks, Windows acceptance, and
 public URL SHA256 all pass.
 

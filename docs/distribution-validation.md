@@ -18,9 +18,13 @@ bucket-built distributionを変更する場合、アプリ固有の契約に従�
 | 公開安全性 | read-only検証、Draft/Releaseのimmutable扱い、公開URLの再検証 |
 | README・main書き戻し | 書き戻しを行った場合のcommitとreadback、行わない場合の理由 |
 
-Hermes Desktop Light keeps the official Desktop build tag verbatim and derives
-`<official-tag>-r<N>` (canary `v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`, stable
-`rc.<N>-v<X.Y.Z>-r<N>`); the legacy product-version forms (`<desktop-version>-r<N>`,
+Hermes Desktop Light resolves upstream canary claim/build tags in either the canonical
+`canary.<YYYYMMDD>T<HHMMSS>Z-v<X.Y.Z>` or legacy
+`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z` form. Before deriving
+`<normalized-tag>-r<N>`, `hermes-desktop-light.py` normalizes the canonical form to the
+legacy version identity; the `scripts/distribution.py` helper receives that identity.
+Scoop canary versions therefore remain `v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`, while
+stable remains `rc.<N>-v<X.Y.Z>-r<N>`; the legacy product-version forms (`<desktop-version>-r<N>`,
 `<desktop-version>-alpha.dev.1-r<N>`, `0.0.0-alpha.dev.1-r1`) remain recognized only so
 normal Scoop update ordering can move to the new format. Other applications keep their own
 version parser and comparison tests.

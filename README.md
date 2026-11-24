@@ -81,8 +81,11 @@ ZIPはGitにcommitせず、アプリ名でReleaseタグを分けます。
 | Scoop version | `<version>`（公式upstreamタグ + `-r<改訂番号>`） |
 | ZIP | `<アプリ名>-<version>-windows-<arch>.zip` |
 
-versionは公式upstreamのbuild tagそのままに改訂番号を付けたもので、Hermes Desktop
-Lightではcanaryが`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
+versionはcanaryではupstreamのbuild tagをScoop version identityへ正規化して改訂番号を
+付けたもので、stableでは公式Desktopのbuild tagに改訂番号を付けたものです。Hermes Desktop
+Lightのcanary canonical tagは`canary.<YYYYMMDD>T<HHMMSS>Z-v<X.Y.Z>`、移行期間の旧形式tagは
+`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z`であり、前者は`hermes-desktop-light.py`で後者の
+identityへ正規化される。canaryが`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
 `v0.22.5+canary.20261023T070057Z-r1`）、stableが`rc.<N>-v<X.Y.Z>-r<N>`（例
 `rc.3-v0.22.0-r1`）です。
 初回は`r1`、同じ上流版の配布修正は`r2`以降です。同じ内容の再実行では番号を増やさず、
@@ -124,7 +127,8 @@ source commitのLight contractが無い場合は理由付きで成功skipし、�
 API障害やtag/handoff provenance不明はunsupportedとは区別して失敗する。upstream sourceの
 channelと、このbucketの**unofficial Light build**であることは別属性である。
 
-versionは公式Desktopのbuild tagそのままに改訂番号を付けた`<official-tag>-r<N>`。
+versionはcanaryのcanonical build tagを`hermes-desktop-light.py`が旧形式のversion
+identityへ正規化してから改訂番号を付けた`<normalized-tag>-r<N>`。
 canaryは`v<X.Y.Z>+canary.<YYYYMMDD>T<HHMMSS>Z-r<N>`（例
 `v0.22.5+canary.20261023T070057Z-r1`）、stableは`rc.<N>-v<X.Y.Z>-r<N>`（例
 `rc.3-v0.22.0-r1`）。旧product version形式（`2026.6864.2132.0-r1`、
