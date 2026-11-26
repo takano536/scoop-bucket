@@ -10,9 +10,10 @@ provenance・ライセンス/著作権/第三者通知ゲートを一律には�
 
 ## 名前と正本
 
-- アプリごとにReleaseタグを`<app>/<version>`とする。versionは公式upstreamのbuild
-  tagに配布改訂番号を付けた形式（下記「Scoop version」参照）で、`v`プレフィックスは
-  version自身が担うためタグ側で追加しない。
+- アプリごとにReleaseタグを`<app>/<version>`とする。versionはcanaryではcanonical
+  claim/build tagを正規化したidentity、stableでは公式Desktopのbuild tagに配布改訂番号を
+  付けた形式（下記「Scoop version」参照）で、`v`プレフィックスはversion自身が担うため
+  タグ側で追加しない。
 - Scoop versionとZIP名にも同じ配布改訂番号を含める。初回は`r1`。
 - 同じ上流版の修正だけ改訂番号を増やす。通常の再実行では増やさない。
 - 上流タグ・commitと配布版を区別する。`r2`でもビルド対象は同じ上流タグであり、

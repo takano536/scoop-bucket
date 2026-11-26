@@ -78,7 +78,7 @@ ZIPはGitにcommitせず、アプリ名でReleaseタグを分けます。
 | 項目 | 形式 |
 | --- | --- |
 | Releaseタグ | `<アプリ名>/<version>` |
-| Scoop version | `<version>`（公式upstreamタグ + `-r<改訂番号>`） |
+| Scoop version | canary: `<正規化後のidentity>-r<改訂番号>` / stable: `<公式Desktopのbuild tag>-r<改訂番号>` |
 | ZIP | `<アプリ名>-<version>-windows-<arch>.zip` |
 
 versionはcanaryではupstreamのbuild tagをScoop version identityへ正規化して改訂番号を
